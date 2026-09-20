@@ -1,10 +1,9 @@
 {
-  "name": "prism-browser",
+  "name": "zbrowser",
   "version": "0.2.0-beta.1",
   "private": true,
   "author": {
-    "name": "DFarm",
-    "url": "https://x.com/DFarm_club"
+    "name": "ZBrowser Contributors"
   },
   "description": "Open-source local-first multi-profile fingerprint browser",
   "main": "out/main/index.js",
@@ -67,9 +66,9 @@
     "nanoid": "3.3.18"
   },
   "build": {
-    "appId": "com.prismbrowser.desktop",
-    "productName": "Prism Browser",
-    "copyright": "Copyright © 2026 Prism Browser. All rights reserved.",
+    "appId": "com.zbrowser.desktop",
+    "productName": "ZBrowser",
+    "copyright": "Copyright © 2026 ZBrowser Contributors.",
     "artifactName": "${productName}-${version}-${os}-${arch}.${ext}",
     "asar": true,
     "directories": {
@@ -119,10 +118,10 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/DFarm6/Prism-Browser-Community.git"
+    "url": "https://github.com/zhangchedan000/ZBrowser.git"
   },
-  "homepage": "https://github.com/DFarm6/Prism-Browser-Community#readme",
+  "homepage": "https://github.com/zhangchedan000/ZBrowser#readme",
   "bugs": {
-    "url": "https://github.com/DFarm6/Prism-Browser-Community/issues"
+    "url": "https://github.com/zhangchedan000/ZBrowser/issues"
   }
 }
