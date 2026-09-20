@@ -19,6 +19,8 @@ export type ProxyExitPolicy = 'warn' | 'block'
 export type ProfileStatus = 'closed' | 'starting' | 'running' | 'stopping' | 'orphaned' | 'error'
 export interface ProfileLaunchOptions {
   allowGeoConflict?: boolean
+  /** Temporary URLs to open for this launch only. Does not modify the saved profile. */
+  startUrls?: string[]
 }
 export type EnginePreference = 'auto' | 'bundled' | 'system'
 export type ProEntitlement =
