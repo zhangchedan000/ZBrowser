@@ -31,7 +31,6 @@ import {
 } from '../../shared/hardware-profiles'
 import { effectiveNetworkIdentity } from '../../shared/network-identity'
 import type { BrowserExtension, BrowserProfileView, EngineStatus, HardwareProfileId, KernelRelease, ProfileDraft, ProxyTestResult } from '../../shared/types'
-import { kernelRequiresPro } from '../../shared/kernel-policy'
 
 interface EditorValues extends Omit<ProfileDraft, 'startUrls' | 'color'> {
   startUrlsText: string
@@ -47,7 +46,6 @@ interface ProfileEditorProps {
   engine: EngineStatus | null
   kernels: KernelRelease[]
   groups: string[]
-  proEnabled: boolean
   onCancel: () => void
   onSave: (draft: ProfileDraft) => Promise<void>
 }
@@ -80,7 +78,7 @@ const riskLabels: Record<NonNullable<ProxyTestResult['networkRisk']>, string> = 
   hosting: '机房网络'
 }
 
-export function ProfileEditor({ open, profile, suggestedIndex, saving, extensions, engine, kernels, groups, proEnabled, onCancel, onSave }: ProfileEditorProps) {
+export function ProfileEditor({ open, profile, suggestedIndex, saving, extensions, engine, kernels, groups, onCancel, onSave }: ProfileEditorProps) {
   const [form] = Form.useForm<EditorValues>()
   const proxyProtocol = Form.useWatch(['proxy', 'protocol'], form)
   const proxyPassword = Form.useWatch(['proxy', 'password'], form) ?? ''
@@ -184,8 +182,7 @@ export function ProfileEditor({ open, profile, suggestedIndex, saving, extension
             { value: '', label: `自动跟随当前内核${engine?.version ? ` · ${engine.version}` : ''}` },
             ...kernels.map((kernel) => ({
               value: kernel.version,
-              label: `${kernel.version}${kernelRequiresPro(kernel.version) ? ' · Pro' : ''}${kernel.origin === 'local-build' ? ' · 本地构建' : ''}`,
-              disabled: kernelRequiresPro(kernel.version) && !proEnabled
+              label: `${kernel.version}${kernel.origin === 'local-build' ? ' · 本地构建' : ''}`
             })),
             ...(kernelVersion && !pinnedKernel ? [{ value: kernelVersion, label: `${kernelVersion} · 当前未安装` }] : [])
           ]}
