@@ -48,7 +48,7 @@ import {
   type TableColumnsType
 } from 'antd'
 import { useEffect, useMemo, useState } from 'react'
-import type { AnnouncementStatus, AppRecoveryStatus, AppUpdateStatus, AutomationStatus, BrowserCrashRecord, BrowserExtension, BrowserProfileView, EngineStatus, KernelRelease, LaunchDiagnosticReport, LicenseStatus, McpProfilePermission, McpStatus, ProfileDraft, ProfileStoreHealth, ScheduledTask, StorageOverview } from '../../shared/types'
+import type { AnnouncementStatus, AppRecoveryStatus, AppUpdateStatus, AutomationStatus, BrowserCrashRecord, BrowserExtension, BrowserProfileView, EngineStatus, KernelRelease, LaunchDiagnosticReport, LicenseStatus, McpProfilePermission, McpStatus, ProfileDraft, ProfileLaunchOptions, ProfileStoreHealth, ScheduledTask, StorageOverview } from '../../shared/types'
 import { ProfileEditor } from './ProfileEditor'
 import { KernelManagerModal } from './KernelManagerModal'
 import { ProfileDataModal } from './ProfileDataModal'
@@ -63,6 +63,7 @@ import { WorkspaceMigrationModal } from './WorkspaceMigrationModal'
 import { AutomationModal } from './AutomationModal'
 import { SchedulerModal } from './SchedulerModal'
 import { McpModal } from './McpModal'
+import { EnvironmentCheckModal } from './EnvironmentCheckModal'
 import { effectiveNetworkIdentity, geoConflictConfirmationMessage } from '../../shared/network-identity'
 import { kernelRequiresPro } from '../../shared/kernel-policy'
 import { orderBatchLaunchProfiles, waitForBatchLaunchGap } from './batch-launch-order'
@@ -131,6 +132,7 @@ export default function App() {
   const [batchBusy, setBatchBusy] = useState(false)
   const [batchResult, setBatchResult] = useState<BatchOperationResult>()
   const [dataProfile, setDataProfile] = useState<BrowserProfileView | undefined>()
+  const [environmentCheckProfile, setEnvironmentCheckProfile] = useState<BrowserProfileView | undefined>()
   const [recycleBinOpen, setRecycleBinOpen] = useState(false)
   const [extensions, setExtensions] = useState<BrowserExtension[]>([])
   const [extensionManagerOpen, setExtensionManagerOpen] = useState(false)
@@ -398,15 +400,29 @@ export default function App() {
     })
   }
 
-  async function launchWithGeoConflictConfirmation(profile: BrowserProfileView): Promise<BrowserProfileView | undefined> {
+  async function launchWithGeoConflictConfirmation(
+    profile: BrowserProfileView,
+    options: ProfileLaunchOptions = {}
+  ): Promise<BrowserProfileView | undefined> {
     try {
-      return await window.browserApi.profiles.launch(profile.id)
+      return await window.browserApi.profiles.launch(profile.id, options)
     } catch (error) {
       const warning = geoConflictConfirmationMessage(humanError(error))
       if (!warning) throw error
       if (!await confirmGeoConflictLaunch(profile, warning)) return undefined
-      return window.browserApi.profiles.launch(profile.id, { allowGeoConflict: true })
+      return window.browserApi.profiles.launch(profile.id, { ...options, allowGeoConflict: true })
     }
+  }
+
+  async function launchEnvironmentChecks(profile: BrowserProfileView, urls: string[]): Promise<void> {
+    await withBusy(profile.id, async () => {
+      const next = await launchWithGeoConflictConfirmation(profile, { startUrls: urls })
+      if (next) {
+        upsert(next)
+        setEnvironmentCheckProfile(next)
+        messageApi.success('已用当前 Profile 打开环境检测页面')
+      }
+    })
   }
 
   async function saveProfile(draft: ProfileDraft): Promise<void> {
@@ -714,6 +730,7 @@ export default function App() {
         { key: 'diagnose', icon: <SafetyCertificateOutlined />, label: '启动诊断' },
         { key: 'crashes', icon: <WarningFilled />, label: '异常与恢复' },
         { key: 'proxy-check', icon: <ApiOutlined />, label: '检测代理' },
+        { key: 'environment-check', icon: <GlobalOutlined />, label: '环境检测' },
         { key: 'duplicate', icon: <CopyOutlined />, label: '复制环境' },
         { key: 'export', icon: <DownloadOutlined />, label: '导出配置', disabled: !editable },
         { type: 'divider' },
@@ -725,6 +742,7 @@ export default function App() {
         if (key === 'diagnose') void runDiagnostics(profile)
         if (key === 'crashes') void openCrashHistory(profile)
         if (key === 'proxy-check') void runProxyChecks([profile.id])
+        if (key === 'environment-check') setEnvironmentCheckProfile(profile)
         if (key === 'duplicate') {
           void withBusy(profile.id, async () => {
             const copy = await window.browserApi.profiles.duplicate(profile.id)
@@ -1208,6 +1226,14 @@ export default function App() {
         open={Boolean(dataProfile)}
         profile={dataProfile}
         onClose={() => setDataProfile(undefined)}
+      />
+      <EnvironmentCheckModal
+        open={Boolean(environmentCheckProfile)}
+        profile={environmentCheckProfile}
+        engine={engine}
+        busy={Boolean(environmentCheckProfile && busyIds.has(environmentCheckProfile.id))}
+        onClose={() => setEnvironmentCheckProfile(undefined)}
+        onLaunchChecks={launchEnvironmentChecks}
       />
       <RecycleBinModal
         open={recycleBinOpen}
