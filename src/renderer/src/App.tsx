@@ -331,14 +331,25 @@ export default function App() {
 
   async function saveProfile(draft: ProfileDraft): Promise<void> {
     setSaving(true)
+    const wasEditing = Boolean(editing)
     try {
-      const saved = editing
+      let saved = editing
         ? await window.browserApi.profiles.update(editing.id, draft)
         : await window.browserApi.profiles.create(draft)
+
+      if (!wasEditing && draft.proxy.protocol !== 'direct') {
+        try {
+          saved = await window.browserApi.profiles.testProxy(saved.id)
+        } catch (error) {
+          messageApi.warning(`环境已创建，但代理复检失败：${humanError(error)}`)
+        }
+      }
+
       upsert(saved)
       setEditorOpen(false)
       setEditing(undefined)
-      messageApi.success(editing ? '环境已更新' : '环境已创建')
+      messageApi.success(wasEditing ? '环境已更新' : '环境已创建，已进入环境检测')
+      if (!wasEditing) setEnvironmentCheckProfile(saved)
     } catch (error) {
       messageApi.error(humanError(error))
     } finally {
