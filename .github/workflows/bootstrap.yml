@@ -32,7 +32,7 @@ jobs:
         shell: bash
         run: |
           git clone --depth 1 https://github.com/DFarm6/Prism-Browser-Community.git /tmp/prism
-          rsync -a --delete-excluded \
+          rsync -a \
             --exclude='.git' \
             --exclude='.github' \
             --exclude='README.md' \
