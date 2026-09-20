@@ -46,7 +46,8 @@ function parseArguments(argv) {
     output: resolve('app-e2e.json'),
     packaged: false,
     keepData: false,
-    expectedKernelVersions: []
+    expectedKernelVersions: [],
+    installKernelVersion: ''
   }
   for (let index = 0; index < argv.length; index += 1) {
     const argument = argv[index]
@@ -56,9 +57,12 @@ function parseArguments(argv) {
     else if (argument === '--packaged') options.packaged = true
     else if (argument === '--keep-data') options.keepData = true
     else if (argument === '--expected-kernel-version') options.expectedKernelVersions.push(argv[++index] ?? '')
+    else if (argument === '--install-kernel-version') options.installKernelVersion = argv[++index] ?? ''
     else throw new Error(`Unknown argument: ${argument}`)
   }
-  if (!options.browser) throw new Error('Usage: npm run audit:app-e2e -- --browser /path/to/Chromium [--app /path/to/Prism] [--packaged]')
+  if (!options.browser && !options.installKernelVersion) {
+    throw new Error('Usage: npm run audit:app-e2e -- (--browser /path/to/Chromium | --install-kernel-version 144.0.7559.132) [--app /path/to/ZBrowser] [--packaged]')
+  }
   return options
 }
 
@@ -258,14 +262,15 @@ async function readOwner(userDataPath, id) {
 
 async function main() {
   const options = parseArguments(process.argv.slice(2))
-  await Promise.all([access(options.app), access(options.browser)])
+  await access(options.app)
+  if (options.browser) await access(options.browser)
   const root = await mkdtemp(join(tmpdir(), 'prism-app-e2e-'))
   const appData = join(root, 'app-data')
   const vault = join(appData, 'vault')
   await mkdir(vault, { recursive: true })
   await writeFile(join(vault, 'settings.json'), JSON.stringify({
     browserExecutable: options.browser,
-    fingerprintKernel: true,
+    fingerprintKernel: Boolean(options.browser),
     enginePreference: 'auto',
     recycleRetentionDays: 0
   }, null, 2))
@@ -277,6 +282,18 @@ async function main() {
     first = await launchApp(options, appData)
     const firstRun = await evaluate(first.client, `(async () => {
       const expectedKernelVersions = ${JSON.stringify(options.expectedKernelVersions)}
+      const installKernelVersion = ${JSON.stringify(options.installKernelVersion)}
+      let managedKernelInstall = null
+      let remoteCatalog = []
+      if (installKernelVersion) {
+        remoteCatalog = await window.browserApi.engine.releases()
+        if (!remoteCatalog.some(kernel => kernel.version === installKernelVersion)) {
+          throw new Error('Requested managed kernel is not present in the release catalog: ' + installKernelVersion)
+        }
+        managedKernelInstall = await window.browserApi.engine.install(installKernelVersion)
+        const health = await window.browserApi.engine.verify(installKernelVersion)
+        if (health.status === 'corrupt') throw new Error('Managed kernel failed integrity verification: ' + health.message)
+      }
       const kernelCatalog = await window.browserApi.engine.installed()
       let communityKernelActivated = expectedKernelVersions.length === 0
       let proKernelLockedWithoutLicense = expectedKernelVersions.length < 2
@@ -306,7 +323,7 @@ async function main() {
       const closed = await window.browserApi.profiles.list()
       await window.browserApi.profiles.remove(copy.id)
       return {
-        a, updated, copy, kernelCatalog, communityKernelActivated, proKernelLockedWithoutLicense,
+        a, updated, copy, kernelCatalog, remoteCatalog, managedKernelInstall, communityKernelActivated, proKernelLockedWithoutLicense,
         launchedStatuses: launched.map(profile => profile.status),
         runningStatuses: running.filter(profile => [a.id, updated.id].includes(profile.id)).map(profile => profile.status),
         closedStatuses: closed.filter(profile => [a.id, updated.id].includes(profile.id)).map(profile => profile.status),
@@ -350,6 +367,11 @@ async function main() {
       ownerMarkersMatch: owners.every((owner, index) => owner.profileId === secondRun.profiles[index].id),
       bundledKernelCatalogVisible: options.expectedKernelVersions.every((version) => firstRun.kernelCatalog
         .some((kernel) => kernel.version === version && kernel.origin === 'bundled')),
+      managedKernelInstalled: !options.installKernelVersion
+        || (firstRun.managedKernelInstall?.version === options.installKernelVersion
+          && firstRun.kernelCatalog.some(kernel => kernel.version === options.installKernelVersion && kernel.installed)),
+      managedKernelCatalogAvailable: !options.installKernelVersion
+        || firstRun.remoteCatalog.some(kernel => kernel.version === options.installKernelVersion),
       communityKernelActivated: firstRun.communityKernelActivated,
       proKernelLockedWithoutLicense: firstRun.proKernelLockedWithoutLicense
     }
@@ -363,7 +385,7 @@ async function main() {
       checkedAt: new Date().toISOString(),
       app: options.app,
       appMode: options.packaged ? 'packaged' : 'development-runtime',
-      browser: options.browser,
+      browser: options.browser || `managed:${options.installKernelVersion}`,
       checks,
       passed: Object.values(checks).every(Boolean),
       retainedDataPath: options.keepData ? root : undefined
