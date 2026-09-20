@@ -19,6 +19,19 @@ function errorText(error: unknown): string {
     .replace(/^Error invoking remote method '[^']+': Error: /, '')
 }
 
+const RECOMMENDED_KERNEL = '144.0.7559.132'
+
+function compatibilityLabel(version: string): { color: string; text: string; detail?: string } {
+  if (version === RECOMMENDED_KERNEL) {
+    return { color: 'success', text: '推荐兼容', detail: '当前 ZBrowser 指纹参数与 GPU 模板已按此版本验证。' }
+  }
+  const major = Number(version.split('.')[0])
+  if (Number.isFinite(major) && major > 144) {
+    return { color: 'warning', text: '新版实验', detail: '上游指纹实现可能变化，建议先新建测试环境并跑完整环境检测。' }
+  }
+  return { color: 'default', text: '兼容待验证' }
+}
+
 export function KernelManagerModal({ open, engine, onClose, onEngineChanged }: KernelManagerModalProps) {
   const [releases, setReleases] = useState<KernelRelease[]>([])
   const [loading, setLoading] = useState(false)
@@ -58,6 +71,20 @@ export function KernelManagerModal({ open, engine, onClose, onEngineChanged }: K
   }, [open])
 
   async function install(version: string): Promise<void> {
+    const compatibility = compatibilityLabel(version)
+    if (compatibility.text === '新版实验') {
+      const confirmed = await new Promise<boolean>((resolve) => {
+        Modal.confirm({
+          title: `安装实验内核 ${version}？`,
+          content: '该版本来自可信开源发行源，但 ZBrowser 当前的指纹模板主要按 Chromium 144 验证。建议只在测试环境中使用，并重新跑 BrowserLeaks / Pixelscan / CreepJS。',
+          okText: '继续安装',
+          cancelText: '取消',
+          onOk: () => resolve(true),
+          onCancel: () => resolve(false)
+        })
+      })
+      if (!confirmed) return
+    }
     setInstalling(version)
     try {
       const status = await window.browserApi.engine.install(version)
@@ -212,6 +239,7 @@ export function KernelManagerModal({ open, engine, onClose, onEngineChanged }: K
           renderItem={(release) => {
             const active = currentVersion === release.version
             const bundledRelease = release.origin === 'bundled'
+            const compatibility = compatibilityLabel(release.version)
             const actions: ReactNode[] = []
 
             if (!release.installed && release.remoteAvailable) {
@@ -276,6 +304,7 @@ export function KernelManagerModal({ open, engine, onClose, onEngineChanged }: K
                       <span>Chromium {release.version}</span>
                       {release.installed && <Tag>已安装</Tag>}
                       {release.remoteAvailable && <Tag color="cyan">开源发行版</Tag>}
+                      <Tag color={compatibility.color}>{compatibility.text}</Tag>
                       {bundledRelease && <Tag color="blue">随应用内置</Tag>}
                       {release.origin === 'local-build' && <Tag color="purple">本地构建</Tag>}
                       {health[release.version]?.status === 'healthy' && <Tag color="success">文件正常</Tag>}
@@ -287,6 +316,7 @@ export function KernelManagerModal({ open, engine, onClose, onEngineChanged }: K
                     <div className="kernel-meta">
                       <span>{release.size ? sizeLabel(release.size) : '本地安装'}</span>
                       <span>{release.remoteAvailable ? 'GitHub 官方发行资产 · SHA-256 校验' : '仅本地可用'}</span>
+                      {compatibility.detail && <span>{compatibility.detail}</span>}
                     </div>
                   }
                 />
