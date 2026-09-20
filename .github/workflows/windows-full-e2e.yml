@@ -38,19 +38,47 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Diagnose kernel patch hash
+      - name: Resolve resume stage
         shell: pwsh
         run: |
-          $hash = (Get-FileHash -Algorithm SHA256 -LiteralPath "tools/kernel-patches/004-screen-size.patch").Hash.ToLowerInvariant()
-          Write-Host "004-screen-size.patch SHA256=$hash"
+          $message = @'
+          ${{ github.event.head_commit.message }}
+          '@
+          $stage = "full"
+          if ($message -match '\[resume:kernel\]') { $stage = "kernel" }
+          elseif ($message -match '\[resume:dev-e2e\]') { $stage = "dev-e2e" }
+          elseif ($message -match '\[resume:package\]') { $stage = "package" }
+          "ZBROWSER_RESUME_STAGE=$stage" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          Write-Host "Resume stage: $stage"
 
-      - name: Unit and integration tests
-        run: npm test
+      - name: Diagnose all kernel patch hashes
+        if: env.ZBROWSER_RESUME_STAGE == 'full' || env.ZBROWSER_RESUME_STAGE == 'kernel'
+        shell: pwsh
+        run: |
+          Get-ChildItem "tools/kernel-patches" -Filter "*.patch" -File | Sort-Object Name | ForEach-Object {
+            $hash = (Get-FileHash -Algorithm SHA256 -LiteralPath $_.FullName).Hash.ToLowerInvariant()
+            Write-Host "$($_.Name) SHA256=$hash"
+          }
+
+      - name: Typecheck and unit/integration tests
+        if: env.ZBROWSER_RESUME_STAGE == 'full'
+        shell: pwsh
+        run: |
+          npm run typecheck
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          npx vitest run --fileParallelism=false
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Verify kernel lock
+        if: env.ZBROWSER_RESUME_STAGE == 'full' || env.ZBROWSER_RESUME_STAGE == 'kernel'
+        run: npm run kernel:verify-lock
 
       - name: Build application
+        if: env.ZBROWSER_RESUME_STAGE != 'package'
         run: npm run build
 
       - name: Development-runtime full app E2E
+        if: env.ZBROWSER_RESUME_STAGE != 'package'
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force -Path test-results | Out-Null
