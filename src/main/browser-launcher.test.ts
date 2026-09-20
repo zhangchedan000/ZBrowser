@@ -13,8 +13,21 @@ import { SettingsStore } from './settings-store'
 
 const temporaryPaths: string[] = []
 
+async function removeTemporaryPath(path: string): Promise<void> {
+  for (let attempt = 0; attempt < 8; attempt += 1) {
+    try {
+      await rm(path, { recursive: true, force: true, maxRetries: 2, retryDelay: 50 })
+      return
+    } catch (error) {
+      const code = (error as NodeJS.ErrnoException).code
+      if (!['ENOTEMPTY', 'EBUSY', 'EPERM'].includes(code ?? '') || attempt === 7) throw error
+      await new Promise((resolve) => setTimeout(resolve, 50 * (attempt + 1)))
+    }
+  }
+}
+
 afterEach(async () => {
-  await Promise.all(temporaryPaths.splice(0).map((path) => rm(path, { recursive: true, force: true })))
+  await Promise.all(temporaryPaths.splice(0).map(removeTemporaryPath))
 })
 
 class FakeProcessInspector implements ProcessInspector {
@@ -499,7 +512,7 @@ describe('BrowserLauncher concurrent lifecycle', () => {
       controller.spawn
     )
 
-    await expect(launcher.launch(profile.id)).rejects.toThrow('PRISM_GEOIP_CONFLICT_CONFIRMATION_REQUIRED')
+    await expect(launcher.launch(profile.id)).rejects.toThrow('ZBROWSER_GEOIP_CONFLICT_CONFIRMATION_REQUIRED')
     expect(controller.children).toHaveLength(0)
     expect(profiles.get(profile.id).status).toBe('closed')
 
