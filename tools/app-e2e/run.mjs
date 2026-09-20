@@ -260,6 +260,10 @@ async function readOwner(userDataPath, id) {
   return JSON.parse(await readFile(join(userDataPath, 'vault', 'profiles', id, 'profile-owner.json'), 'utf8'))
 }
 
+async function readLastLaunch(userDataPath, id) {
+  return JSON.parse(await readFile(join(userDataPath, 'vault', 'profiles', id, 'runtime', 'last-launch.json'), 'utf8'))
+}
+
 async function main() {
   const options = parseArguments(process.argv.slice(2))
   await access(options.app)
@@ -312,9 +316,35 @@ async function main() {
       const a = await window.browserApi.profiles.create(${JSON.stringify(draft('E2E 环境 A', 100001, site.url))})
       const b = await window.browserApi.profiles.create(${JSON.stringify(draft('E2E 环境 B', 200002, site.url))})
       const copy = await window.browserApi.profiles.duplicate(a.id)
+      const editedFingerprint = {
+        ...a.fingerprint,
+        seed: 345678901,
+        hardwareProfileId: 'windows-11-rtx4070',
+        gpuBucket: 34,
+        renderIdentityVersion: 4,
+        platform: 'windows',
+        platformVersion: '10.0.0',
+        brand: 'Chrome',
+        brandVersion: '',
+        hardwareConcurrency: 16,
+        language: 'en-US',
+        acceptLanguages: 'en-US,en',
+        timezone: 'America/New_York',
+        webrtcPolicy: 'proxy_only',
+        networkIdentityMode: 'manual',
+        proxyExitPolicy: 'block',
+        screenWidth: 2560,
+        screenHeight: 1440,
+        disabledSpoofing: ['canvas', 'audio']
+      }
+      const editedA = await window.browserApi.profiles.update(a.id, {
+        ...a,
+        name: 'E2E 环境 A 指纹已修改',
+        fingerprint: editedFingerprint
+      })
       const updated = await window.browserApi.profiles.update(b.id, { ...b, name: 'E2E 环境 B 已编辑' })
       const launched = await Promise.all([
-        window.browserApi.profiles.launch(a.id),
+        window.browserApi.profiles.launch(editedA.id),
         window.browserApi.profiles.launch(updated.id)
       ])
       await new Promise(resolve => setTimeout(resolve, 1500))
@@ -323,7 +353,7 @@ async function main() {
       const closed = await window.browserApi.profiles.list()
       await window.browserApi.profiles.remove(copy.id)
       return {
-        a, updated, copy, kernelCatalog, remoteCatalog, managedKernelInstall, communityKernelActivated, proKernelLockedWithoutLicense,
+        a, editedA, updated, copy, kernelCatalog, remoteCatalog, managedKernelInstall, communityKernelActivated, proKernelLockedWithoutLicense,
         launchedStatuses: launched.map(profile => profile.status),
         runningStatuses: running.filter(profile => [a.id, updated.id].includes(profile.id)).map(profile => profile.status),
         closedStatuses: closed.filter(profile => [a.id, updated.id].includes(profile.id)).map(profile => profile.status),
@@ -334,6 +364,8 @@ async function main() {
     })()`)
     await quitApp(first)
     first = undefined
+
+    const editedLaunch = await readLastLaunch(appData, firstRun.editedA.id)
 
     second = await launchApp(options, appData)
     const secondRun = await evaluate(second.client, `(async () => ({
@@ -354,6 +386,33 @@ async function main() {
       duplicatedWithNewIdentityAndSeed: firstRun.copy.id !== firstRun.a.id
         && firstRun.copy.fingerprint.seed !== firstRun.a.fingerprint.seed,
       editApplied: firstRun.updated.name === 'E2E 环境 B 已编辑',
+      fingerprintEditPersisted: firstRun.editedA.name === 'E2E 环境 A 指纹已修改'
+        && firstRun.editedA.fingerprint.seed === 345678901
+        && firstRun.editedA.fingerprint.hardwareProfileId === 'windows-11-rtx4070'
+        && firstRun.editedA.fingerprint.hardwareConcurrency === 16
+        && firstRun.editedA.fingerprint.screenWidth === 2560
+        && firstRun.editedA.fingerprint.screenHeight === 1440
+        && firstRun.editedA.fingerprint.language === 'en-US'
+        && firstRun.editedA.fingerprint.acceptLanguages === 'en-US,en'
+        && firstRun.editedA.fingerprint.timezone === 'America/New_York'
+        && firstRun.editedA.fingerprint.webrtcPolicy === 'proxy_only'
+        && firstRun.editedA.fingerprint.disabledSpoofing.includes('canvas')
+        && firstRun.editedA.fingerprint.disabledSpoofing.includes('audio'),
+      fingerprintEditReachedLaunchArgs: Array.isArray(editedLaunch.args)
+        && editedLaunch.args.includes('--fingerprint-platform=windows')
+        && editedLaunch.args.includes('--fingerprint-platform-version=10.0.0')
+        && editedLaunch.args.includes('--fingerprint-hardware-concurrency=16')
+        && editedLaunch.args.includes('--fingerprint-screen-width=2560')
+        && editedLaunch.args.includes('--fingerprint-screen-height=1440')
+        && editedLaunch.args.includes('--fingerprint-language=en-US')
+        && editedLaunch.args.includes('--lang=en-US')
+        && editedLaunch.args.includes('--accept-lang=en-US,en')
+        && editedLaunch.args.includes('--timezone=America/New_York')
+        && editedLaunch.args.includes('--fingerprint-render-identity=v4')
+        && editedLaunch.args.includes('--disable-spoofing=canvas,audio')
+        && editedLaunch.args.includes('--disable-non-proxied-udp')
+        && editedLaunch.args.includes('--webrtc-ip-handling-policy=disable_non_proxied_udp')
+        && editedLaunch.args.includes('--fingerprint-brand-version=144.0.7559.132'),
       realBrowsersStarted: firstRun.launchedStatuses.every((status) => status === 'running')
         && firstRun.runningStatuses.every((status) => status === 'running'),
       allBrowsersClosed: firstRun.closedStatuses.every((status) => status === 'closed'),
@@ -361,7 +420,7 @@ async function main() {
       deletedProfileMovedToTrash: firstRun.trash.some((item) => item.profileId === firstRun.copy.id),
       cleanRestartDetected: secondRun.recovery.previousUnclean === false,
       restartPersistence: secondRun.profiles.length === 2
-        && secondRun.profiles.some((profile) => profile.name === 'E2E 环境 A' && profile.seed === 100001)
+        && secondRun.profiles.some((profile) => profile.name === 'E2E 环境 A 指纹已修改' && profile.seed === 345678901)
         && secondRun.profiles.some((profile) => profile.name === 'E2E 环境 B 已编辑' && profile.seed === 200002)
         && secondRun.profiles.every((profile) => profile.status === 'closed'),
       ownerMarkersMatch: owners.every((owner, index) => owner.profileId === secondRun.profiles[index].id),
