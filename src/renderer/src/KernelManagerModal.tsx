@@ -223,7 +223,7 @@ export function KernelManagerModal({ open, engine, onClose, onEngineChanged }: K
         type="info"
         showIcon
         title="可直接安装开源 Fingerprint Chromium"
-        description="发行包直接来自 adryfish/fingerprint-chromium 的 GitHub Releases。ZBrowser 会校验 GitHub 提供的 SHA-256 后再安装；无需 Prism Pro。"
+        description="发行包直接来自 adryfish/fingerprint-chromium 的 GitHub Releases。ZBrowser 会校验 GitHub 提供的 SHA-256 后再安装；无需额外付费组件。"
       />
 
       <div className="kernel-toolbar">
