@@ -64,7 +64,7 @@ export function registerIpc({ profiles, settings, launcher, kernels, extensions,
     const options: Electron.SaveDialogOptions = {
       title: '导出环境配置',
       defaultPath: safeProfileFileName(profile.name),
-      filters: [{ name: 'Prism Browser 环境配置', extensions: ['json'] }]
+      filters: [{ name: 'ZBrowser 环境配置', extensions: ['json'] }]
     }
     const result = owner ? await dialog.showSaveDialog(owner, options) : await dialog.showSaveDialog(options)
     if (result.canceled || !result.filePath) return null
@@ -77,7 +77,7 @@ export function registerIpc({ profiles, settings, launcher, kernels, extensions,
     const options: Electron.OpenDialogOptions = {
       title: '导入环境配置',
       properties: ['openFile'],
-      filters: [{ name: 'Prism Browser 环境配置', extensions: ['json'] }]
+      filters: [{ name: 'ZBrowser 环境配置', extensions: ['json'] }]
     }
     const result = owner ? await dialog.showOpenDialog(owner, options) : await dialog.showOpenDialog(options)
     if (result.canceled || !result.filePaths[0]) return null
@@ -107,7 +107,7 @@ export function registerIpc({ profiles, settings, launcher, kernels, extensions,
     const owner = BrowserWindow.getFocusedWindow()
     const options: Electron.SaveDialogOptions = {
       title: '保存批量导入 CSV 模板',
-      defaultPath: 'prism-browser-batch-template.csv',
+      defaultPath: 'zbrowser-batch-template.csv',
       filters: [{ name: 'CSV 表格', extensions: ['csv'] }]
     }
     const result = owner ? await dialog.showSaveDialog(owner, options) : await dialog.showSaveDialog(options)
