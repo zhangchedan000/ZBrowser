@@ -117,7 +117,23 @@ export class UpdateManager {
   }
 
   async check(): Promise<AppUpdateStatus> {
-    const config = await this.readConfig()
+    let config: UpdateConfig
+    try {
+      config = await this.readConfig()
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
+        this.candidate = null
+        this.setStatus({
+          stage: 'disabled',
+          currentVersion: this.currentVersion,
+          channel: null,
+          distributionMode: null,
+          message: '当前测试版未配置自动更新通道，请从 GitHub Releases 获取新版本'
+        })
+        return this.status()
+      }
+      throw error
+    }
     try {
       const response = await fetch(config.manifestUrl, {
         headers: { accept: 'application/json', 'user-agent': `ZBrowser/${this.currentVersion}` },
