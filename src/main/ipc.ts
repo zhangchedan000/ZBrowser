@@ -245,9 +245,27 @@ export function registerIpc({ profiles, settings, launcher, kernels, extensions,
     await profiles.remove(id)
     await mcp.removeProfile(id)
   })
-  ipcMain.handle('profiles:launch', (_event, id: string, options?: { allowGeoConflict?: unknown }) => {
+  ipcMain.handle('profiles:launch', (_event, id: string, options?: { allowGeoConflict?: unknown; startUrls?: unknown }) => {
     if (cookies.isBusy(id)) throw new Error('该环境正在执行 Cookie 操作')
-    return launcher.launch(id, { allowGeoConflict: options?.allowGeoConflict === true }).then(publicProfile)
+    let startUrls: string[] | undefined
+    if (options?.startUrls !== undefined) {
+      if (!Array.isArray(options.startUrls) || options.startUrls.length > 12) throw new Error('临时启动网址参数无效')
+      startUrls = options.startUrls.map((value) => {
+        if (typeof value !== 'string' || value.length > 2048) throw new Error('临时启动网址参数无效')
+        let parsed: URL
+        try {
+          parsed = new URL(value)
+        } catch {
+          throw new Error('临时启动网址格式无效')
+        }
+        if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') throw new Error('临时启动网址只允许 HTTP/HTTPS')
+        return parsed.toString()
+      })
+    }
+    return launcher.launch(id, {
+      allowGeoConflict: options?.allowGeoConflict === true,
+      startUrls
+    }).then(publicProfile)
   })
   ipcMain.handle('profiles:close', (_event, id: string) => launcher.close(id).then(publicProfile))
   ipcMain.handle('profiles:close-all', () => launcher.closeAll())
