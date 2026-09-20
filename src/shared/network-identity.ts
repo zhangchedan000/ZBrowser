@@ -1,6 +1,7 @@
 import type { FingerprintConfig, ProxyTestResult } from './types'
 
-export const GEOIP_CONFLICT_CONFIRMATION_PREFIX = '[PRISM_GEOIP_CONFLICT_CONFIRMATION_REQUIRED]'
+export const GEOIP_CONFLICT_CONFIRMATION_PREFIX = '[ZBROWSER_GEOIP_CONFLICT_CONFIRMATION_REQUIRED]'
+const LEGACY_GEOIP_CONFLICT_CONFIRMATION_PREFIX = '[PRISM_GEOIP_CONFLICT_CONFIRMATION_REQUIRED]'
 
 export interface NetworkIdentityOptions {
   allowGeoConflict?: boolean
@@ -94,9 +95,13 @@ export function effectiveNetworkIdentity(
 }
 
 export function geoConflictConfirmationMessage(errorText: string): string | undefined {
-  const marker = errorText.indexOf(GEOIP_CONFLICT_CONFIRMATION_PREFIX)
-  if (marker < 0) return undefined
-  return errorText.slice(marker + GEOIP_CONFLICT_CONFIRMATION_PREFIX.length).replace(/^\s*[:：]?\s*/, '')
+  const currentMarker = errorText.indexOf(GEOIP_CONFLICT_CONFIRMATION_PREFIX)
+  if (currentMarker >= 0) {
+    return errorText.slice(currentMarker + GEOIP_CONFLICT_CONFIRMATION_PREFIX.length).replace(/^\s*[:：]?\s*/, '')
+  }
+  const legacyMarker = errorText.indexOf(LEGACY_GEOIP_CONFLICT_CONFIRMATION_PREFIX)
+  if (legacyMarker < 0) return undefined
+  return errorText.slice(legacyMarker + LEGACY_GEOIP_CONFLICT_CONFIRMATION_PREFIX.length).replace(/^\s*[:：]?\s*/, '')
 }
 
 export function proxyLaunchError(check: ProxyTestResult, exitPolicy: FingerprintConfig['proxyExitPolicy']): string | undefined {

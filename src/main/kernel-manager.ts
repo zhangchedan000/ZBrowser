@@ -18,7 +18,6 @@ import {
 import type { SettingsStore } from './settings-store'
 import type { Logger } from './app-logger'
 import type { AppSettings } from '../shared/types'
-import { kernelRequiresPro } from '../shared/kernel-policy'
 
 const execFileAsync = promisify(execFile)
 const RELEASES_URL = 'https://api.github.com/repos/adryfish/fingerprint-chromium/releases?per_page=10'
@@ -93,7 +92,6 @@ async function findEntry(root: string, predicate: (name: string) => boolean, dep
 export class KernelManager {
   private installingVersion: string | null = null
   private installAbort: AbortController | null = null
-  private canUseProKernel: () => boolean = () => true
 
   constructor(
     private readonly vaultPath: string,
@@ -103,14 +101,7 @@ export class KernelManager {
     private readonly kernelUsers: (version: string) => string[] | Promise<string[]> = () => []
   ) {}
 
-  setProKernelAccessCheck(check: () => boolean): void {
-    this.canUseProKernel = check
-  }
-
   private assertKernelEntitlement(version: string): void {
-    if (kernelRequiresPro(version) && !this.canUseProKernel()) {
-      throw new Error(`Chromium ${version} 当前不在 ZBrowser 开源内核允许范围内`)
-    }
   }
 
   async installed(): Promise<KernelRelease[]> {

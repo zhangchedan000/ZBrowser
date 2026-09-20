@@ -29,7 +29,7 @@ import {
   hardwareProfileSummary,
   refreshSeededGpuIdentity
 } from '../../shared/hardware-profiles'
-import { effectiveNetworkIdentity } from '../../shared/network-identity'
+import { effectiveNetworkIdentity, localeForCountry } from '../../shared/network-identity'
 import type { BrowserExtension, BrowserProfileView, EngineStatus, HardwareProfileId, KernelRelease, ProfileDraft, ProxyTestResult } from '../../shared/types'
 
 interface EditorValues extends Omit<ProfileDraft, 'startUrls' | 'color'> {
@@ -130,12 +130,29 @@ export function ProfileEditor({ open, profile, suggestedIndex, saving, extension
     }
   }, [form, open, profile, suggestedIndex])
 
-  async function testCurrentProxy(): Promise<void> {
+  function applyRecommendedNetworkIdentityFrom(result: ProxyTestResult): void {
+    if (!result.ok) return
+    const locale = localeForCountry(result.countryCode)
+    const current = form.getFieldValue('fingerprint')
+    form.setFieldValue('fingerprint', {
+      ...current,
+      networkIdentityMode: 'proxy',
+      proxyExitPolicy: 'block',
+      webrtcPolicy: 'proxy_only',
+      timezone: result.timezone ?? current.timezone,
+      language: locale?.language ?? current.language,
+      acceptLanguages: locale?.acceptLanguages ?? current.acceptLanguages
+    })
+  }
+
+  async function testCurrentProxy(autoApply = false): Promise<void> {
     try {
       if (proxyProtocol !== 'direct') await form.validateFields([['proxy', 'host'], ['proxy', 'port']])
       setTestingProxy(true)
       setProxyResult(null)
-      setProxyResult(await window.browserApi.proxy.test(form.getFieldValue('proxy'), profile?.id))
+      const result = await window.browserApi.proxy.test(form.getFieldValue('proxy'), profile?.id)
+      setProxyResult(result)
+      if (autoApply && result.ok) applyRecommendedNetworkIdentityFrom(result)
     } catch (error) {
       if (!(error && typeof error === 'object' && 'errorFields' in error)) {
         setProxyResult({ ok: false, latencyMs: 0, error: error instanceof Error ? error.message : String(error) })
@@ -143,6 +160,10 @@ export function ProfileEditor({ open, profile, suggestedIndex, saving, extension
     } finally {
       setTestingProxy(false)
     }
+  }
+
+  function applyRecommendedNetworkIdentity(): void {
+    if (proxyResult) applyRecommendedNetworkIdentityFrom(proxyResult)
   }
 
   async function submit(): Promise<void> {
@@ -313,8 +334,19 @@ export function ProfileEditor({ open, profile, suggestedIndex, saving, extension
           </Row>
         </>
       )}
-      <Space className="proxy-test-row">
-        <Button loading={testingProxy} onClick={() => void testCurrentProxy()}>检测连接</Button>
+      <Alert
+        type="info"
+        showIcon
+        message="推荐流程：填代理 → 检测并匹配 → 选择硬件模板 → 保存 → 环境检测"
+        description="“检测并一键匹配”会根据代理出口自动设置语言、Accept-Language、时区、WebRTC 防泄漏和出口变化策略。"
+      />
+      <Space className="proxy-test-row" wrap>
+        <Button loading={testingProxy} onClick={() => void testCurrentProxy(false)}>仅检测连接</Button>
+        {proxyProtocol !== 'direct' && (
+          <Button type="primary" loading={testingProxy} onClick={() => void testCurrentProxy(true)}>
+            检测并一键匹配
+          </Button>
+        )}
         {proxyResult && !proxyResult.ok && <Typography.Text type="danger">连接失败：{proxyResult.error}</Typography.Text>}
       </Space>
       {proxyResult?.ok && (
@@ -354,6 +386,14 @@ export function ProfileEditor({ open, profile, suggestedIndex, saving, extension
               城市级坐标：{proxyResult.latitude.toFixed(3)}, {proxyResult.longitude.toFixed(3)} · 精度约 {Math.round((proxyResult.accuracyMeters ?? 25000) / 1000)} km
             </Typography.Text>
           )}
+          <Space wrap>
+            <Button type="primary" size="small" onClick={applyRecommendedNetworkIdentity}>
+              应用推荐网络身份
+            </Button>
+            <Typography.Text type="secondary">
+              自动设置跟随代理、语言、Accept-Language、时区、WebRTC 防泄漏和出口变化阻止策略。
+            </Typography.Text>
+          </Space>
           {networkIdentityMode === 'proxy' && (
             <Alert
               type={proxyResult.geoConfidence === 'conflict' ? 'warning' : 'success'}
@@ -371,9 +411,12 @@ export function ProfileEditor({ open, profile, suggestedIndex, saving, extension
       <Form.Item
         name={['fingerprint', 'webrtcPolicy']}
         label="WebRTC IP 策略"
-        extra="视频通话兼容性与网络隐私之间的取舍；普通多环境使用建议保持默认。"
+        extra={networkIdentityMode === 'proxy' && proxyProtocol !== 'direct'
+          ? '当前由网络身份自动管理；跟随代理时固定为防泄漏模式。'
+          : '视频通话兼容性与网络隐私之间的取舍。'}
       >
         <Select
+          disabled={networkIdentityMode === 'proxy' && proxyProtocol !== 'direct'}
           options={[
             { value: 'proxy_only', label: '防泄漏（推荐）— 禁止非代理 UDP' },
             { value: 'public_only', label: '仅公网接口 — 不暴露本地地址' },
@@ -523,7 +566,7 @@ export function ProfileEditor({ open, profile, suggestedIndex, saving, extension
         </Col>
         <Col span={12}>
           <Form.Item name={['fingerprint', 'proxyExitPolicy']} label="出口变化">
-            <Select options={[
+            <Select disabled={networkIdentityMode === 'proxy' && proxyProtocol !== 'direct'} options={[
               { value: 'block', label: '阻止启动并确认（推荐）' },
               { value: 'warn', label: '仅告警，继续启动' }
             ]} />

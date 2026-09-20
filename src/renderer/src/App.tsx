@@ -3,9 +3,7 @@ import {
   AppstoreOutlined,
   AppstoreAddOutlined,
   CheckCircleFilled,
-  ClockCircleOutlined,
   CopyOutlined,
-  CrownOutlined,
   DatabaseOutlined,
   DeleteOutlined,
   DownloadOutlined,
@@ -48,7 +46,7 @@ import {
   type TableColumnsType
 } from 'antd'
 import { useEffect, useMemo, useState } from 'react'
-import type { AnnouncementStatus, AppRecoveryStatus, AppUpdateStatus, AutomationStatus, BrowserCrashRecord, BrowserExtension, BrowserProfileView, EngineStatus, KernelRelease, LaunchDiagnosticReport, LicenseStatus, McpProfilePermission, McpStatus, ProfileDraft, ProfileLaunchOptions, ProfileStoreHealth, ScheduledTask, StorageOverview } from '../../shared/types'
+import type { AppRecoveryStatus, AppUpdateStatus, BrowserCrashRecord, BrowserExtension, BrowserProfileView, EngineStatus, KernelRelease, LaunchDiagnosticReport, ProfileDraft, ProfileLaunchOptions, ProfileStoreHealth, StorageOverview } from '../../shared/types'
 import { ProfileEditor } from './ProfileEditor'
 import { KernelManagerModal } from './KernelManagerModal'
 import { ProfileDataModal } from './ProfileDataModal'
@@ -58,14 +56,9 @@ import { LaunchDiagnosticsModal } from './LaunchDiagnosticsModal'
 import { CrashHistoryModal } from './CrashHistoryModal'
 import { BatchResultModal, type BatchOperationResult } from './BatchResultModal'
 import { UpdateModal } from './UpdateModal'
-import { PlanModal } from './PlanModal'
 import { WorkspaceMigrationModal } from './WorkspaceMigrationModal'
-import { AutomationModal } from './AutomationModal'
-import { SchedulerModal } from './SchedulerModal'
-import { McpModal } from './McpModal'
 import { EnvironmentCheckModal } from './EnvironmentCheckModal'
 import { effectiveNetworkIdentity, geoConflictConfirmationMessage } from '../../shared/network-identity'
-import { kernelRequiresPro } from '../../shared/kernel-policy'
 import { orderBatchLaunchProfiles, waitForBatchLaunchGap } from './batch-launch-order'
 import { profileTableSorters } from './profile-table-sort'
 
@@ -138,9 +131,6 @@ export default function App() {
   const [extensionManagerOpen, setExtensionManagerOpen] = useState(false)
   const [profileStorageHealth, setProfileStorageHealth] = useState<ProfileStoreHealth | null>(null)
   const [appRecoveryStatus, setAppRecoveryStatus] = useState<AppRecoveryStatus | null>(null)
-  const [planModalOpen, setPlanModalOpen] = useState(false)
-  const [license, setLicense] = useState<LicenseStatus | null>(null)
-  const [activatingLicense, setActivatingLicense] = useState(false)
   const [diagnosticProfile, setDiagnosticProfile] = useState<BrowserProfileView>()
   const [diagnosticReport, setDiagnosticReport] = useState<LaunchDiagnosticReport>()
   const [crashProfile, setCrashProfile] = useState<BrowserProfileView>()
@@ -154,33 +144,9 @@ export default function App() {
   const [storageLoading, setStorageLoading] = useState(false)
   const [updateStatus, setUpdateStatus] = useState<AppUpdateStatus | null>(null)
   const [updateModalOpen, setUpdateModalOpen] = useState(false)
-  const [announcementStatus, setAnnouncementStatus] = useState<AnnouncementStatus | null>(null)
   const [migrationMode, setMigrationMode] = useState<'export' | 'import' | null>(null)
   const [migrationBusy, setMigrationBusy] = useState(false)
-  const [automationOpen, setAutomationOpen] = useState(false)
-  const [automationStatus, setAutomationStatus] = useState<AutomationStatus | null>(null)
-  const [schedulerOpen, setSchedulerOpen] = useState(false)
-  const [scheduledTasks, setScheduledTasks] = useState<ScheduledTask[]>([])
-  const [mcpOpen, setMcpOpen] = useState(false)
-  const [mcpStatus, setMcpStatus] = useState<McpStatus | null>(null)
-  const [mcpPermissions, setMcpPermissions] = useState<McpProfilePermission[]>([])
   const [messageApi, contextHolder] = message.useMessage()
-
-  async function applyLicenseStatus(status: LicenseStatus, knownEngine?: EngineStatus): Promise<void> {
-    setLicense(status)
-    if (status.plan === 'pro') return
-    const selected = knownEngine ?? await window.browserApi.engine.status()
-    if (!kernelRequiresPro(selected.version)) return
-    const communityEngine = await window.browserApi.engine.activateBundled()
-    setEngine(communityEngine)
-    const [installedKernels, bundled] = await Promise.all([
-      window.browserApi.engine.installed(),
-      window.browserApi.engine.bundled()
-    ])
-    setKernels(installedKernels)
-    setBundledEngine(bundled)
-    messageApi.info('Pro 授权已失效，已自动切换到免费的 Chromium 144 内核')
-  }
 
   useEffect(() => {
     void Promise.all([
@@ -191,14 +157,9 @@ export default function App() {
       window.browserApi.engine.installed(),
       window.browserApi.engine.bundled(),
       window.browserApi.diagnostics.sessionHealth(),
-      window.browserApi.updates.status(),
-      window.browserApi.licensing.status(),
-      window.browserApi.automation.status(),
-      window.browserApi.scheduler.list(),
-      window.browserApi.mcp.status(),
-      window.browserApi.mcp.permissions()
+      window.browserApi.updates.status()
     ])
-      .then(([items, engineStatus, extensionItems, storageHealth, installedKernels, bundled, recoveryStatus, applicationUpdate, licenseStatus, localAutomation, tasks, localMcp, permissions]) => {
+      .then(([items, engineStatus, extensionItems, storageHealth, installedKernels, bundled, recoveryStatus, applicationUpdate]) => {
         setProfiles(items)
         setEngine(engineStatus)
         setExtensions(extensionItems)
@@ -207,77 +168,21 @@ export default function App() {
         setBundledEngine(bundled)
         setAppRecoveryStatus(recoveryStatus)
         setUpdateStatus(applicationUpdate)
-        void applyLicenseStatus(licenseStatus, engineStatus).catch((error) => messageApi.error(humanError(error)))
-        setAutomationStatus(localAutomation)
-        setScheduledTasks(tasks)
-        setMcpStatus(localMcp)
-        setMcpPermissions(permissions)
       })
       .catch((error) => messageApi.error(humanError(error)))
       .finally(() => setLoading(false))
 
     void refreshStorageOverview()
-    void window.browserApi.announcements.check().then(setAnnouncementStatus).catch(() => undefined)
-    void window.browserApi.licensing.sync().then((status) => applyLicenseStatus(status)).catch(() => undefined)
 
     const removeProfileListener = window.browserApi.profiles.onChanged((changed) => {
       setProfiles((current) => current.map((profile) => profile.id === changed.id ? changed : profile))
     })
     const removeUpdateListener = window.browserApi.updates.onChanged(setUpdateStatus)
-    const removeLicenseListener = window.browserApi.licensing.onChanged((status) => {
-      void applyLicenseStatus(status).catch((error) => messageApi.error(humanError(error)))
-    })
-    const removeAutomationListener = window.browserApi.automation.onChanged(setAutomationStatus)
-    const removeSchedulerListener = window.browserApi.scheduler.onChanged(setScheduledTasks)
-    const removeMcpListener = window.browserApi.mcp.onChanged(setMcpStatus)
     return () => {
       removeProfileListener()
       removeUpdateListener()
-      removeLicenseListener()
-      removeAutomationListener()
-      removeSchedulerListener()
-      removeMcpListener()
     }
   }, [messageApi])
-
-  async function activateLicense(activationCode: string): Promise<void> {
-    setActivatingLicense(true)
-    try {
-      const status = await window.browserApi.licensing.activate(activationCode)
-      setLicense(status)
-      messageApi.success('Prism Pro 已在当前设备激活')
-    } catch (error) {
-      messageApi.error(humanError(error))
-    } finally {
-      setActivatingLicense(false)
-    }
-  }
-
-  async function deactivateLicense(): Promise<void> {
-    setActivatingLicense(true)
-    try {
-      const status = await window.browserApi.licensing.deactivate()
-      await applyLicenseStatus(status)
-      messageApi.success('当前设备已解除 Prism Pro 绑定')
-    } catch (error) {
-      messageApi.error(humanError(error))
-    } finally {
-      setActivatingLicense(false)
-    }
-  }
-
-  async function openProPurchase(): Promise<void> {
-    try {
-      await window.browserApi.licensing.openPurchase()
-    } catch (error) {
-      messageApi.error(humanError(error))
-    }
-  }
-
-  function openPlanModal(): void {
-    setPlanModalOpen(true)
-    void window.browserApi.licensing.sync().then(setLicense).catch(() => undefined)
-  }
 
   const visibleProfiles = useMemo(() => {
     const normalized = query.trim().toLowerCase()
@@ -322,7 +227,6 @@ export default function App() {
   }
 
   function canLaunchProfile(profile: BrowserProfileView): boolean {
-    if (kernelRequiresPro(profile.kernelVersion || engine?.version) && license?.plan !== 'pro') return false
     if (!profile.kernelVersion) return Boolean(engine?.executable)
     return selectableKernels.some((kernel) => kernel.version === profile.kernelVersion && kernel.executable)
   }
@@ -334,7 +238,7 @@ export default function App() {
     return [{
       version: bundledEngine.version,
       publishedAt: '',
-      assetName: 'bundled-with-prism',
+      assetName: 'bundled-with-zbrowser',
       downloadUrl: '',
       size: 0,
       sha256: '',
@@ -427,14 +331,25 @@ export default function App() {
 
   async function saveProfile(draft: ProfileDraft): Promise<void> {
     setSaving(true)
+    const wasEditing = Boolean(editing)
     try {
-      const saved = editing
+      let saved = editing
         ? await window.browserApi.profiles.update(editing.id, draft)
         : await window.browserApi.profiles.create(draft)
+
+      if (!wasEditing && draft.proxy.protocol !== 'direct') {
+        try {
+          saved = await window.browserApi.profiles.testProxy(saved.id)
+        } catch (error) {
+          messageApi.warning(`环境已创建，但代理复检失败：${humanError(error)}`)
+        }
+      }
+
       upsert(saved)
       setEditorOpen(false)
       setEditing(undefined)
-      messageApi.success(editing ? '环境已更新' : '环境已创建')
+      messageApi.success(wasEditing ? '环境已更新' : '环境已创建，已进入环境检测')
+      if (!wasEditing) setEnvironmentCheckProfile(saved)
     } catch (error) {
       messageApi.error(humanError(error))
     } finally {
@@ -842,9 +757,7 @@ export default function App() {
           <span>{profile.fingerprint.platform === 'windows' ? 'Windows' : 'macOS'}</span>
           <span>{profile.fingerprint.screenWidth}×{profile.fingerprint.screenHeight}</span>
           <span>{effectiveNetworkIdentity(profile.fingerprint, profile.proxyCheck).timezone}</span>
-          <span>{profile.kernelVersion
-            ? <>内核 {profile.kernelVersion}{kernelRequiresPro(profile.kernelVersion) && <Tag color="gold">Pro</Tag>}</>
-            : '内核自动'}</span>
+          <span>{profile.kernelVersion ? <>内核 {profile.kernelVersion}</> : '内核自动'}</span>
           <span className={`webrtc-badge ${profile.fingerprint.webrtcPolicy}`}>
             {profile.fingerprint.webrtcPolicy === 'proxy_only' ? 'WebRTC 防泄漏' : profile.fingerprint.webrtcPolicy === 'public_only' ? 'WebRTC 公网' : 'WebRTC 默认'}
           </span>
@@ -918,7 +831,7 @@ export default function App() {
           <AppstoreAddOutlined /><span>浏览器扩展</span><b>{extensions.length || ''}</b>
         </button>
         <button className="nav-item sidebar-action" onClick={() => setUpdateModalOpen(true)}>
-          <DownloadOutlined /><span>应用更新</span><b>{announcementStatus?.state === 'available' ? '1' : ''}</b>
+          <DownloadOutlined /><span>应用更新</span>
         </button>
         <div className="nav-item disabled-tool">
           <ApiOutlined /><span>自动化 API</span><b>开发中</b>
@@ -986,20 +899,6 @@ export default function App() {
               </Button>
             </Space>
           </header>
-
-          {announcementStatus?.state === 'available' && announcementStatus.announcement && (
-            <Alert
-              className="engine-alert"
-              type={announcementStatus.announcement.severity === 'critical' ? 'error' : announcementStatus.announcement.severity}
-              showIcon
-              closable
-              title={announcementStatus.announcement.title}
-              description={announcementStatus.announcement.body}
-              action={announcementStatus.announcement.action
-                ? <Button onClick={() => void window.browserApi.announcements.openAction()}>{announcementStatus.announcement.action.label}</Button>
-                : undefined}
-            />
-          )}
 
           {engine && !engine.fingerprintKernel && (
             <Alert
@@ -1155,9 +1054,8 @@ export default function App() {
       <UpdateModal
         open={updateModalOpen}
         appStatus={updateStatus}
-        announcementStatus={announcementStatus}
         onClose={() => setUpdateModalOpen(false)}
-        onAnnouncementChanged={setAnnouncementStatus}
+        onStatusChanged={setUpdateStatus}
       />
       <WorkspaceMigrationModal
         mode={migrationMode}

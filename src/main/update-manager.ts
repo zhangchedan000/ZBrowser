@@ -120,7 +120,7 @@ export class UpdateManager {
     const config = await this.readConfig()
     try {
       const response = await fetch(config.manifestUrl, {
-        headers: { accept: 'application/json', 'user-agent': `Prism-Browser/${this.currentVersion}` },
+        headers: { accept: 'application/json', 'user-agent': `ZBrowser/${this.currentVersion}` },
         signal: AbortSignal.timeout(15_000)
       })
       if (!response.ok) throw new Error(`更新服务器返回 HTTP ${response.status}`)
@@ -172,12 +172,12 @@ export class UpdateManager {
     const downloads = join(this.vaultPath, 'downloads', 'app-updates')
     await mkdir(downloads, { recursive: true })
     const extension = artifact.kind
-    const destination = join(downloads, `Prism-Browser-${manifest.version}-${process.platform}-${process.arch}.${extension}`)
+    const destination = join(downloads, `ZBrowser-${manifest.version}-${process.platform}-${process.arch}.${extension}`)
     const temporary = `${destination}.download`
     await rm(temporary, { force: true })
     try {
       const response = await fetch(artifact.url, {
-        headers: { accept: 'application/octet-stream', 'user-agent': `Prism-Browser/${this.currentVersion}` },
+        headers: { accept: 'application/octet-stream', 'user-agent': `ZBrowser/${this.currentVersion}` },
         signal: AbortSignal.timeout(30 * 60_000)
       })
       if (!response.ok || !response.body) throw new Error(`更新下载失败（HTTP ${response.status}）`)

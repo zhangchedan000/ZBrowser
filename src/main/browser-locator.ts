@@ -142,7 +142,7 @@ export async function locateBrowserForProfile(
 /**
  * One-way macOS upgrade migration for old managed fingerprint kernels.
  *
- * Early Prism builds persisted an unverified managed-kernel executable in
+ * Early upstream builds persisted an unverified managed-kernel executable in
  * settings. A newer app bundle can carry a fully verified kernel, but the old
  * executable otherwise keeps shadowing it forever. Only legacy managed paths
  * inside this vault are migrated; explicit system/custom selections and the
@@ -248,7 +248,7 @@ export async function locateBundledBrowser(
   return null
 }
 
-/** List the stable bundled kernel and optional side-by-side Pro kernels. */
+/** List the bundled kernel and optional side-by-side compatible kernels. */
 export async function listBundledBrowsers(resourcesPath = process.resourcesPath): Promise<EngineStatus[]> {
   if (!resourcesPath) return []
   const engines: EngineStatus[] = []

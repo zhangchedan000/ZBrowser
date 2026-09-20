@@ -14,32 +14,19 @@ import { ProfileBackupManager } from './profile-backup'
 import { AppSessionTracker } from './app-session'
 import { UpdateManager } from './update-manager'
 import { migrateMacLegacyKernelSelection } from './browser-locator'
-import { LicenseManager } from './license-manager'
 import { WorkspaceMigrationManager } from './workspace-migration'
-import { ElectronDeviceKeyProtector } from './electron-device-key-protector'
-import { AutomationAuditLog } from './automation-audit'
-import { ProAgentManager } from './pro-agent-manager'
-import { SchedulerStore } from './scheduler-store'
-import { SchedulerAuditLog } from './scheduler-audit'
-import { SchedulerManager } from './scheduler-manager'
-import { McpPermissionStore } from './mcp-permission-store'
-import { McpAuditLog } from './mcp-audit'
-import { McpControlManager } from './mcp-control-manager'
-import { AnnouncementManager } from './announcement-manager'
 import { EnvironmentCheckHistoryStore } from './environment-check-history'
 
 let mainWindow: BrowserWindow | null = null
 let launcher: BrowserLauncher | null = null
 let logger: AppLogger | null = null
 let appSession: AppSessionTracker | null = null
-let automation: ProAgentManager | null = null
-let scheduler: SchedulerManager | null = null
-let mcp: McpControlManager | null = null
 
 if (process.platform === 'win32') app.setAppUserModelId('com.zbrowser.desktop')
 
-if (process.env.PRISM_E2E === '1' && process.env.PRISM_E2E_USER_DATA && isAbsolute(process.env.PRISM_E2E_USER_DATA)) {
-  app.setPath('userData', process.env.PRISM_E2E_USER_DATA)
+const e2eUserData = process.env.ZBROWSER_E2E_USER_DATA ?? process.env.PRISM_E2E_USER_DATA
+if ((process.env.ZBROWSER_E2E === '1' || process.env.PRISM_E2E === '1') && e2eUserData && isAbsolute(e2eUserData)) {
+  app.setPath('userData', e2eUserData)
 }
 
 function createWindow(): BrowserWindow {
@@ -89,11 +76,7 @@ app.whenReady().then(async () => {
   const profiles = new ProfileStore(vaultPath, new ElectronSecretCodec())
   const settings = new SettingsStore(vaultPath)
   const extensions = new ExtensionStore(vaultPath, logger)
-  const automationAudit = new AutomationAuditLog(vaultPath)
-  const schedulerAudit = new SchedulerAuditLog(vaultPath)
-  const mcpAudit = new McpAuditLog(vaultPath)
   await logger.initialize()
-  await Promise.all([automationAudit.initialize(), schedulerAudit.initialize(), mcpAudit.initialize()])
   const appSessionSnapshot = await appSession.begin(app.getVersion())
   if (appSessionSnapshot.previousUnclean) {
     logger.error('检测到上次 ZBrowser 未正常退出', appSessionSnapshot.previousUnclean)
@@ -130,52 +113,10 @@ app.whenReady().then(async () => {
   const updater = new UpdateManager(vaultPath, app.getVersion(), process.resourcesPath, (status) => {
     mainWindow?.webContents.send('updates:changed', status)
   }, logger)
-  const announcements = new AnnouncementManager(process.resourcesPath, app.getVersion(), logger)
   const environmentChecks = new EnvironmentCheckHistoryStore(vaultPath)
-  const licensing = new LicenseManager(
-    vaultPath,
-    process.resourcesPath,
-    app.getVersion(),
-    new ElectronDeviceKeyProtector(),
-    (status) => {
-      mainWindow?.webContents.send('licensing:changed', status)
-      if (status.plan !== 'pro') void automation?.stop(true).catch(() => undefined)
-      if (status.plan !== 'pro') void mcp?.emergencyStop().catch(() => undefined)
-      scheduler?.refreshEntitlement()
-    },
-    logger
-  )
-  await Promise.all([updater.initialize(), licensing.initialize()])
-  launcher.setProKernelAccessCheck(() => licensing.status().plan === 'pro')
-  kernels.setProKernelAccessCheck(() => licensing.status().plan === 'pro')
-  mcp = new McpControlManager(
-    new McpPermissionStore(vaultPath), profiles, launcher, licensing, mcpAudit,
-    (status) => mainWindow?.webContents.send('mcp:changed', status)
-  )
-  await mcp.initialize()
-  automation = new ProAgentManager(
-    profiles,
-    launcher,
-    licensing,
-    automationAudit,
-    process.resourcesPath,
-    (status) => mainWindow?.webContents.send('automation:changed', status),
-    logger
-  )
-  automation.attachMcpBroker(mcp)
-  scheduler = new SchedulerManager(
-    new SchedulerStore(vaultPath),
-    profiles,
-    launcher,
-    licensing,
-    schedulerAudit,
-    (tasks) => mainWindow?.webContents.send('scheduler:changed', tasks),
-    logger
-  )
-  await scheduler.initialize()
-  registerIpc({ profiles, settings, launcher, kernels, extensions, cookies, logger, backups, workspaceMigration, appSession, updater, licensing, automation, scheduler, mcp, announcements, environmentChecks })
+  registerIpc({ profiles, settings, launcher, kernels, extensions, cookies, logger, backups, workspaceMigration, appSession, updater, environmentChecks })
   mainWindow = createWindow()
-  if (app.isPackaged && process.env.PRISM_E2E !== '1') {
+  if (app.isPackaged && process.env.ZBROWSER_E2E !== '1' && process.env.PRISM_E2E !== '1') {
     setTimeout(() => void updater.check().catch(() => undefined), 10_000)
   }
 
@@ -203,9 +144,7 @@ app.on('before-quit', (event) => {
   event.preventDefault()
   const current = launcher
   launcher = null
-  void Promise.allSettled([scheduler?.shutdown() ?? Promise.resolve(), mcp?.shutdown() ?? Promise.resolve()]).then(() => Promise.allSettled([
-    current.closeAll(), automation?.stop(false) ?? Promise.resolve()
-  ])).finally(async () => {
+  void Promise.allSettled([current.closeAll()]).finally(async () => {
     logger?.info('ZBrowser 已退出')
     await appSession?.complete().catch((error) => logger?.error('清理应用会话标记失败', error))
     await logger?.flush()

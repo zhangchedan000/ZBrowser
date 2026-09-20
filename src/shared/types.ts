@@ -23,104 +23,6 @@ export interface ProfileLaunchOptions {
   startUrls?: string[]
 }
 export type EnginePreference = 'auto' | 'bundled' | 'system'
-export type ProEntitlement =
-  | 'automation-api'
-  | 'scheduler'
-  | 'mcp'
-
-export interface LicenseStatus {
-  plan: 'community' | 'pro'
-  state: 'community' | 'active' | 'maintenance-expired' | 'invalid' | 'unavailable'
-  activationAvailable: boolean
-  message: string
-  deviceId?: string
-  licenseId?: string
-  issuedAt?: string
-  leaseExpiresAt?: string
-  maintenanceUntil?: string
-  entitlements: ProEntitlement[]
-}
-
-export interface ProductAnnouncement {
-  id: string
-  title: string
-  body: string
-  severity: 'info' | 'warning' | 'critical'
-  publishedAt: string
-  expiresAt?: string
-  minimumVersion?: string
-  latestVersion?: string
-  platforms: Array<'all' | 'darwin' | 'win32'>
-  action?: { label: string; url: string }
-}
-
-export interface AnnouncementStatus {
-  state: 'disabled' | 'none' | 'current' | 'available' | 'error'
-  message: string
-  announcement?: ProductAnnouncement
-}
-
-export interface AutomationStatus {
-  state: 'unavailable' | 'stopped' | 'starting' | 'running' | 'error'
-  message: string
-  endpoint?: string
-  agentVersion?: string
-  startedAt?: string
-  controlledProfileIds: string[]
-}
-
-export interface AutomationStartResult extends AutomationStatus {
-  accessToken: string
-}
-
-export type ScheduledTaskAction = 'launch' | 'close'
-export type ScheduledTaskSchedule =
-  | { kind: 'once'; runAt: string }
-  | { kind: 'daily'; time: string }
-  | { kind: 'weekly'; time: string; weekdays: number[] }
-
-export interface ScheduledTaskDraft {
-  name: string
-  profileId: string
-  action: ScheduledTaskAction
-  schedule: ScheduledTaskSchedule
-  enabled: boolean
-  missedPolicy: 'run_once' | 'skip'
-  maxRetries: number
-  retryDelayMinutes: number
-}
-
-export interface ScheduledTask extends ScheduledTaskDraft {
-  id: string
-  timezone: string
-  createdAt: string
-  updatedAt: string
-  nextRunAt?: string
-  lastRunAt?: string
-  lastOutcome?: 'success' | 'failure' | 'skipped'
-  lastMessage?: string
-  lastAttempts?: number
-}
-
-export interface McpProfilePermission {
-  profileId: string
-  enabled: boolean
-  updatedAt: string
-}
-
-export interface McpStatus {
-  state: 'stopped' | 'ready' | 'running' | 'error'
-  message: string
-  enabledProfileIds: string[]
-  controlledProfileIds: string[]
-}
-
-export interface McpConnection extends McpStatus {
-  command: string
-  args: string[]
-  env: Record<string, string>
-}
-
 export interface ProfileWindowConfig {
   mode: 'auto' | 'custom'
   x: number
@@ -503,50 +405,12 @@ export interface BrowserApi {
     openInstaller: () => Promise<void>
     onChanged: (listener: (status: AppUpdateStatus) => void) => () => void
   }
-  announcements: {
-    status: () => Promise<AnnouncementStatus>
-    check: () => Promise<AnnouncementStatus>
-    openAction: () => Promise<void>
-  }
   proxy: {
     test: (config: ProxyConfig, profileId?: string) => Promise<ProxyTestResult>
   }
   diagnostics: {
     sessionHealth: () => Promise<AppRecoveryStatus>
     e2eQuit: () => Promise<void>
-  }
-  licensing: {
-    status: () => Promise<LicenseStatus>
-    sync: () => Promise<LicenseStatus>
-    activate: (activationCode: string) => Promise<LicenseStatus>
-    deactivate: () => Promise<LicenseStatus>
-    openPurchase: () => Promise<void>
-    onChanged: (listener: (status: LicenseStatus) => void) => () => void
-  }
-  automation: {
-    status: () => Promise<AutomationStatus>
-    start: () => Promise<AutomationStartResult>
-    stop: () => Promise<AutomationStatus>
-    emergencyStop: () => Promise<AutomationStatus>
-    onChanged: (listener: (status: AutomationStatus) => void) => () => void
-  }
-  scheduler: {
-    list: () => Promise<ScheduledTask[]>
-    create: (draft: ScheduledTaskDraft) => Promise<ScheduledTask>
-    update: (id: string, draft: ScheduledTaskDraft) => Promise<ScheduledTask>
-    remove: (id: string) => Promise<void>
-    setEnabled: (id: string, enabled: boolean) => Promise<ScheduledTask>
-    runNow: (id: string) => Promise<ScheduledTask>
-    onChanged: (listener: (tasks: ScheduledTask[]) => void) => () => void
-  }
-  mcp: {
-    status: () => Promise<McpStatus>
-    permissions: () => Promise<McpProfilePermission[]>
-    setPermission: (profileId: string, enabled: boolean) => Promise<McpProfilePermission[]>
-    start: () => Promise<McpConnection>
-    stop: () => Promise<McpStatus>
-    emergencyStop: () => Promise<McpStatus>
-    onChanged: (listener: (status: McpStatus) => void) => () => void
   }
   extensions: {
     list: () => Promise<BrowserExtension[]>
