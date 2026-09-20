@@ -11,7 +11,8 @@ import type { Logger } from './app-logger'
 import type { ExtensionStore } from './extension-store'
 import type { ProfileStore } from './profile-store'
 
-const MAGIC = Buffer.concat([Buffer.from('PRISM-MIGRATION'), Buffer.from([1])])
+const MAGIC = Buffer.concat([Buffer.from('ZBROWSER-MIGRATION'), Buffer.from([1])])
+const LEGACY_MAGIC = Buffer.concat([Buffer.from('PRISM-MIGRATION'), Buffer.from([1])])
 const AUTH_TAG_BYTES = 16
 const MAX_HEADER_BYTES = 64 * 1024
 const MAX_MANIFEST_BYTES = 16 * 1024 * 1024
@@ -24,7 +25,7 @@ const SCRYPT_R = 8
 const SCRYPT_P = 1
 
 interface ArchiveHeader {
-  type: 'prism-workspace-migration'
+  type: 'zbrowser-workspace-migration' | 'prism-workspace-migration'
   schemaVersion: 1
   createdAt: string
   sourcePlatform: NodeJS.Platform
@@ -64,7 +65,7 @@ function deriveKey(password: string, salt: Buffer): Promise<Buffer> {
 }
 
 function keyCheck(key: Buffer): Buffer {
-  return createHmac('sha256', key).update('prism-workspace-migration-key-check-v1').digest().subarray(0, 16)
+  return createHmac('sha256', key).update('zbrowser-workspace-migration-key-check-v1').digest().subarray(0, 16)
 }
 
 async function readExactAt(handle: Awaited<ReturnType<typeof open>>, buffer: Buffer, position: number): Promise<void> {
@@ -276,7 +277,7 @@ export class WorkspaceMigrationManager {
     const nonce = randomBytes(12)
     const key = await deriveKey(password, salt)
     const header: ArchiveHeader = {
-      type: 'prism-workspace-migration', schemaVersion: 1, createdAt: new Date().toISOString(), sourcePlatform: process.platform,
+      type: 'zbrowser-workspace-migration', schemaVersion: 1, createdAt: new Date().toISOString(), sourcePlatform: process.platform,
       sourceAppVersion: this.appVersion, profileCount: profiles.length, cipher: 'aes-256-gcm',
       kdf: { name: 'scrypt', n: SCRYPT_N, r: SCRYPT_R, p: SCRYPT_P, salt: salt.toString('base64') },
       nonce: nonce.toString('base64'), keyCheck: keyCheck(key).toString('base64')
@@ -338,13 +339,17 @@ export class WorkspaceMigrationManager {
     try {
       const prefix = Buffer.alloc(MAGIC.length + 4)
       await readExactAt(handle, prefix, 0)
-      if (!prefix.subarray(0, MAGIC.length).equals(MAGIC)) throw new Error('不是受支持的 Prism 全部环境迁移包')
+      const currentMagic = prefix.subarray(0, MAGIC.length)
+      const legacyMagic = prefix.subarray(0, LEGACY_MAGIC.length)
+      const isCurrent = currentMagic.equals(MAGIC)
+      const isLegacy = legacyMagic.equals(LEGACY_MAGIC)
+      if (!isCurrent && !isLegacy) throw new Error('不是受支持的 ZBrowser 全部环境迁移包')
       const headerLength = prefix.readUInt32BE(MAGIC.length)
       if (headerLength <= 0 || headerLength > MAX_HEADER_BYTES) throw new Error('迁移包头长度无效')
       headerBytes = Buffer.alloc(headerLength)
       await readExactAt(handle, headerBytes, MAGIC.length + 4)
       try { header = JSON.parse(headerBytes.toString('utf8')) as ArchiveHeader } catch { throw new Error('迁移包头不是有效 JSON') }
-      if (header.type !== 'prism-workspace-migration' || header.schemaVersion !== 1 || header.cipher !== 'aes-256-gcm'
+      if ((header.type !== 'zbrowser-workspace-migration' && header.type !== 'prism-workspace-migration') || header.schemaVersion !== 1 || header.cipher !== 'aes-256-gcm'
         || header.kdf?.name !== 'scrypt' || header.kdf.n !== SCRYPT_N || header.kdf.r !== SCRYPT_R || header.kdf.p !== SCRYPT_P
         || !Number.isInteger(header.profileCount) || header.profileCount < 1 || header.profileCount > MAX_PROFILES) throw new Error('迁移包版本或加密参数不受支持')
       payloadOffset = MAGIC.length + 4 + headerLength
