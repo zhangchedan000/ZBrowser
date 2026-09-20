@@ -46,7 +46,7 @@ import {
   type TableColumnsType
 } from 'antd'
 import { useEffect, useMemo, useState } from 'react'
-import type { AnnouncementStatus, AppRecoveryStatus, AppUpdateStatus, BrowserCrashRecord, BrowserExtension, BrowserProfileView, EngineStatus, KernelRelease, LaunchDiagnosticReport, ProfileDraft, ProfileLaunchOptions, ProfileStoreHealth, StorageOverview } from '../../shared/types'
+import type { AppRecoveryStatus, AppUpdateStatus, BrowserCrashRecord, BrowserExtension, BrowserProfileView, EngineStatus, KernelRelease, LaunchDiagnosticReport, ProfileDraft, ProfileLaunchOptions, ProfileStoreHealth, StorageOverview } from '../../shared/types'
 import { ProfileEditor } from './ProfileEditor'
 import { KernelManagerModal } from './KernelManagerModal'
 import { ProfileDataModal } from './ProfileDataModal'
@@ -144,7 +144,6 @@ export default function App() {
   const [storageLoading, setStorageLoading] = useState(false)
   const [updateStatus, setUpdateStatus] = useState<AppUpdateStatus | null>(null)
   const [updateModalOpen, setUpdateModalOpen] = useState(false)
-  const [announcementStatus, setAnnouncementStatus] = useState<AnnouncementStatus | null>(null)
   const [migrationMode, setMigrationMode] = useState<'export' | 'import' | null>(null)
   const [migrationBusy, setMigrationBusy] = useState(false)
   const [messageApi, contextHolder] = message.useMessage()
@@ -821,7 +820,7 @@ export default function App() {
           <AppstoreAddOutlined /><span>浏览器扩展</span><b>{extensions.length || ''}</b>
         </button>
         <button className="nav-item sidebar-action" onClick={() => setUpdateModalOpen(true)}>
-          <DownloadOutlined /><span>应用更新</span><b>{announcementStatus?.state === 'available' ? '1' : ''}</b>
+          <DownloadOutlined /><span>应用更新</span>
         </button>
         <div className="nav-item disabled-tool">
           <ApiOutlined /><span>自动化 API</span><b>开发中</b>
@@ -889,20 +888,6 @@ export default function App() {
               </Button>
             </Space>
           </header>
-
-          {announcementStatus?.state === 'available' && announcementStatus.announcement && (
-            <Alert
-              className="engine-alert"
-              type={announcementStatus.announcement.severity === 'critical' ? 'error' : announcementStatus.announcement.severity}
-              showIcon
-              closable
-              title={announcementStatus.announcement.title}
-              description={announcementStatus.announcement.body}
-              action={announcementStatus.announcement.action
-                ? <Button onClick={() => void window.browserApi.announcements.openAction()}>{announcementStatus.announcement.action.label}</Button>
-                : undefined}
-            />
-          )}
 
           {engine && !engine.fingerprintKernel && (
             <Alert
@@ -1058,9 +1043,8 @@ export default function App() {
       <UpdateModal
         open={updateModalOpen}
         appStatus={updateStatus}
-        announcementStatus={announcementStatus}
         onClose={() => setUpdateModalOpen(false)}
-        onAnnouncementChanged={setAnnouncementStatus}
+        onStatusChanged={setUpdateStatus}
       />
       <WorkspaceMigrationModal
         mode={migrationMode}
