@@ -117,7 +117,13 @@ app.whenReady().then(async () => {
     mainWindow?.webContents.send('profiles:changed', publicProfile(profile))
   }, extensions, logger)
   await launcher.initialize()
-  const kernels = new KernelManager(vaultPath, settings, () => undefined, logger, (version) => profiles.kernelUsers(version))
+  const kernels = new KernelManager(
+    vaultPath,
+    settings,
+    (progress) => mainWindow?.webContents.send('engine:install-progress', progress),
+    logger,
+    (version) => profiles.kernelUsers(version)
+  )
   const cookies = new CookieManager(profiles, settings, logger)
   const backups = new ProfileBackupManager(profiles, app.getVersion(), logger)
   const workspaceMigration = new WorkspaceMigrationManager(profiles, extensions, app.getVersion(), logger)

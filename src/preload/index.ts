@@ -55,6 +55,14 @@ const api: BrowserApi = {
     importLocal: () => ipcRenderer.invoke('engine:import-local'),
     useSystem: () => ipcRenderer.invoke('engine:use-system'),
     installed: () => ipcRenderer.invoke('engine:installed'),
+    releases: () => ipcRenderer.invoke('engine:releases'),
+    install: (version: string) => ipcRenderer.invoke('engine:install', version),
+    cancelInstall: (version: string) => ipcRenderer.invoke('engine:cancel-install', version),
+    onInstallProgress: (listener) => {
+      const handler = (_event: Electron.IpcRendererEvent, progress: Parameters<typeof listener>[0]) => listener(progress)
+      ipcRenderer.on('engine:install-progress', handler)
+      return () => ipcRenderer.removeListener('engine:install-progress', handler)
+    },
     activate: (version: string) => ipcRenderer.invoke('engine:activate', version),
     rollbackAvailable: () => ipcRenderer.invoke('engine:rollback-available'),
     rollback: () => ipcRenderer.invoke('engine:rollback'),

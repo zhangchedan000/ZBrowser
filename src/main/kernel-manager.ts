@@ -109,7 +109,7 @@ export class KernelManager {
 
   private assertKernelEntitlement(version: string): void {
     if (kernelRequiresPro(version) && !this.canUseProKernel()) {
-      throw new Error(`Chromium ${version} 是 Prism Pro 内核，请先激活 Pro`)
+      throw new Error(`Chromium ${version} 当前不在 ZBrowser 开源内核允许范围内`)
     }
   }
 
@@ -144,7 +144,7 @@ export class KernelManager {
     let releases: GithubRelease[]
     try {
       const response = await fetch(RELEASES_URL, {
-        headers: { accept: 'application/vnd.github+json', 'user-agent': 'Prism-Browser/0.1' },
+        headers: { accept: 'application/vnd.github+json', 'user-agent': 'ZBrowser/0.1' },
         signal: AbortSignal.timeout(15_000)
       })
       if (!response.ok) throw new Error(`获取内核版本失败（GitHub HTTP ${response.status}）`)
@@ -380,14 +380,14 @@ export class KernelManager {
     const checkedAt = new Date().toISOString()
     try {
       const manifest = await this.readManifest(version)
-      if (!manifest) return { version, status: 'corrupt', message: '内核文件不完整，请重新导入或安装新版 Prism Browser', checkedAt }
+      if (!manifest) return { version, status: 'corrupt', message: '内核文件不完整，请重新导入或安装开源 Fingerprint Chromium 内核', checkedAt }
       const executable = join(this.kernelPath(version), manifest.executableRelative)
       const info = await stat(executable)
-      if (!info.isFile() || info.size <= 0) return { version, status: 'corrupt', message: '内核文件已损坏，请重新导入或安装新版 Prism Browser', checkedAt }
+      if (!info.isFile() || info.size <= 0) return { version, status: 'corrupt', message: '内核文件已损坏，请重新导入或安装开源 Fingerprint Chromium 内核', checkedAt }
       const integrity = await verifyKernelIntegrity(this.kernelPath(version), manifest.executableRelative, manifest)
       if (integrity.status === 'corrupt') {
         this.logger?.error('浏览器内核完整性检查失败', { version, reason: integrity.reason })
-        return { version, status: 'corrupt', message: '内核文件已损坏，请重新导入或安装新版 Prism Browser', checkedAt }
+        return { version, status: 'corrupt', message: '内核文件已损坏，请重新导入或安装开源 Fingerprint Chromium 内核', checkedAt }
       }
       if (integrity.status === 'healthy') {
         return {
@@ -399,18 +399,18 @@ export class KernelManager {
       }
       if (!manifest.executableSha256 || !manifest.executableSize) {
         this.logger?.info('浏览器内核无法完成完整性检查', { version, reason: integrity.reason })
-        return { version, status: 'unverified', message: '当前内核无法完成完整检查，建议重新导入或安装新版 Prism Browser', checkedAt }
+        return { version, status: 'unverified', message: '当前内核无法完成完整检查，建议重新导入或安装开源 Fingerprint Chromium 内核', checkedAt }
       }
       if (info.size !== manifest.executableSize) {
         this.logger?.error('浏览器内核入口大小异常', { version, expected: manifest.executableSize, actual: info.size })
-        return { version, status: 'corrupt', message: '内核文件已损坏，请重新导入或安装新版 Prism Browser', checkedAt }
+        return { version, status: 'corrupt', message: '内核文件已损坏，请重新导入或安装开源 Fingerprint Chromium 内核', checkedAt }
       }
       const actual = await this.hashFile(executable)
       if (actual !== manifest.executableSha256) {
         this.logger?.error('浏览器内核入口摘要与安装记录不一致', { version })
-        return { version, status: 'corrupt', message: '内核文件已损坏，请重新导入或安装新版 Prism Browser', checkedAt }
+        return { version, status: 'corrupt', message: '内核文件已损坏，请重新导入或安装开源 Fingerprint Chromium 内核', checkedAt }
       }
-      return { version, status: 'unverified', message: '当前内核无法完成完整检查，建议重新导入或安装新版 Prism Browser', checkedAt }
+      return { version, status: 'unverified', message: '当前内核无法完成完整检查，建议重新导入或安装开源 Fingerprint Chromium 内核', checkedAt }
     } catch (error) {
       return { version, status: 'corrupt', message: error instanceof Error ? error.message : String(error), checkedAt }
     }
@@ -486,7 +486,7 @@ export class KernelManager {
     }
     const headers: Record<string, string> = {
       accept: 'application/octet-stream',
-      'user-agent': 'Prism-Browser/0.1'
+      'user-agent': 'ZBrowser/0.1'
     }
     if (existingBytes > 0 && existingBytes < release.size) headers.range = `bytes=${existingBytes}-`
     const response = await fetch(release.downloadUrl, {

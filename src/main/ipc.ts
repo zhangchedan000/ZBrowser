@@ -64,7 +64,7 @@ export function registerIpc({ profiles, settings, launcher, kernels, extensions,
     const options: Electron.SaveDialogOptions = {
       title: '导出环境配置',
       defaultPath: safeProfileFileName(profile.name),
-      filters: [{ name: 'Prism Browser 环境配置', extensions: ['json'] }]
+      filters: [{ name: 'ZBrowser 环境配置', extensions: ['json'] }]
     }
     const result = owner ? await dialog.showSaveDialog(owner, options) : await dialog.showSaveDialog(options)
     if (result.canceled || !result.filePath) return null
@@ -77,7 +77,7 @@ export function registerIpc({ profiles, settings, launcher, kernels, extensions,
     const options: Electron.OpenDialogOptions = {
       title: '导入环境配置',
       properties: ['openFile'],
-      filters: [{ name: 'Prism Browser 环境配置', extensions: ['json'] }]
+      filters: [{ name: 'ZBrowser 环境配置', extensions: ['json'] }]
     }
     const result = owner ? await dialog.showOpenDialog(owner, options) : await dialog.showOpenDialog(options)
     if (result.canceled || !result.filePaths[0]) return null
@@ -107,7 +107,7 @@ export function registerIpc({ profiles, settings, launcher, kernels, extensions,
     const owner = BrowserWindow.getFocusedWindow()
     const options: Electron.SaveDialogOptions = {
       title: '保存批量导入 CSV 模板',
-      defaultPath: 'prism-browser-batch-template.csv',
+      defaultPath: 'zbrowser-batch-template.csv',
       filters: [{ name: 'CSV 表格', extensions: ['csv'] }]
     }
     const result = owner ? await dialog.showSaveDialog(owner, options) : await dialog.showSaveDialog(options)
@@ -351,6 +351,15 @@ export function registerIpc({ profiles, settings, launcher, kernels, extensions,
     const [managed, bundled] = await Promise.all([kernels.installed(), listBundledBrowsers()])
     return mergeKernelCatalog(managed, bundled)
   })
+  ipcMain.handle('engine:releases', async () => {
+    const [remoteAndManaged, bundled] = await Promise.all([kernels.releases(), listBundledBrowsers()])
+    return mergeKernelCatalog(remoteAndManaged, bundled)
+  })
+  ipcMain.handle('engine:install', async (_event, version: string) => {
+    if (launcher.hasRunning()) throw new Error('请先关闭全部浏览器环境再安装并切换内核')
+    return kernels.install(version)
+  })
+  ipcMain.handle('engine:cancel-install', (_event, version: string) => kernels.cancel(version))
   ipcMain.handle('engine:activate', async (_event, version: string) => {
     const bundled = await locateBundledBrowser(process.resourcesPath, version)
     if (!bundled?.executable) return kernels.activate(version)
@@ -374,7 +383,7 @@ export function registerIpc({ profiles, settings, launcher, kernels, extensions,
       return {
         version,
         status: 'healthy',
-        message: '随 Prism Browser 发布的内核完整性正常',
+        message: '随当前应用发布的内核完整性正常',
         checkedAt: new Date().toISOString()
       }
     }

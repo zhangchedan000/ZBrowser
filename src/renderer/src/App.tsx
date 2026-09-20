@@ -1175,14 +1175,12 @@ export default function App() {
         engine={engine}
         kernels={selectableKernels}
         groups={editableGroups}
-        proEnabled={license?.plan === 'pro'}
         onCancel={() => { setEditorOpen(false); setEditing(undefined) }}
         onSave={saveProfile}
       />
       <KernelManagerModal
         open={kernelManagerOpen}
         engine={engine}
-        proActive={license?.plan === 'pro'}
         onClose={() => setKernelManagerOpen(false)}
         onEngineChanged={(nextEngine) => {
           setEngine(nextEngine)
