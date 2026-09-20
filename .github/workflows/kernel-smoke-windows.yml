@@ -1,0 +1,52 @@
+name: Windows Kernel Smoke Test
+
+on:
+  push:
+    branches: [dev]
+    paths:
+      - "src/main/kernel-manager.ts"
+      - ".github/workflows/kernel-smoke-windows.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  kernel-smoke:
+    runs-on: windows-latest
+    steps:
+      - name: Download recommended Fingerprint Chromium
+        shell: pwsh
+        run: |
+          $version = "144.0.7559.132"
+          $url = "https://github.com/adryfish/fingerprint-chromium/releases/download/144.0.7559.132/ungoogled-chromium_144.0.7559.132-1.1_windows_x64.zip"
+          $expected = "ab409667ca7ec3d67a060f1ffea8bd3a450b71ed54d17b361024986e7edd0996"
+          $downloads = Join-Path $env:RUNNER_TEMP "downloads"
+          $extract = Join-Path $env:RUNNER_TEMP "extracted"
+          New-Item -ItemType Directory -Force -Path $downloads, $extract | Out-Null
+
+          # Mirror ZBrowser's fixed temp naming: keep a final .zip extension.
+          $archive = Join-Path $downloads "$version-ungoogled-chromium_144.0.7559.132-1.1_windows_x64.zip.download.zip"
+          Invoke-WebRequest -Uri $url -OutFile $archive
+
+          $actual = (Get-FileHash -Algorithm SHA256 -LiteralPath $archive).Hash.ToLowerInvariant()
+          if ($actual -ne $expected) {
+            throw "SHA-256 mismatch: expected $expected got $actual"
+          }
+
+          Expand-Archive -LiteralPath $archive -DestinationPath $extract -Force
+
+          $chrome = Get-ChildItem -Path $extract -Filter chrome.exe -File -Recurse | Select-Object -First 1
+          if (-not $chrome) {
+            throw "chrome.exe not found after extraction"
+          }
+
+          Write-Host "chrome.exe: $($chrome.FullName)"
+          & $chrome.FullName --version
+          if ($LASTEXITCODE -ne 0) {
+            throw "chrome.exe --version failed with exit code $LASTEXITCODE"
+          }
+
+      - name: Smoke test passed
+        shell: pwsh
+        run: Write-Host "Fingerprint Chromium download, SHA-256 verification, Expand-Archive, chrome.exe discovery and launch all passed."
