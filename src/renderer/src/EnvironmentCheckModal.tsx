@@ -1,7 +1,7 @@
-import { Alert, Button, Checkbox, Divider, List, Modal, Space, Tag, Typography } from 'antd'
-import { GlobalOutlined, SafetyCertificateOutlined } from '@ant-design/icons'
-import { useMemo, useState } from 'react'
-import type { BrowserProfileView, EngineStatus } from '../../shared/types'
+import { Alert, Button, Checkbox, Divider, List, Modal, Space, Spin, Tag, Typography } from 'antd'
+import { DeleteOutlined, GlobalOutlined, HistoryOutlined, SafetyCertificateOutlined } from '@ant-design/icons'
+import { useEffect, useMemo, useState } from 'react'
+import type { BrowserProfileView, EngineStatus, EnvironmentCheckRecord } from '../../shared/types'
 import { buildEnvironmentChecks, environmentCheckSummary, type EnvironmentCheckLevel } from '../../shared/environment-check'
 
 interface EnvironmentCheckModalProps {
@@ -29,24 +29,67 @@ const levelMeta: Record<EnvironmentCheckLevel, { color: string; label: string }>
   info: { color: 'default', label: '信息' }
 }
 
+function historyChanges(current: EnvironmentCheckRecord, previous?: EnvironmentCheckRecord): string[] {
+  if (!previous) return []
+  const changes: string[] = []
+  if (current.proxyIp && previous.proxyIp && current.proxyIp !== previous.proxyIp) changes.push('出口 IP 变化')
+  if (current.timezone !== previous.timezone) changes.push('时区变化')
+  if (current.language !== previous.language) changes.push('语言变化')
+  if (current.seed !== previous.seed) changes.push('Seed 变化')
+  if (current.kernelVersion !== previous.kernelVersion) changes.push('内核变化')
+  if (current.hardwareProfileId !== previous.hardwareProfileId) changes.push('硬件模板变化')
+  return changes
+}
+
 export function EnvironmentCheckModal({ open, profile, engine, busy, onClose, onLaunchChecks }: EnvironmentCheckModalProps) {
   const [selected, setSelected] = useState<string[]>(CHECK_SITES.map((item) => item.key))
+  const [history, setHistory] = useState<EnvironmentCheckRecord[]>([])
+  const [historyLoading, setHistoryLoading] = useState(false)
   const items = useMemo(() => profile ? buildEnvironmentChecks(profile, engine) : [], [profile, engine])
   const summary = useMemo(() => environmentCheckSummary(items), [items])
   const canLaunch = Boolean(profile && (profile.status === 'closed' || profile.status === 'error'))
+
+  useEffect(() => {
+    if (!open || !profile) {
+      setHistory([])
+      return
+    }
+    let active = true
+    setHistoryLoading(true)
+    void window.browserApi.profiles.environmentCheckHistory(profile.id)
+      .then((records) => { if (active) setHistory(records) })
+      .finally(() => { if (active) setHistoryLoading(false) })
+    return () => { active = false }
+  }, [open, profile?.id])
 
   async function launch(): Promise<void> {
     if (!profile) return
     const urls = CHECK_SITES.filter((site) => selected.includes(site.key)).map((site) => site.url)
     if (!urls.length) return
     await onLaunchChecks(profile, urls)
+    setHistory(await window.browserApi.profiles.recordEnvironmentCheck(profile.id, urls))
+  }
+
+  function clearHistory(): void {
+    if (!profile || !history.length) return
+    Modal.confirm({
+      title: '清空这个环境的检测记录？',
+      content: '只会删除 ZBrowser 本地保存的检测快照，不会删除浏览器数据、Cookie 或第三方网站数据。',
+      okText: '清空记录',
+      okButtonProps: { danger: true },
+      cancelText: '取消',
+      onOk: async () => {
+        await window.browserApi.profiles.clearEnvironmentCheckHistory(profile.id)
+        setHistory([])
+      }
+    })
   }
 
   return (
     <Modal
       open={open}
       title={profile ? `#${profile.serialNumber} ${profile.name} · 环境检测` : '环境检测'}
-      width={760}
+      width={800}
       footer={null}
       onCancel={onClose}
       destroyOnHidden
@@ -121,8 +164,61 @@ export function EnvironmentCheckModal({ open, profile, engine, busy, onClose, on
             <Button onClick={onClose}>关闭</Button>
           </Space>
           <Typography.Text type="secondary">
-            检测页只会在当前 Profile 中打开，不会修改该环境原本保存的启动页面。
+            检测页只会在当前 Profile 中打开，不会修改该环境原本保存的启动页面。检测成功启动后会在本机保存一条配置快照。
           </Typography.Text>
+
+          <Divider style={{ margin: '4px 0' }}>
+            <Space><HistoryOutlined />检测历史</Space>
+          </Divider>
+
+          <Spin spinning={historyLoading}>
+            {history.length ? (
+              <>
+                <List
+                  size="small"
+                  bordered
+                  dataSource={history.slice(0, 10)}
+                  renderItem={(record, index) => {
+                    const changes = historyChanges(record, history[index + 1])
+                    return (
+                      <List.Item>
+                        <List.Item.Meta
+                          title={
+                            <Space wrap>
+                              <Typography.Text strong>{new Date(record.checkedAt).toLocaleString()}</Typography.Text>
+                              {record.localSummary.errors > 0
+                                ? <Tag color="error">{record.localSummary.errors} 冲突</Tag>
+                                : record.localSummary.warnings > 0
+                                  ? <Tag color="warning">{record.localSummary.warnings} 注意</Tag>
+                                  : <Tag color="success">本地检查正常</Tag>}
+                              {changes.map((change) => <Tag key={change} color="processing">{change}</Tag>)}
+                            </Space>
+                          }
+                          description={
+                            <Space wrap size={[12, 4]}>
+                              <span>IP {record.proxyIp ?? '直连/未检测'}</span>
+                              <span>{record.countryCode ?? '-'}</span>
+                              <span>{record.timezone}</span>
+                              <span>{record.language}</span>
+                              <span>Seed {record.seed}</span>
+                              <span>内核 {record.kernelVersion ?? '自动'}</span>
+                              <span>{record.screenWidth}×{record.screenHeight}</span>
+                            </Space>
+                          }
+                        />
+                      </List.Item>
+                    )
+                  }}
+                />
+                <Space style={{ marginTop: 10 }}>
+                  <Typography.Text type="secondary">最多保留最近 50 条，本页显示最近 10 条。</Typography.Text>
+                  <Button size="small" danger icon={<DeleteOutlined />} onClick={clearHistory}>清空记录</Button>
+                </Space>
+              </>
+            ) : (
+              <Typography.Text type="secondary">还没有检测记录。打开检测页后会自动保存本地配置快照。</Typography.Text>
+            )}
+          </Spin>
         </Space>
       )}
     </Modal>
