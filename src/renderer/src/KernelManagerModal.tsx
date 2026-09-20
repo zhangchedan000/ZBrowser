@@ -1,7 +1,7 @@
 import { CheckCircleFilled, CloudDownloadOutlined, DeleteOutlined, FolderOpenOutlined, ReloadOutlined, SafetyCertificateOutlined, StopOutlined } from '@ant-design/icons'
-import { Alert, Button, List, Modal, Popconfirm, Space, Spin, Tag, Typography, message } from 'antd'
+import { Alert, Button, List, Modal, Popconfirm, Progress, Space, Spin, Tag, Typography, message } from 'antd'
 import { useEffect, useMemo, useState, type ReactNode } from 'react'
-import type { EngineStatus, KernelHealth, KernelRelease } from '../../shared/types'
+import type { EngineStatus, KernelHealth, KernelInstallProgress, KernelRelease } from '../../shared/types'
 
 interface KernelManagerModalProps {
   open: boolean
@@ -36,6 +36,7 @@ export function KernelManagerModal({ open, engine, onClose, onEngineChanged }: K
   const [releases, setReleases] = useState<KernelRelease[]>([])
   const [loading, setLoading] = useState(false)
   const [installing, setInstalling] = useState<string | null>(null)
+  const [installProgress, setInstallProgress] = useState<KernelInstallProgress | null>(null)
   const [removing, setRemoving] = useState<string | null>(null)
   const [verifying, setVerifying] = useState<string | null>(null)
   const [health, setHealth] = useState<Record<string, KernelHealth>>({})
@@ -70,6 +71,16 @@ export function KernelManagerModal({ open, engine, onClose, onEngineChanged }: K
     if (open) void refresh()
   }, [open])
 
+  useEffect(() => {
+    if (!open) return undefined
+    return window.browserApi.engine.onInstallProgress((progress) => {
+      setInstallProgress(progress)
+      if (progress.stage === 'ready' || progress.stage === 'cancelled' || progress.stage === 'error') {
+        setTimeout(() => setInstallProgress((current) => current?.version === progress.version ? null : current), 1500)
+      }
+    })
+  }, [open])
+
   async function install(version: string): Promise<void> {
     const compatibility = compatibilityLabel(version)
     if (compatibility.text === '新版实验') {
@@ -86,6 +97,14 @@ export function KernelManagerModal({ open, engine, onClose, onEngineChanged }: K
       if (!confirmed) return
     }
     setInstalling(version)
+    setInstallProgress({
+      version,
+      stage: 'downloading',
+      receivedBytes: 0,
+      totalBytes: 0,
+      percent: 0,
+      message: '正在准备下载…'
+    })
     try {
       const status = await window.browserApi.engine.install(version)
       onEngineChanged(status)
@@ -95,6 +114,7 @@ export function KernelManagerModal({ open, engine, onClose, onEngineChanged }: K
       messageApi.error(errorText(error))
     } finally {
       setInstalling(null)
+      setInstallProgress((current) => current?.version === version && current.stage !== 'error' ? null : current)
     }
   }
 
@@ -317,6 +337,16 @@ export function KernelManagerModal({ open, engine, onClose, onEngineChanged }: K
                       <span>{release.size ? sizeLabel(release.size) : '本地安装'}</span>
                       <span>{release.remoteAvailable ? 'GitHub 官方发行资产 · SHA-256 校验' : '仅本地可用'}</span>
                       {compatibility.detail && <span>{compatibility.detail}</span>}
+                      {installProgress?.version === release.version && (
+                        <div style={{ width: '100%', maxWidth: 420, marginTop: 6 }}>
+                          <Progress
+                            size="small"
+                            percent={Math.max(0, Math.min(100, Math.round(installProgress.percent || 0)))}
+                            status={installProgress.stage === 'error' ? 'exception' : installProgress.stage === 'ready' ? 'success' : 'active'}
+                          />
+                          <Typography.Text type="secondary">{installProgress.message}</Typography.Text>
+                        </div>
+                      )}
                     </div>
                   }
                 />
