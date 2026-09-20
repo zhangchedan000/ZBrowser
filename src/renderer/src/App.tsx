@@ -898,8 +898,8 @@ export default function App() {
       {contextHolder}
       <Sider width={224} className="sidebar">
         <div className="brand">
-          <div className="brand-mark">P</div>
-          <div><strong>Prism</strong><span>Browser</span></div>
+          <div className="brand-mark">Z</div>
+          <div><strong>ZBrowser</strong><span>Community</span></div>
         </div>
         <div className="sidebar-section-label">工作区</div>
         <div className="nav-item active"><AppstoreOutlined /><span>浏览器环境</span><b>{profiles.length}</b></div>
@@ -936,7 +936,7 @@ export default function App() {
           <span><strong>{engine?.fingerprintKernel ? '指纹内核已连接' : '配置浏览器内核'}</strong><small>{engine?.label ?? '正在检查…'}</small></span>
           <SettingOutlined />
         </button>
-        <div className="version">Prism Browser · v{updateStatus?.currentVersion ?? '0.2.0-beta.1'}</div>
+        <div className="version">ZBrowser · v{updateStatus?.currentVersion ?? '0.2.0-beta.1'}</div>
       </Sider>
 
       <Layout>
