@@ -216,7 +216,8 @@ export class BrowserLauncher {
         hostHardwareConcurrency: hostHardware.hardwareConcurrency,
         hostPlatformVersion: hostHardware.platformVersion,
         proxyIdentity: profile.proxyCheck,
-        allowGeoConflict: options.allowGeoConflict === true
+        allowGeoConflict: options.allowGeoConflict === true,
+        startUrls: options.startUrls
       })
       if (process.env.PRISM_E2E === '1' && process.env.PRISM_E2E_BROWSER_HEADLESS === '1') {
         args.push('--headless=new')
