@@ -11,7 +11,7 @@ import type { Logger } from './app-logger'
 import type { ExtensionStore } from './extension-store'
 import type { ProfileStore } from './profile-store'
 
-const MAGIC = Buffer.concat([Buffer.from('ZBROWSER-MIGRATION'), Buffer.from([1])])
+const MAGIC = Buffer.concat([Buffer.from('ZBROW-MIGRATION'), Buffer.from([1])])
 const LEGACY_MAGIC = Buffer.concat([Buffer.from('PRISM-MIGRATION'), Buffer.from([1])])
 const AUTH_TAG_BYTES = 16
 const MAX_HEADER_BYTES = 64 * 1024
@@ -64,8 +64,11 @@ function deriveKey(password: string, salt: Buffer): Promise<Buffer> {
   })
 }
 
-function keyCheck(key: Buffer): Buffer {
-  return createHmac('sha256', key).update('zbrowser-workspace-migration-key-check-v1').digest().subarray(0, 16)
+function keyCheck(key: Buffer, legacy = false): Buffer {
+  return createHmac('sha256', key)
+    .update(legacy ? 'prism-workspace-migration-key-check-v1' : 'zbrowser-workspace-migration-key-check-v1')
+    .digest()
+    .subarray(0, 16)
 }
 
 async function readExactAt(handle: Awaited<ReturnType<typeof open>>, buffer: Buffer, position: number): Promise<void> {
@@ -360,7 +363,8 @@ export class WorkspaceMigrationManager {
     const salt = Buffer.from(header!.kdf.salt, 'base64'); const nonce = Buffer.from(header!.nonce, 'base64'); const expectedCheck = Buffer.from(header!.keyCheck, 'base64')
     if (salt.length !== 16 || nonce.length !== 12 || expectedCheck.length !== 16) throw new Error('迁移包加密参数无效')
     const key = await deriveKey(password, salt)
-    if (!timingSafeEqual(keyCheck(key), expectedCheck)) { key.fill(0); throw new Error('迁移密码错误') }
+    const legacyKeyCheck = header!.type === 'prism-workspace-migration'
+    if (!timingSafeEqual(keyCheck(key, legacyKeyCheck), expectedCheck)) { key.fill(0); throw new Error('迁移密码错误') }
     const staging = await mkdtemp(join(this.profiles.vaultPath, '.migration-import-'))
     const decipher = createDecipheriv('aes-256-gcm', key, nonce)
     decipher.setAAD(headerBytes!); decipher.setAuthTag(authTag!)
