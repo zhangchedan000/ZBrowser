@@ -1,15 +1,13 @@
-import { CheckCircleFilled, CrownOutlined, DeleteOutlined, FolderOpenOutlined, ReloadOutlined, SafetyCertificateOutlined } from '@ant-design/icons'
+import { CheckCircleFilled, CloudDownloadOutlined, DeleteOutlined, FolderOpenOutlined, ReloadOutlined, SafetyCertificateOutlined, StopOutlined } from '@ant-design/icons'
 import { Alert, Button, List, Modal, Popconfirm, Space, Spin, Tag, Typography, message } from 'antd'
 import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import type { EngineStatus, KernelHealth, KernelRelease } from '../../shared/types'
-import { kernelRequiresPro } from '../../shared/kernel-policy'
 
 interface KernelManagerModalProps {
   open: boolean
   engine: EngineStatus | null
   onClose: () => void
   onEngineChanged: (engine: EngineStatus) => void
-  proActive: boolean
 }
 
 function sizeLabel(size: number): string {
@@ -21,9 +19,10 @@ function errorText(error: unknown): string {
     .replace(/^Error invoking remote method '[^']+': Error: /, '')
 }
 
-export function KernelManagerModal({ open, engine, onClose, onEngineChanged, proActive }: KernelManagerModalProps) {
+export function KernelManagerModal({ open, engine, onClose, onEngineChanged }: KernelManagerModalProps) {
   const [releases, setReleases] = useState<KernelRelease[]>([])
   const [loading, setLoading] = useState(false)
+  const [installing, setInstalling] = useState<string | null>(null)
   const [removing, setRemoving] = useState<string | null>(null)
   const [verifying, setVerifying] = useState<string | null>(null)
   const [health, setHealth] = useState<Record<string, KernelHealth>>({})
@@ -35,11 +34,12 @@ export function KernelManagerModal({ open, engine, onClose, onEngineChanged, pro
     () => releases.find((release) => release.executable && release.executable === engine?.executable)?.version,
     [engine?.executable, releases]
   )
+
   async function refresh(): Promise<void> {
     setLoading(true)
     try {
       const [items, bundledEngine, canRollback] = await Promise.all([
-        window.browserApi.engine.installed(),
+        window.browserApi.engine.releases(),
         window.browserApi.engine.bundled(),
         window.browserApi.engine.rollbackAvailable()
       ])
@@ -56,6 +56,29 @@ export function KernelManagerModal({ open, engine, onClose, onEngineChanged, pro
   useEffect(() => {
     if (open) void refresh()
   }, [open])
+
+  async function install(version: string): Promise<void> {
+    setInstalling(version)
+    try {
+      const status = await window.browserApi.engine.install(version)
+      onEngineChanged(status)
+      await refresh()
+      messageApi.success(`Fingerprint Chromium ${version} 已安装并启用`)
+    } catch (error) {
+      messageApi.error(errorText(error))
+    } finally {
+      setInstalling(null)
+    }
+  }
+
+  async function cancelInstall(version: string): Promise<void> {
+    try {
+      await window.browserApi.engine.cancelInstall(version)
+      messageApi.info('已请求取消内核下载')
+    } catch (error) {
+      messageApi.error(errorText(error))
+    }
+  }
 
   async function activate(version: string): Promise<void> {
     try {
@@ -146,26 +169,26 @@ export function KernelManagerModal({ open, engine, onClose, onEngineChanged, pro
   }
 
   return (
-    <Modal open={open} title="浏览器内核" width={760} footer={null} onCancel={onClose} destroyOnHidden>
+    <Modal open={open} title="浏览器内核" width={800} footer={null} onCancel={onClose} destroyOnHidden>
       {contextHolder}
       <Alert
         className="kernel-notice"
         type="info"
         showIcon
-        title="安装新版 Prism Browser 即可更新内核"
-        description="也可以手动导入本地构建。"
+        title="可直接安装开源 Fingerprint Chromium"
+        description="发行包直接来自 adryfish/fingerprint-chromium 的 GitHub Releases。ZBrowser 会校验 GitHub 提供的 SHA-256 后再安装；无需 Prism Pro。"
       />
 
       <div className="kernel-toolbar">
         <div>
           <Typography.Text strong>Fingerprint Chromium</Typography.Text>
-          <Typography.Text type="secondary">当前：{engine?.label ?? '未配置'}</Typography.Text>
+          <Typography.Text type="secondary">当前：{engine?.label ?? '未配置'}{engine?.version ? ` · ${engine.version}` : ''}</Typography.Text>
         </div>
-        <Space>
+        <Space wrap>
           {bundled?.executable && engine?.executable !== bundled.executable && (
             <Button type="primary" onClick={() => void activateBundled()}>使用内置 {bundled.version}</Button>
           )}
-          <Button type="primary" icon={<FolderOpenOutlined />} onClick={() => void importLocal()}>导入本地构建</Button>
+          <Button icon={<FolderOpenOutlined />} onClick={() => void importLocal()}>导入本地构建</Button>
           <Button onClick={() => void selectManual()}>外部路径</Button>
           <Button onClick={() => void useSystem()}>系统兼容模式</Button>
           {rollbackAvailable && (
@@ -177,7 +200,7 @@ export function KernelManagerModal({ open, engine, onClose, onEngineChanged, pro
               <Button danger>回滚上一个</Button>
             </Popconfirm>
           )}
-          <Button icon={<ReloadOutlined />} loading={loading} onClick={() => void refresh()}>刷新</Button>
+          <Button icon={<ReloadOutlined />} loading={loading} onClick={() => void refresh()}>刷新版本</Button>
         </Space>
       </div>
 
@@ -185,19 +208,40 @@ export function KernelManagerModal({ open, engine, onClose, onEngineChanged, pro
         <List
           className="kernel-list"
           dataSource={releases}
-          locale={{ emptyText: '没有找到本机已安装的内核' }}
+          locale={{ emptyText: '暂时没有找到可用的开源内核版本' }}
           renderItem={(release) => {
             const active = currentVersion === release.version
             const bundledRelease = release.origin === 'bundled'
-            const proKernel = kernelRequiresPro(release.version)
-            const proLocked = proKernel && !proActive
-            const actions: ReactNode[] = [
-              active
-                ? <Tag key="active" color="success" icon={<CheckCircleFilled />}>正在使用</Tag>
-                : <Button key="use" disabled={proLocked} onClick={() => void activate(release.version)}>
-                    {proLocked ? '升级 Pro 后使用' : '切换使用'}
+            const actions: ReactNode[] = []
+
+            if (!release.installed && release.remoteAvailable) {
+              if (installing === release.version) {
+                actions.push(
+                  <Button key="cancel" danger icon={<StopOutlined />} onClick={() => void cancelInstall(release.version)}>
+                    取消下载
                   </Button>
-            ]
+                )
+              } else {
+                actions.push(
+                  <Button
+                    key="install"
+                    type="primary"
+                    icon={<CloudDownloadOutlined />}
+                    disabled={Boolean(installing)}
+                    onClick={() => void install(release.version)}
+                  >
+                    下载并安装
+                  </Button>
+                )
+              }
+            } else if (release.installed) {
+              actions.push(
+                active
+                  ? <Tag key="active" color="success" icon={<CheckCircleFilled />}>正在使用</Tag>
+                  : <Button key="use" disabled={Boolean(installing)} onClick={() => void activate(release.version)}>切换使用</Button>
+              )
+            }
+
             if (release.installed && !active && !bundledRelease) {
               actions.push(
                 <Popconfirm
@@ -223,15 +267,26 @@ export function KernelManagerModal({ open, engine, onClose, onEngineChanged, pro
                 >检查</Button>
               )
             }
+
             return (
-              <List.Item
-                actions={actions}
-              >
+              <List.Item actions={actions}>
                 <List.Item.Meta
-                  title={<Space><span>Chromium {release.version}</span>{release.installed && <Tag>已安装</Tag>}{bundledRelease && <Tag color="blue">随应用内置</Tag>}{release.origin === 'local-build' && <Tag color="purple">本地构建</Tag>}{proKernel && <Tag color="gold" icon={<CrownOutlined />}>Pro</Tag>}{health[release.version]?.status === 'healthy' && <Tag color="success">文件正常</Tag>}{health[release.version]?.status === 'unverified' && <Tag color="warning">建议重新导入</Tag>}{health[release.version]?.status === 'corrupt' && <Tag color="error">文件异常，请安装新版 Prism Browser 或重新导入本地构建</Tag>}</Space>}
+                  title={
+                    <Space wrap>
+                      <span>Chromium {release.version}</span>
+                      {release.installed && <Tag>已安装</Tag>}
+                      {release.remoteAvailable && <Tag color="cyan">开源发行版</Tag>}
+                      {bundledRelease && <Tag color="blue">随应用内置</Tag>}
+                      {release.origin === 'local-build' && <Tag color="purple">本地构建</Tag>}
+                      {health[release.version]?.status === 'healthy' && <Tag color="success">文件正常</Tag>}
+                      {health[release.version]?.status === 'unverified' && <Tag color="warning">建议重新导入</Tag>}
+                      {health[release.version]?.status === 'corrupt' && <Tag color="error">文件异常</Tag>}
+                    </Space>
+                  }
                   description={
                     <div className="kernel-meta">
                       <span>{release.size ? sizeLabel(release.size) : '本地安装'}</span>
+                      <span>{release.remoteAvailable ? 'GitHub 官方发行资产 · SHA-256 校验' : '仅本地可用'}</span>
                     </div>
                   }
                 />
