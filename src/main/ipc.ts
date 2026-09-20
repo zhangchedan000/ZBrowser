@@ -154,7 +154,7 @@ export function registerIpc({ profiles, settings, launcher, kernels, extensions,
     const options: Electron.SaveDialogOptions = {
       title: '导出全部环境加密迁移包',
       defaultPath: `Prism 全部环境 ${stamp}.prism-migration`,
-      filters: [{ name: 'Prism 加密迁移包', extensions: ['prism-migration'] }]
+      filters: [{ name: 'ZBrowser 加密迁移包', extensions: ['zbrowser-migration', 'prism-migration'] }]
     }
     const result = owner ? await dialog.showSaveDialog(owner, options) : await dialog.showSaveDialog(options)
     if (result.canceled || !result.filePath) return null
@@ -199,7 +199,7 @@ export function registerIpc({ profiles, settings, launcher, kernels, extensions,
     const profile = profiles.get(id)
     if (launcher.isRunning(id)) throw new Error('请先关闭浏览器环境再导出 Cookie')
     const owner = BrowserWindow.getFocusedWindow()
-    const defaultPath = safeProfileFileName(profile.name).replace(/\.prism-profile\.json$/, '.cookies.json')
+    const defaultPath = safeProfileFileName(profile.name).replace(/\.(?:zbrowser-profile|prism-profile)\.json$/, '.cookies.json')
     const options: Electron.SaveDialogOptions = {
       title: '导出环境 Cookie',
       defaultPath,
