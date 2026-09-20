@@ -23,7 +23,7 @@ export function profileWindowName(profile: Pick<BrowserProfile, 'serialNumber' |
     .replace(/[\u0000-\u001f\u007f]/g, ' ')
     .replace(/\s+/g, ' ')
     .trim()
-    .slice(0, 60) || 'Prism 环境'
+    .slice(0, 60) || 'ZBrowser 环境'
   return `[${profile.serialNumber}] ${name}`
 }
 
@@ -59,8 +59,8 @@ export function buildLaunchArgs(profile: BrowserProfile, options: LaunchArgument
     `--timezone=${networkIdentity.timezone}`,
     `--window-size=${profile.window.mode === 'custom' ? profile.window.width : fp.screenWidth},${profile.window.mode === 'custom' ? profile.window.height : fp.screenHeight}`,
     `--window-name=${profileWindowName(profile)}`,
-    `--prism-profile-serial=${profile.serialNumber}`,
-    `--prism-profile-id=${profile.id}`,
+    `--zbrowser-profile-serial=${profile.serialNumber}`,
+    `--zbrowser-profile-id=${profile.id}`,
     '--no-first-run',
     '--no-default-browser-check',
     '--disable-background-mode',
