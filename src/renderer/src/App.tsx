@@ -882,6 +882,13 @@ export default function App() {
             >
               {profile.status === 'orphaned' ? '结束遗留' : running ? '关闭' : '打开'}
             </Button>
+            <Tooltip title="环境检测">
+              <Button
+                type="text"
+                icon={<SafetyCertificateOutlined />}
+                onClick={() => setEnvironmentCheckProfile(profile)}
+              />
+            </Tooltip>
             <Dropdown menu={profileMenu(profile)} trigger={['click']}>
               <Button type="text" icon={<MoreOutlined />} />
             </Dropdown>
