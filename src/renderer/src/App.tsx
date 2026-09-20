@@ -920,24 +920,21 @@ export default function App() {
         <button className="nav-item sidebar-action" onClick={() => setUpdateModalOpen(true)}>
           <DownloadOutlined /><span>应用更新</span><b>{announcementStatus?.state === 'available' ? '1' : ''}</b>
         </button>
-        <button className="nav-item sidebar-action" onClick={() => setAutomationOpen(true)}>
-          <ApiOutlined /><span>自动化 API</span><b>{automationStatus?.state === 'running' ? 'ON' : ''}</b>
-        </button>
-        <button className="nav-item sidebar-action" onClick={() => setSchedulerOpen(true)}>
-          <ClockCircleOutlined /><span>计划任务</span><b>{scheduledTasks.filter((task) => task.enabled).length || ''}</b>
-        </button>
-        <button className="nav-item sidebar-action" onClick={() => setMcpOpen(true)}>
-          <RobotOutlined /><span>本地 AI · MCP</span><b>{mcpStatus?.state === 'running' ? 'ON' : ''}</b>
-        </button>
+        <div className="nav-item disabled-tool">
+          <ApiOutlined /><span>自动化 API</span><b>开发中</b>
+        </div>
+        <div className="nav-item disabled-tool">
+          <RobotOutlined /><span>本地 AI · MCP</span><b>开发中</b>
+        </div>
         <div className="sidebar-spacer" />
-        <button className="community-card" onClick={openPlanModal}>
-          <span className="community-icon"><CrownOutlined /></span>
+        <div className="community-card">
+          <span className="community-icon"><SafetyCertificateOutlined /></span>
           <span>
-            <strong>{license?.plan === 'pro' ? 'Prism Pro' : 'Community'}</strong>
-            <small>{license?.plan === 'pro' ? '已绑定当前设备' : '免费 · 开源 · 本地优先'}</small>
+            <strong>ZBrowser Community</strong>
+            <small>免费 · 开源 · 本地优先</small>
           </span>
-          <span className="community-action">{license?.plan === 'pro' ? '查看授权' : '了解 Pro'}</span>
-        </button>
+          <span className="community-action">MIT</span>
+        </div>
         <button className="engine-card" onClick={() => setKernelManagerOpen(true)}>
           <span className={`engine-indicator ${engine?.fingerprintKernel ? 'ready' : ''}`} />
           <span><strong>{engine?.fingerprintKernel ? '指纹内核已连接' : '配置浏览器内核'}</strong><small>{engine?.label ?? '正在检查…'}</small></span>
@@ -955,9 +952,7 @@ export default function App() {
               <Typography.Text type="secondary">创建、运行并管理彼此隔离的浏览器身份</Typography.Text>
             </div>
             <Space>
-              <Button className={`plan-pill ${license?.plan === 'pro' ? 'active' : ''}`} icon={<CrownOutlined />} onClick={openPlanModal}>
-                {license?.plan === 'pro' ? 'Prism Pro · 已激活' : 'Community · 免费'}
-              </Button>
+              <Tag color="green">ZBrowser Community · 开源</Tag>
               {runningCount > 0 && (
                 <Button icon={<PoweroffOutlined />} onClick={() => void window.browserApi.profiles.closeAll()}>
                   全部关闭
@@ -1164,15 +1159,6 @@ export default function App() {
         onClose={() => setUpdateModalOpen(false)}
         onAnnouncementChanged={setAnnouncementStatus}
       />
-      <PlanModal
-        open={planModalOpen}
-        license={license}
-        activating={activatingLicense}
-        onActivate={activateLicense}
-        onDeactivate={deactivateLicense}
-        onPurchase={openProPurchase}
-        onClose={() => setPlanModalOpen(false)}
-      />
       <WorkspaceMigrationModal
         mode={migrationMode}
         busy={migrationBusy}
@@ -1180,32 +1166,6 @@ export default function App() {
         onSubmit={runWorkspaceMigration}
         onClose={() => { if (!migrationBusy) setMigrationMode(null) }}
       />
-      <AutomationModal
-        open={automationOpen}
-        status={automationStatus}
-        proEnabled={Boolean(license?.entitlements.includes('automation-api'))}
-        onChanged={setAutomationStatus}
-        onClose={() => setAutomationOpen(false)}
-      />
-      <SchedulerModal
-        open={schedulerOpen}
-        tasks={scheduledTasks}
-        profiles={profiles}
-        proEnabled={Boolean(license?.entitlements.includes('scheduler'))}
-        onChanged={setScheduledTasks}
-        onClose={() => setSchedulerOpen(false)}
-      />
-      <McpModal
-        open={mcpOpen}
-        status={mcpStatus}
-        permissions={mcpPermissions}
-        profiles={profiles}
-        proEnabled={Boolean(license?.entitlements.includes('mcp'))}
-        onStatusChanged={setMcpStatus}
-        onPermissionsChanged={setMcpPermissions}
-        onClose={() => setMcpOpen(false)}
-      />
-
       <ProfileEditor
         open={editorOpen}
         profile={editing}
