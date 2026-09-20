@@ -3,7 +3,7 @@ import { lstat, readFile, stat, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import type { ProfileDraft } from '../shared/types'
 import type { KernelManager } from './kernel-manager'
-import { listBundledBrowsers, locateBrowser, locateBundledBrowser, normalizeBrowserSelection } from './browser-locator'
+import { listBundledBrowsers, locateBrowser, locateBrowserForProfile, locateBundledBrowser, normalizeBrowserSelection } from './browser-locator'
 import { mergeKernelCatalog } from './kernel-catalog'
 import type { BrowserLauncher } from './browser-launcher'
 import type { ProfileStore } from './profile-store'
@@ -27,6 +27,7 @@ import type { ProAgentManager } from './pro-agent-manager'
 import type { SchedulerManager } from './scheduler-manager'
 import type { McpControlManager } from './mcp-control-manager'
 import type { AnnouncementManager } from './announcement-manager'
+import type { EnvironmentCheckHistoryStore } from './environment-check-history'
 
 export const PRO_PURCHASE_URL = 'https://pay.ldxp.cn/item/q23itv'
 
@@ -47,9 +48,10 @@ interface IpcDependencies {
   scheduler: SchedulerManager
   mcp: McpControlManager
   announcements: AnnouncementManager
+  environmentChecks: EnvironmentCheckHistoryStore
 }
 
-export function registerIpc({ profiles, settings, launcher, kernels, extensions, cookies, logger, backups, workspaceMigration, appSession, updater, licensing, automation, scheduler, mcp, announcements }: IpcDependencies): void {
+export function registerIpc({ profiles, settings, launcher, kernels, extensions, cookies, logger, backups, workspaceMigration, appSession, updater, licensing, automation, scheduler, mcp, announcements, environmentChecks }: IpcDependencies): void {
   ipcMain.handle('profiles:list', () => profiles.list().map(publicProfile))
   ipcMain.handle('profiles:storage-health', () => profiles.storageHealth())
   ipcMain.handle('profiles:create', async (_event, draft: ProfileDraft) => publicProfile(await profiles.create(draft)))
@@ -281,6 +283,19 @@ export function registerIpc({ profiles, settings, launcher, kernels, extensions,
   })
   ipcMain.handle('profiles:diagnose', (_event, id: string) => launcher.diagnose(id))
   ipcMain.handle('profiles:crash-history', (_event, id: string) => launcher.crashHistory(id))
+  ipcMain.handle('profiles:environment-check-history', (_event, id: string) => {
+    profiles.get(id)
+    return environmentChecks.list(id)
+  })
+  ipcMain.handle('profiles:record-environment-check', async (_event, id: string, urls: string[]) => {
+    const profile = profiles.get(id)
+    const engine = await locateBrowserForProfile(settings, profiles.vaultPath, profile.kernelVersion)
+    return environmentChecks.record(publicProfile(profile), engine, urls)
+  })
+  ipcMain.handle('profiles:clear-environment-check-history', async (_event, id: string) => {
+    profiles.get(id)
+    await environmentChecks.clear(id)
+  })
   ipcMain.handle('profiles:set-favorite', async (_event, id: string, favorite: boolean) => publicProfile(await profiles.setFavorite(id, favorite)))
   ipcMain.handle('profiles:classify-many', async (_event, ids: string[], patch) => {
     return (await profiles.classifyMany(ids, patch)).map(publicProfile)
