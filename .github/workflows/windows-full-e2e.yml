@@ -6,6 +6,7 @@ on:
     paths:
       - "src/**"
       - "tools/app-e2e/**"
+      - "tools/proxy-e2e/**"
       - "tools/kernel-lock.json"
       - "tools/kernel-patches/**"
       - "tools/windows-kernel/patches/**"
@@ -50,6 +51,21 @@ jobs:
           elseif ($message -match '\[resume:package\]') { $stage = "package" }
           "ZBROWSER_RESUME_STAGE=$stage" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
           Write-Host "Resume stage: $stage"
+
+      - name: Real HTTP and SOCKS5 proxy smoke
+        shell: pwsh
+        env:
+          ZBROWSER_TEST_HTTP_PROXY_URL: ${{ secrets.ZBROWSER_TEST_HTTP_PROXY_URL }}
+          ZBROWSER_TEST_SOCKS5_PROXY: ${{ secrets.ZBROWSER_TEST_SOCKS5_PROXY }}
+          ZBROWSER_PROXY_E2E_OUTPUT: test-results/proxy-e2e.json
+        run: |
+          New-Item -ItemType Directory -Force -Path test-results | Out-Null
+          if ([string]::IsNullOrWhiteSpace($env:ZBROWSER_TEST_HTTP_PROXY_URL) -or [string]::IsNullOrWhiteSpace($env:ZBROWSER_TEST_SOCKS5_PROXY)) {
+            Write-Host "Real proxy smoke skipped because one or more repository secrets are not configured."
+            exit 0
+          }
+          node tools/proxy-e2e/run.mjs
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Diagnose all kernel patch hashes
         if: env.ZBROWSER_RESUME_STAGE == 'full' || env.ZBROWSER_RESUME_STAGE == 'kernel'
