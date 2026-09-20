@@ -26,6 +26,7 @@ import { McpPermissionStore } from './mcp-permission-store'
 import { McpAuditLog } from './mcp-audit'
 import { McpControlManager } from './mcp-control-manager'
 import { AnnouncementManager } from './announcement-manager'
+import { EnvironmentCheckHistoryStore } from './environment-check-history'
 
 let mainWindow: BrowserWindow | null = null
 let launcher: BrowserLauncher | null = null
@@ -124,6 +125,7 @@ app.whenReady().then(async () => {
     mainWindow?.webContents.send('updates:changed', status)
   }, logger)
   const announcements = new AnnouncementManager(process.resourcesPath, app.getVersion(), logger)
+  const environmentChecks = new EnvironmentCheckHistoryStore(vaultPath)
   const licensing = new LicenseManager(
     vaultPath,
     process.resourcesPath,
@@ -165,7 +167,7 @@ app.whenReady().then(async () => {
     logger
   )
   await scheduler.initialize()
-  registerIpc({ profiles, settings, launcher, kernels, extensions, cookies, logger, backups, workspaceMigration, appSession, updater, licensing, automation, scheduler, mcp, announcements })
+  registerIpc({ profiles, settings, launcher, kernels, extensions, cookies, logger, backups, workspaceMigration, appSession, updater, licensing, automation, scheduler, mcp, announcements, environmentChecks })
   mainWindow = createWindow()
   if (app.isPackaged && process.env.PRISM_E2E !== '1') {
     setTimeout(() => void updater.check().catch(() => undefined), 10_000)

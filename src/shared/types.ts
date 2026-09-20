@@ -414,6 +414,28 @@ export interface BrowserCrashRecord {
   phase: 'starting' | 'running'
 }
 
+export interface EnvironmentCheckRecord {
+  checkedAt: string
+  proxyIp?: string
+  countryCode?: string
+  proxyCheckedAt?: string
+  timezone: string
+  language: string
+  platform: BrowserPlatform
+  hardwareProfileId: HardwareProfileId
+  seed: number
+  kernelVersion?: string
+  screenWidth: number
+  screenHeight: number
+  webrtcPolicy: WebRtcPolicy
+  localSummary: {
+    errors: number
+    warnings: number
+    ok: number
+  }
+  externalUrls: string[]
+}
+
 export interface BrowserApi {
   profiles: {
     list: () => Promise<BrowserProfileView[]>
@@ -448,6 +470,9 @@ export interface BrowserApi {
     testProxy: (id: string) => Promise<BrowserProfileView>
     diagnose: (id: string) => Promise<LaunchDiagnosticReport>
     crashHistory: (id: string) => Promise<BrowserCrashRecord[]>
+    environmentCheckHistory: (id: string) => Promise<EnvironmentCheckRecord[]>
+    recordEnvironmentCheck: (id: string, urls: string[]) => Promise<EnvironmentCheckRecord[]>
+    clearEnvironmentCheckHistory: (id: string) => Promise<void>
     setFavorite: (id: string, favorite: boolean) => Promise<BrowserProfileView>
     classifyMany: (ids: string[], patch: ProfileBatchClassification) => Promise<BrowserProfileView[]>
     removeMany: (ids: string[]) => Promise<void>

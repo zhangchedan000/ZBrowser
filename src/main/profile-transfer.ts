@@ -1,10 +1,11 @@
 import type { BrowserProfile, ProfileDraft } from '../shared/types'
 import { validateProfileDraft } from '../shared/validation'
 
-const PROFILE_EXPORT_MARKER = 'prism-browser-profile'
+const PROFILE_EXPORT_MARKER = 'zbrowser-profile'
+const LEGACY_PROFILE_EXPORT_MARKER = 'prism-browser-profile'
 
 interface ProfileExportFile {
-  type: typeof PROFILE_EXPORT_MARKER
+  type: typeof PROFILE_EXPORT_MARKER | typeof LEGACY_PROFILE_EXPORT_MARKER
   schemaVersion: 1
   exportedAt: string
   containsBrowserData: false
@@ -47,8 +48,8 @@ export function parseProfileConfig(raw: string): ProfileDraft {
   }
   if (!value || typeof value !== 'object') throw new Error('环境配置文件格式无效')
   const data = value as Partial<ProfileExportFile>
-  if (data.type !== PROFILE_EXPORT_MARKER || data.schemaVersion !== 1 || !data.profile) {
-    throw new Error('不是受支持的 Prism Browser 环境配置文件')
+  if ((data.type !== PROFILE_EXPORT_MARKER && data.type !== LEGACY_PROFILE_EXPORT_MARKER) || data.schemaVersion !== 1 || !data.profile) {
+    throw new Error('不是受支持的 ZBrowser 环境配置文件')
   }
   const candidate = data.profile as ProfileDraft
   const draft = validateProfileDraft({
@@ -67,5 +68,5 @@ export function parseProfileConfig(raw: string): ProfileDraft {
 
 export function safeProfileFileName(name: string): string {
   const normalized = name.trim().replace(/[\\/:*?"<>|\u0000-\u001f]/g, '-').replace(/\.+$/g, '')
-  return `${normalized || 'browser-profile'}.prism-profile.json`
+  return `${normalized || 'browser-profile'}.zbrowser-profile.json`
 }
