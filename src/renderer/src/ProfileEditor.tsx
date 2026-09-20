@@ -29,7 +29,7 @@ import {
   hardwareProfileSummary,
   refreshSeededGpuIdentity
 } from '../../shared/hardware-profiles'
-import { effectiveNetworkIdentity } from '../../shared/network-identity'
+import { effectiveNetworkIdentity, localeForCountry } from '../../shared/network-identity'
 import type { BrowserExtension, BrowserProfileView, EngineStatus, HardwareProfileId, KernelRelease, ProfileDraft, ProxyTestResult } from '../../shared/types'
 
 interface EditorValues extends Omit<ProfileDraft, 'startUrls' | 'color'> {
@@ -143,6 +143,21 @@ export function ProfileEditor({ open, profile, suggestedIndex, saving, extension
     } finally {
       setTestingProxy(false)
     }
+  }
+
+  function applyRecommendedNetworkIdentity(): void {
+    if (!proxyResult?.ok) return
+    const locale = localeForCountry(proxyResult.countryCode)
+    const current = form.getFieldValue('fingerprint')
+    form.setFieldValue('fingerprint', {
+      ...current,
+      networkIdentityMode: 'proxy',
+      proxyExitPolicy: 'block',
+      webrtcPolicy: 'proxy_only',
+      timezone: proxyResult.timezone ?? current.timezone,
+      language: locale?.language ?? current.language,
+      acceptLanguages: locale?.acceptLanguages ?? current.acceptLanguages
+    })
   }
 
   async function submit(): Promise<void> {
@@ -354,6 +369,14 @@ export function ProfileEditor({ open, profile, suggestedIndex, saving, extension
               城市级坐标：{proxyResult.latitude.toFixed(3)}, {proxyResult.longitude.toFixed(3)} · 精度约 {Math.round((proxyResult.accuracyMeters ?? 25000) / 1000)} km
             </Typography.Text>
           )}
+          <Space wrap>
+            <Button type="primary" size="small" onClick={applyRecommendedNetworkIdentity}>
+              应用推荐网络身份
+            </Button>
+            <Typography.Text type="secondary">
+              自动设置跟随代理、语言、Accept-Language、时区、WebRTC 防泄漏和出口变化阻止策略。
+            </Typography.Text>
+          </Space>
           {networkIdentityMode === 'proxy' && (
             <Alert
               type={proxyResult.geoConfidence === 'conflict' ? 'warning' : 'success'}
