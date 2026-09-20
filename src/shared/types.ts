@@ -489,6 +489,7 @@ export interface BrowserApi {
     releases: () => Promise<KernelRelease[]>
     install: (version: string) => Promise<EngineStatus>
     cancelInstall: (version: string) => Promise<void>
+    onInstallProgress: (listener: (progress: KernelInstallProgress) => void) => () => void
     activate: (version: string) => Promise<EngineStatus>
     rollbackAvailable: () => Promise<boolean>
     rollback: () => Promise<EngineStatus>
