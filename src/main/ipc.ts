@@ -383,7 +383,7 @@ export function registerIpc({ profiles, settings, launcher, kernels, extensions,
       return {
         version,
         status: 'healthy',
-        message: '随 Prism Browser 发布的内核完整性正常',
+        message: '随当前应用发布的内核完整性正常',
         checkedAt: new Date().toISOString()
       }
     }
