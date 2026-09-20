@@ -22,6 +22,27 @@ import type { AppSettings } from '../shared/types'
 const execFileAsync = promisify(execFile)
 const RELEASES_URL = 'https://api.github.com/repos/adryfish/fingerprint-chromium/releases?per_page=10'
 
+const FALLBACK_RELEASES: GithubRelease[] = [{
+  tag_name: '148.0.7778.215',
+  published_at: '2026-06-21T04:34:00Z',
+  draft: false,
+  prerelease: false,
+  assets: [
+    {
+      name: 'ungoogled-chromium_148.0.7778.215-1.1_windows_x64.zip',
+      size: 189767686,
+      browser_download_url: 'https://github.com/adryfish/fingerprint-chromium/releases/download/148.0.7778.215/ungoogled-chromium_148.0.7778.215-1.1_windows_x64.zip',
+      digest: 'sha256:9ef3f471b7a6641b4224532522b29141ce3746e27d55788d88e2fd951f362579'
+    },
+    {
+      name: 'ungoogled-chromium_148.0.7778.215-1.1_macos.dmg',
+      size: 140187500,
+      browser_download_url: 'https://github.com/adryfish/fingerprint-chromium/releases/download/148.0.7778.215/ungoogled-chromium_148.0.7778.215-1.1_macos.dmg',
+      digest: 'sha256:b72f091e2e1a7583eed389c4b8e3534ed355e568af8c8bbf8fc30a25e23ca679'
+    }
+  ]
+}]
+
 interface GithubAsset {
   name: string
   size: number
@@ -135,15 +156,14 @@ export class KernelManager {
     let releases: GithubRelease[]
     try {
       const response = await fetch(RELEASES_URL, {
-        headers: { accept: 'application/vnd.github+json', 'user-agent': 'ZBrowser/0.1' },
+        headers: { accept: 'application/vnd.github+json', 'user-agent': 'ZBrowser/0.2' },
         signal: AbortSignal.timeout(15_000)
       })
       if (!response.ok) throw new Error(`获取内核版本失败（GitHub HTTP ${response.status}）`)
       releases = await response.json() as GithubRelease[]
     } catch (error) {
-      if (installed.size === 0) throw error
-      this.logger?.error('获取远程内核版本失败，展示本地版本', error)
-      releases = []
+      this.logger?.error('获取远程内核版本失败，使用内置已验证目录', error)
+      releases = FALLBACK_RELEASES
     }
 
     const remote = releases
@@ -477,7 +497,7 @@ export class KernelManager {
     }
     const headers: Record<string, string> = {
       accept: 'application/octet-stream',
-      'user-agent': 'ZBrowser/0.1'
+      'user-agent': 'ZBrowser/0.2'
     }
     if (existingBytes > 0 && existingBytes < release.size) headers.range = `bytes=${existingBytes}-`
     const response = await fetch(release.downloadUrl, {
