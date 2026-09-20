@@ -109,7 +109,7 @@
       "runAfterFinish": false,
       "createDesktopShortcut": "always",
       "createStartMenuShortcut": true,
-      "shortcutName": "Prism Browser"
+      "shortcutName": "ZBrowser"
     },
     "portable": {
       "artifactName": "${productName} ${version}.${ext}"
