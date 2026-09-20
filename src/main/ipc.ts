@@ -351,6 +351,15 @@ export function registerIpc({ profiles, settings, launcher, kernels, extensions,
     const [managed, bundled] = await Promise.all([kernels.installed(), listBundledBrowsers()])
     return mergeKernelCatalog(managed, bundled)
   })
+  ipcMain.handle('engine:releases', async () => {
+    const [remoteAndManaged, bundled] = await Promise.all([kernels.releases(), listBundledBrowsers()])
+    return mergeKernelCatalog(remoteAndManaged, bundled)
+  })
+  ipcMain.handle('engine:install', async (_event, version: string) => {
+    if (launcher.hasRunning()) throw new Error('请先关闭全部浏览器环境再安装并切换内核')
+    return kernels.install(version)
+  })
+  ipcMain.handle('engine:cancel-install', (_event, version: string) => kernels.cancel(version))
   ipcMain.handle('engine:activate', async (_event, version: string) => {
     const bundled = await locateBundledBrowser(process.resourcesPath, version)
     if (!bundled?.executable) return kernels.activate(version)
