@@ -24,8 +24,9 @@ let appSession: AppSessionTracker | null = null
 
 if (process.platform === 'win32') app.setAppUserModelId('com.zbrowser.desktop')
 
-if (process.env.PRISM_E2E === '1' && process.env.PRISM_E2E_USER_DATA && isAbsolute(process.env.PRISM_E2E_USER_DATA)) {
-  app.setPath('userData', process.env.PRISM_E2E_USER_DATA)
+const e2eUserData = process.env.ZBROWSER_E2E_USER_DATA ?? process.env.PRISM_E2E_USER_DATA
+if ((process.env.ZBROWSER_E2E === '1' || process.env.PRISM_E2E === '1') && e2eUserData && isAbsolute(e2eUserData)) {
+  app.setPath('userData', e2eUserData)
 }
 
 function createWindow(): BrowserWindow {
@@ -115,7 +116,7 @@ app.whenReady().then(async () => {
   const environmentChecks = new EnvironmentCheckHistoryStore(vaultPath)
   registerIpc({ profiles, settings, launcher, kernels, extensions, cookies, logger, backups, workspaceMigration, appSession, updater, environmentChecks })
   mainWindow = createWindow()
-  if (app.isPackaged && process.env.PRISM_E2E !== '1') {
+  if (app.isPackaged && process.env.ZBROWSER_E2E !== '1' && process.env.PRISM_E2E !== '1') {
     setTimeout(() => void updater.check().catch(() => undefined), 10_000)
   }
 
