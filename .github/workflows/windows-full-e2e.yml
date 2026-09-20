@@ -73,6 +73,23 @@ jobs:
         if: env.ZBROWSER_RESUME_STAGE == 'full' || env.ZBROWSER_RESUME_STAGE == 'kernel'
         run: npm run kernel:verify-lock
 
+      - name: Ensure Electron runtime
+        if: env.ZBROWSER_RESUME_STAGE != 'package'
+        shell: pwsh
+        run: |
+          $electron = "node_modules/electron/dist/electron.exe"
+          if (-not (Test-Path $electron)) {
+            Write-Host "Electron runtime is missing after npm ci; reinstalling the Electron binary."
+            Remove-Item "node_modules/electron/path.txt" -Force -ErrorAction SilentlyContinue
+            Remove-Item "node_modules/electron/dist" -Recurse -Force -ErrorAction SilentlyContinue
+            node node_modules/electron/install.js
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          }
+          if (-not (Test-Path $electron)) {
+            throw "Electron runtime is still missing after reinstall: $electron"
+          }
+          Write-Host "Electron runtime ready: $electron"
+
       - name: Build application
         if: env.ZBROWSER_RESUME_STAGE != 'package'
         run: npm run build
