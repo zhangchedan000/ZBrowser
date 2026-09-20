@@ -34,7 +34,7 @@ export function UpdateModal({ open, appStatus, onClose, onStatusChanged }: Updat
     try {
       const status = await window.browserApi.updates.download()
       onStatusChanged(status)
-      if (status.stage === 'downloaded') messageApi.success('更新包已下载')
+      if (status.stage === 'ready') messageApi.success('更新包已准备好')
     } catch (error) {
       messageApi.error(errorText(error))
     } finally {
@@ -58,7 +58,7 @@ export function UpdateModal({ open, appStatus, onClose, onStatusChanged }: Updat
     ? 'error'
     : appStatus?.stage === 'available'
       ? 'info'
-      : appStatus?.stage === 'downloaded'
+      : appStatus?.stage === 'ready'
         ? 'success'
         : appStatus?.stage === 'disabled'
           ? 'warning'
@@ -74,7 +74,7 @@ export function UpdateModal({ open, appStatus, onClose, onStatusChanged }: Updat
           </Typography.Title>
           <Space wrap>
             <Tag>当前版本 {appStatus?.currentVersion ?? '未知'}</Tag>
-            {appStatus?.availableVersion && <Tag color="blue">可用版本 {appStatus.availableVersion}</Tag>}
+            {appStatus?.latestVersion && <Tag color="blue">可用版本 {appStatus.latestVersion}</Tag>}
           </Space>
         </div>
         <Alert
@@ -90,7 +90,7 @@ export function UpdateModal({ open, appStatus, onClose, onStatusChanged }: Updat
           {appStatus?.stage === 'available' && (
             <Button type="primary" loading={busy} onClick={() => void download()}>下载更新</Button>
           )}
-          {appStatus?.stage === 'downloaded' && (
+          {appStatus?.stage === 'ready' && (
             <Button type="primary" onClick={() => void openInstaller()}>打开安装程序</Button>
           )}
         </Space>
