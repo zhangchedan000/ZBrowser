@@ -503,50 +503,12 @@ export interface BrowserApi {
     openInstaller: () => Promise<void>
     onChanged: (listener: (status: AppUpdateStatus) => void) => () => void
   }
-  announcements: {
-    status: () => Promise<AnnouncementStatus>
-    check: () => Promise<AnnouncementStatus>
-    openAction: () => Promise<void>
-  }
   proxy: {
     test: (config: ProxyConfig, profileId?: string) => Promise<ProxyTestResult>
   }
   diagnostics: {
     sessionHealth: () => Promise<AppRecoveryStatus>
     e2eQuit: () => Promise<void>
-  }
-  licensing: {
-    status: () => Promise<LicenseStatus>
-    sync: () => Promise<LicenseStatus>
-    activate: (activationCode: string) => Promise<LicenseStatus>
-    deactivate: () => Promise<LicenseStatus>
-    openPurchase: () => Promise<void>
-    onChanged: (listener: (status: LicenseStatus) => void) => () => void
-  }
-  automation: {
-    status: () => Promise<AutomationStatus>
-    start: () => Promise<AutomationStartResult>
-    stop: () => Promise<AutomationStatus>
-    emergencyStop: () => Promise<AutomationStatus>
-    onChanged: (listener: (status: AutomationStatus) => void) => () => void
-  }
-  scheduler: {
-    list: () => Promise<ScheduledTask[]>
-    create: (draft: ScheduledTaskDraft) => Promise<ScheduledTask>
-    update: (id: string, draft: ScheduledTaskDraft) => Promise<ScheduledTask>
-    remove: (id: string) => Promise<void>
-    setEnabled: (id: string, enabled: boolean) => Promise<ScheduledTask>
-    runNow: (id: string) => Promise<ScheduledTask>
-    onChanged: (listener: (tasks: ScheduledTask[]) => void) => () => void
-  }
-  mcp: {
-    status: () => Promise<McpStatus>
-    permissions: () => Promise<McpProfilePermission[]>
-    setPermission: (profileId: string, enabled: boolean) => Promise<McpProfilePermission[]>
-    start: () => Promise<McpConnection>
-    stop: () => Promise<McpStatus>
-    emergencyStop: () => Promise<McpStatus>
-    onChanged: (listener: (status: McpStatus) => void) => () => void
   }
   extensions: {
     list: () => Promise<BrowserExtension[]>
