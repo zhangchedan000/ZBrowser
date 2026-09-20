@@ -1,0 +1,60 @@
+name: Bootstrap ZBrowser
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/bootstrap.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  import-upstream:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout ZBrowser
+        uses: actions/checkout@v4
+
+      - name: Skip if already bootstrapped
+        id: guard
+        shell: bash
+        run: |
+          if [ -f .zbrowser_bootstrapped ]; then
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Import Prism Browser Community source
+        if: steps.guard.outputs.skip != 'true'
+        shell: bash
+        run: |
+          git clone --depth 1 https://github.com/DFarm6/Prism-Browser-Community.git /tmp/prism
+          rsync -a --delete-excluded \
+            --exclude='.git' \
+            --exclude='.github' \
+            --exclude='README.md' \
+            /tmp/prism/ ./
+          cat > UPSTREAM.md <<'EOF'
+          # Upstream
+
+          ZBrowser started from the MIT-licensed Prism Browser Community project:
+
+          - https://github.com/DFarm6/Prism-Browser-Community
+
+          The original MIT license and third-party license notices are retained.
+          ZBrowser will develop its own branding, UI and additional features independently.
+          EOF
+          touch .zbrowser_bootstrapped
+
+      - name: Commit imported source
+        if: steps.guard.outputs.skip != 'true'
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "chore: import Prism Community as ZBrowser base"
+          git push
