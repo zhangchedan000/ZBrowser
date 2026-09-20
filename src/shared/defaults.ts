@@ -58,7 +58,7 @@ export function defaultProfileDraft(index = 1): ProfileDraft {
     tags: [],
     extensionIds: [],
     color: PROFILE_COLORS[(index - 1) % PROFILE_COLORS.length],
-    startUrls: ['https://browserleaks.com/'],
+    startUrls: [],
     kernelVersion: '',
     window: defaultProfileWindow(),
     proxy: {
