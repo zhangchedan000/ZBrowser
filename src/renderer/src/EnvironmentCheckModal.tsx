@@ -20,7 +20,7 @@ const CHECK_SITES = [
   { key: 'pixelscan', name: 'Pixelscan', url: 'https://pixelscan.net/', note: '综合浏览器环境一致性' },
   { key: 'iphey', name: 'IPhey', url: 'https://iphey.com/', note: '综合指纹与网络环境' },
   { key: 'creepjs', name: 'CreepJS', url: 'https://abrahamjuliot.github.io/creepjs/', note: '高级浏览器指纹信息' }
-] as const
+]
 
 const levelMeta: Record<EnvironmentCheckLevel, { color: string; label: string }> = {
   ok: { color: 'success', label: '正常' },
