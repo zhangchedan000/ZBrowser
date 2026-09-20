@@ -1,0 +1,96 @@
+name: Windows Full E2E
+
+on:
+  push:
+    branches: [dev]
+    paths:
+      - "src/**"
+      - "tools/app-e2e/**"
+      - "package.json"
+      - "package-lock.json"
+      - ".github/workflows/windows-full-e2e.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: windows-full-e2e-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  full-e2e:
+    runs-on: windows-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Unit and integration tests
+        run: npm test
+
+      - name: Build application
+        run: npm run build
+
+      - name: Development-runtime full app E2E
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path test-results | Out-Null
+          npm run audit:app-e2e -- --install-kernel-version 144.0.7559.132 --output test-results/app-e2e-development.json
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Build Windows packages
+        run: npm run dist:win
+
+      - name: Locate packaged ZBrowser executable
+        shell: pwsh
+        run: |
+          $app = Get-ChildItem -Path release -Filter "ZBrowser.exe" -File -Recurse |
+            Where-Object { $_.FullName -match "win-unpacked" } |
+            Select-Object -First 1
+          if (-not $app) {
+            Get-ChildItem -Path release -Recurse | Select-Object FullName
+            throw "Packaged ZBrowser.exe was not found under release/win-unpacked"
+          }
+          "ZBROWSER_PACKAGED_APP=$($app.FullName)" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          Write-Host "Packaged app: $($app.FullName)"
+
+      - name: Packaged-app full E2E
+        shell: pwsh
+        run: |
+          npm run audit:app-e2e -- --app "$env:ZBROWSER_PACKAGED_APP" --packaged --install-kernel-version 144.0.7559.132 --output test-results/app-e2e-packaged.json
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Verify release deliverables
+        shell: pwsh
+        run: |
+          $msi = Get-ChildItem release -Filter "*.msi" -File
+          $portable = Get-ChildItem release -Filter "*.exe" -File | Where-Object { $_.Name -notmatch "win-unpacked" }
+          $zip = Get-ChildItem release -Filter "*.zip" -File
+          if (-not $msi) { throw "MSI release artifact missing" }
+          if (-not $portable) { throw "Portable EXE release artifact missing" }
+          if (-not $zip) { throw "ZIP release artifact missing" }
+          Write-Host "MSI:"
+          $msi | Select-Object Name,Length
+          Write-Host "EXE:"
+          $portable | Select-Object Name,Length
+          Write-Host "ZIP:"
+          $zip | Select-Object Name,Length
+
+      - name: Upload full E2E reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ZBrowser-Windows-Full-E2E
+          path: |
+            test-results/*.json
+          if-no-files-found: warn
