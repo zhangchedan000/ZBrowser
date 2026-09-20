@@ -38,6 +38,12 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Diagnose kernel patch hash
+        shell: pwsh
+        run: |
+          $hash = (Get-FileHash -Algorithm SHA256 -LiteralPath "tools/kernel-patches/004-screen-size.patch").Hash.ToLowerInvariant()
+          Write-Host "004-screen-size.patch SHA256=$hash"
+
       - name: Unit and integration tests
         run: npm test
 
