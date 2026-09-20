@@ -34,7 +34,7 @@
       "id": "screen-size",
       "seriesPath": "extra/fingerprint/004-screen-size.patch",
       "file": "004-screen-size.patch",
-      "sha256": "0e1a76b7dd594d00a5c600a48104e844b945a6cf77be6941294b8a35a3ca67ce",
+      "sha256": "eda1b13edfb3b6e4023a834475bb84542f925aa599145271ab982f06ce655b02",
       "appliedMarkers": [
         "third_party/blink/renderer/core/frame/screen.cc::has_fingerprint_size"
       ]
