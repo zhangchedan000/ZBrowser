@@ -15,6 +15,7 @@ export interface LaunchArgumentOptions {
   hostPlatformVersion?: string
   proxyIdentity?: ProxyCheckSummary
   allowGeoConflict?: boolean
+  startUrls?: string[]
 }
 
 export function profileWindowName(profile: Pick<BrowserProfile, 'serialNumber' | 'name'>): string {
@@ -93,6 +94,6 @@ export function buildLaunchArgs(profile: BrowserProfile, options: LaunchArgument
   }
   if (options.remoteDebuggingPort) args.push(`--remote-debugging-port=${options.remoteDebuggingPort}`)
   if (options.extensionPaths?.length) args.push(`--load-extension=${options.extensionPaths.join(',')}`)
-  args.push(...profile.startUrls)
+  args.push(...(options.startUrls ?? profile.startUrls))
   return args
 }
