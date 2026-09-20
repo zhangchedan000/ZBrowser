@@ -2,7 +2,7 @@ import { execFile } from 'node:child_process'
 import { createHash } from 'node:crypto'
 import { createReadStream, createWriteStream } from 'node:fs'
 import { access, cp, mkdir, mkdtemp, readdir, readFile, rename, rm, stat, statfs, writeFile } from 'node:fs/promises'
-import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'node:path'
+import { basename, dirname, extname, isAbsolute, join, relative, resolve, sep } from 'node:path'
 import { pipeline } from 'node:stream/promises'
 import { Readable, Transform } from 'node:stream'
 import { promisify } from 'node:util'
@@ -220,7 +220,7 @@ export class KernelManager {
     const downloadsPath = join(this.vaultPath, 'downloads')
     const kernelsPath = join(this.vaultPath, 'kernels')
     await Promise.all([mkdir(downloadsPath, { recursive: true }), mkdir(kernelsPath, { recursive: true })])
-    const archivePath = join(downloadsPath, `${version}-${basename(release.assetName)}.download`)
+    const archivePath = join(downloadsPath, `${version}-${basename(release.assetName)}.download${extname(release.assetName)}`)
 
     try {
       await this.assertDownloadSpace(downloadsPath, archivePath, release.size)
