@@ -35,7 +35,7 @@ let automation: ProAgentManager | null = null
 let scheduler: SchedulerManager | null = null
 let mcp: McpControlManager | null = null
 
-if (process.platform === 'win32') app.setAppUserModelId('com.prismbrowser.desktop')
+if (process.platform === 'win32') app.setAppUserModelId('com.zbrowser.desktop')
 
 if (process.env.PRISM_E2E === '1' && process.env.PRISM_E2E_USER_DATA && isAbsolute(process.env.PRISM_E2E_USER_DATA)) {
   app.setPath('userData', process.env.PRISM_E2E_USER_DATA)
@@ -48,7 +48,7 @@ function createWindow(): BrowserWindow {
     minWidth: 1040,
     minHeight: 680,
     show: false,
-    title: 'Prism Browser',
+    title: 'ZBrowser',
     backgroundColor: '#f3f5f9',
     webPreferences: {
       preload: join(__dirname, '../preload/index.cjs'),
@@ -95,7 +95,7 @@ app.whenReady().then(async () => {
   await Promise.all([automationAudit.initialize(), schedulerAudit.initialize(), mcpAudit.initialize()])
   const appSessionSnapshot = await appSession.begin(app.getVersion())
   if (appSessionSnapshot.previousUnclean) {
-    logger.error('检测到上次 Prism Browser 未正常退出', appSessionSnapshot.previousUnclean)
+    logger.error('检测到上次 ZBrowser 未正常退出', appSessionSnapshot.previousUnclean)
   }
   await Promise.all([profiles.initialize(), settings.initialize(), extensions.initialize()])
   const kernelMigration = await migrateMacLegacyKernelSelection(settings, vaultPath)
@@ -110,7 +110,7 @@ app.whenReady().then(async () => {
   const profileStorageHealth = profiles.storageHealth()
   if (profileStorageHealth.recoveredFromBackup) logger.error('环境元数据已从备份恢复', profileStorageHealth)
   if (!profileStorageHealth.backupHealthy) logger.error('环境元数据备份不可用', profileStorageHealth.backupError)
-  logger.info('Prism Browser 已启动', { version: app.getVersion(), platform: process.platform, arch: process.arch })
+  logger.info('ZBrowser 已启动', { version: app.getVersion(), platform: process.platform, arch: process.arch })
 
   launcher = new BrowserLauncher(profiles, settings, (profile) => {
     mainWindow?.webContents.send('profiles:changed', publicProfile(profile))
@@ -175,10 +175,10 @@ app.whenReady().then(async () => {
     if (BrowserWindow.getAllWindows().length === 0) mainWindow = createWindow()
   })
 }).catch(async (error) => {
-  logger?.error('Prism Browser 启动失败', error)
+  logger?.error('ZBrowser 启动失败', error)
   await logger?.flush()
   dialog.showErrorBox(
-    'Prism Browser 无法启动',
+    'ZBrowser 无法启动',
     '应用启动失败，但现有环境数据没有被修改。请重新启动；如仍然失败，请查看日志文件。'
   )
   app.quit()
@@ -198,7 +198,7 @@ app.on('before-quit', (event) => {
   void Promise.allSettled([scheduler?.shutdown() ?? Promise.resolve(), mcp?.shutdown() ?? Promise.resolve()]).then(() => Promise.allSettled([
     current.closeAll(), automation?.stop(false) ?? Promise.resolve()
   ])).finally(async () => {
-    logger?.info('Prism Browser 已退出')
+    logger?.info('ZBrowser 已退出')
     await appSession?.complete().catch((error) => logger?.error('清理应用会话标记失败', error))
     await logger?.flush()
     app.quit()
