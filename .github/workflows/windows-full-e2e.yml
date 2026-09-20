@@ -6,6 +6,9 @@ on:
     paths:
       - "src/**"
       - "tools/app-e2e/**"
+      - "tools/kernel-lock.json"
+      - "tools/kernel-patches/**"
+      - "tools/windows-kernel/patches/**"
       - "package.json"
       - "package-lock.json"
       - ".github/workflows/windows-full-e2e.yml"
