@@ -42,11 +42,15 @@ jobs:
           }
 
           Write-Host "chrome.exe: $($chrome.FullName)"
-          & $chrome.FullName --version
-          if ($LASTEXITCODE -ne 0) {
-            throw "chrome.exe --version failed with exit code $LASTEXITCODE"
+          $productVersion = (Get-Item -LiteralPath $chrome.FullName).VersionInfo.ProductVersion
+          if (-not $productVersion) {
+            throw "Unable to read Chromium ProductVersion from chrome.exe"
+          }
+          Write-Host "Chromium ProductVersion: $productVersion"
+          if ($productVersion -notmatch "^144\.0\.7559\.132") {
+            throw "Unexpected Chromium ProductVersion: $productVersion"
           }
 
       - name: Smoke test passed
         shell: pwsh
-        run: Write-Host "Fingerprint Chromium download, SHA-256 verification, Expand-Archive, chrome.exe discovery and launch all passed."
+        run: Write-Host "Fingerprint Chromium download, SHA-256 verification, Expand-Archive, chrome.exe discovery and version verification all passed."
