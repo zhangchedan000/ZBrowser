@@ -140,7 +140,7 @@ export function registerIpc({ profiles, settings, launcher, kernels, extensions,
   })
   ipcMain.handle('profiles:import-backup', async () => {
     const owner = BrowserWindow.getFocusedWindow()
-    const options: Electron.OpenDialogOptions = { title: '选择 Prism 环境数据备份目录', properties: ['openDirectory'] }
+    const options: Electron.OpenDialogOptions = { title: '选择 ZBrowser 环境数据备份目录', properties: ['openDirectory'] }
     const result = owner ? await dialog.showOpenDialog(owner, options) : await dialog.showOpenDialog(options)
     if (result.canceled || !result.filePaths[0]) return null
     const imported = await backups.import(result.filePaths[0])
@@ -153,7 +153,7 @@ export function registerIpc({ profiles, settings, launcher, kernels, extensions,
     const stamp = new Date().toISOString().slice(0, 10)
     const options: Electron.SaveDialogOptions = {
       title: '导出全部环境加密迁移包',
-      defaultPath: `Prism 全部环境 ${stamp}.prism-migration`,
+      defaultPath: `ZBrowser 全部环境 ${stamp}.zbrowser-migration`,
       filters: [{ name: 'ZBrowser 加密迁移包', extensions: ['zbrowser-migration', 'prism-migration'] }]
     }
     const result = owner ? await dialog.showSaveDialog(owner, options) : await dialog.showSaveDialog(options)
@@ -167,7 +167,7 @@ export function registerIpc({ profiles, settings, launcher, kernels, extensions,
     const options: Electron.OpenDialogOptions = {
       title: '导入全部环境加密迁移包',
       properties: ['openFile'],
-      filters: [{ name: 'Prism 加密迁移包', extensions: ['prism-migration'] }]
+      filters: [{ name: 'ZBrowser/旧版兼容迁移包', extensions: ['zbrowser-migration', 'prism-migration'] }]
     }
     const result = owner ? await dialog.showOpenDialog(owner, options) : await dialog.showOpenDialog(options)
     if (result.canceled || !result.filePaths[0]) return null
