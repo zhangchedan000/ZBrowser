@@ -208,7 +208,20 @@ async function launchAppOnce(options, userDataPath) {
   try {
     const client = new CdpClient(await waitForRenderer(port, child))
     await client.open()
-    await evaluate(client, 'window.browserApi && document.readyState === "complete"')
+    let appReady = false
+    for (let attempt = 0; attempt < 300; attempt += 1) {
+      if (child.exitCode !== null || child.signalCode !== null) {
+        throw new Error(`Prism exited before renderer API became ready (code=${child.exitCode ?? '-'}, signal=${child.signalCode ?? '-'})`)
+      }
+      try {
+        appReady = await evaluate(client, 'Boolean(window.browserApi?.engine) && document.readyState === "complete"')
+        if (appReady) break
+      } catch {
+        // Packaged Electron may still be navigating the renderer target.
+      }
+      await delay(100)
+    }
+    if (!appReady) throw new Error('Timed out waiting for app renderer API')
     return { child, client, stderr: () => stderr }
   } catch (error) {
     child.kill('SIGKILL')
