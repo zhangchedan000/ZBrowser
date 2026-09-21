@@ -187,7 +187,7 @@ async function waitForExit(child, milliseconds) {
   return child.exitCode !== null || child.signalCode !== null
 }
 
-async function launchApp(options, userDataPath) {
+async function launchAppOnce(options, userDataPath) {
   const port = await reservePort()
   const args = [`--remote-debugging-address=127.0.0.1`, `--remote-debugging-port=${port}`]
   if (!options.packaged) args.push(resolve('.'))
@@ -210,8 +210,22 @@ async function launchApp(options, userDataPath) {
     return { child, client, stderr: () => stderr }
   } catch (error) {
     child.kill('SIGKILL')
+    await waitForExit(child, 5_000).catch(() => undefined)
     throw new Error(`${error instanceof Error ? error.message : String(error)}${stderr ? `\nPrism stderr:\n${stderr}` : ''}`)
   }
+}
+
+async function launchApp(options, userDataPath) {
+  let lastError
+  for (let attempt = 1; attempt <= 2; attempt += 1) {
+    try {
+      return await launchAppOnce(options, userDataPath)
+    } catch (error) {
+      lastError = error
+      if (attempt < 2) await delay(2_000)
+    }
+  }
+  throw lastError
 }
 
 async function quitApp(instance) {
