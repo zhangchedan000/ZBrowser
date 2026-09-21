@@ -429,19 +429,26 @@ async function main() {
       ])
       await new Promise(resolve => setTimeout(resolve, 1500))
       const running = await window.browserApi.profiles.list()
-      await window.browserApi.profiles.closeAll()
-      const closed = await window.browserApi.profiles.list()
-      await window.browserApi.profiles.remove(copy.id)
       return {
         a, editedA, updated, copy, kernelCatalog, remoteCatalog, managedKernelInstall, communityKernelActivated, proKernelLockedWithoutLicense,
         launchedStatuses: launched.map(profile => profile.status),
         runningStatuses: running.filter(profile => [a.id, updated.id].includes(profile.id)).map(profile => profile.status),
-        closedStatuses: closed.filter(profile => [a.id, updated.id].includes(profile.id)).map(profile => profile.status),
-        crashHistory: await window.browserApi.profiles.crashHistory(a.id),
+        crashHistory: await window.browserApi.profiles.crashHistory(a.id)
+      }
+    })()`)
+
+    const runtimeFingerprint = await probeRuntimeFingerprint(appData, firstRun.editedA.id)
+    const cleanupRun = await evaluate(first.client, `(async () => {
+      await window.browserApi.profiles.closeAll()
+      const closed = await window.browserApi.profiles.list()
+      await window.browserApi.profiles.remove(${JSON.stringify(firstRun.copy.id)})
+      return {
+        closedStatuses: closed.filter(profile => [${JSON.stringify(firstRun.a.id)}, ${JSON.stringify(firstRun.updated.id)}].includes(profile.id)).map(profile => profile.status),
         remaining: (await window.browserApi.profiles.list()).map(profile => ({ id: profile.id, name: profile.name, seed: profile.fingerprint.seed })),
         trash: await window.browserApi.profiles.trash()
       }
     })()`)
+    Object.assign(firstRun, cleanupRun)
     await quitApp(first)
     first = undefined
 
