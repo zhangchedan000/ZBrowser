@@ -9,35 +9,68 @@ const HTTP_PROXY = process.env.ZBROWSER_TEST_HTTP_PROXY_URL?.trim()
 const SOCKS5_PROXY = process.env.ZBROWSER_TEST_SOCKS5_PROXY?.trim()
 const OUTPUT = resolve(process.env.ZBROWSER_PROXY_E2E_OUTPUT || 'test-results/proxy-e2e.json')
 
-function normalizeProxyInput(raw, defaultProtocol) {
-  const value = String(raw ?? '').trim()
-  if (!value) return ''
+function proxyProtocol(defaultProtocol) {
+  return defaultProtocol === 'socks5' ? 'socks' : defaultProtocol
+}
 
-  const protocol = defaultProtocol === 'socks5' ? 'socks' : defaultProtocol
-  const explicit = value.match(/(?:https?|socks5h?|socks):\/\/[^\s]+/i)?.[0]
-  if (explicit) {
-    const parsed = new URL(explicit.replace(/["']+$/, ''))
-    if (parsed.protocol === 'socks5:') parsed.protocol = 'socks:'
-    return parsed.toString().replace(/\/$/, '')
+function looksLikeHost(value) {
+  const text = String(value ?? '').trim()
+  if (!text) return false
+  if (/^\d{1,3}(?:\.\d{1,3}){3}$/.test(text)) return true
+  return /^[a-z0-9.-]+\.[a-z]{2,}$/i.test(text) || text === 'localhost'
+}
+
+function looksLikePort(value) {
+  const port = Number(String(value ?? '').trim())
+  return Number.isInteger(port) && port > 0 && port <= 65535
+}
+
+function proxyUrl(protocol, host, port, username = '', password = '') {
+  const auth = username || password
+    ? `${encodeURIComponent(username)}:${encodeURIComponent(password)}@`
+    : ''
+  return `${protocol}://${auth}${host}:${port}`
+}
+
+function normalizeProxyCandidates(raw, defaultProtocol) {
+  const value = String(raw ?? '').trim()
+  if (!value) return []
+
+  const protocol = proxyProtocol(defaultProtocol)
+  const candidates = []
+  const add = (candidate) => {
+    if (candidate && !candidates.includes(candidate)) candidates.push(candidate)
   }
 
-  const parts = value.split(':')
-  if (parts.length >= 4) {
-    const host = parts.shift()
-    const port = parts.shift()
-    const username = parts.shift()
-    const password = parts.join(':').trim()
-    if (host && port && username && password) {
-      return `${protocol}://${encodeURIComponent(username)}:${encodeURIComponent(password)}@${host.trim()}:${port.trim()}`
+  for (const match of value.matchAll(/(?:https?|socks5h?|socks):\/\/[^\s"']+/gi)) {
+    const parsed = new URL(match[0])
+    if (parsed.protocol === 'socks5:') parsed.protocol = 'socks:'
+    add(parsed.toString().replace(/\/$/, ''))
+  }
+
+  const atMatch = value.match(/([^\s:@]+):([^\s@]+)@([^\s:]+):(\d{1,5})/)
+  if (atMatch) add(proxyUrl(protocol, atMatch[3], atMatch[4], atMatch[1], atMatch[2]))
+
+  const tokens = value.split(/[|,;\s:]+/).map((item) => item.trim()).filter(Boolean)
+  if (tokens.length === 2 && looksLikeHost(tokens[0]) && looksLikePort(tokens[1])) {
+    add(proxyUrl(protocol, tokens[0], tokens[1]))
+  }
+
+  if (tokens.length === 4) {
+    for (let hostIndex = 0; hostIndex < tokens.length; hostIndex += 1) {
+      if (!looksLikeHost(tokens[hostIndex])) continue
+      for (let portIndex = 0; portIndex < tokens.length; portIndex += 1) {
+        if (portIndex === hostIndex || !looksLikePort(tokens[portIndex])) continue
+        const credentials = tokens.filter((_, index) => index !== hostIndex && index !== portIndex)
+        if (credentials.length !== 2) continue
+        add(proxyUrl(protocol, tokens[hostIndex], tokens[portIndex], credentials[0], credentials[1]))
+        add(proxyUrl(protocol, tokens[hostIndex], tokens[portIndex], credentials[1], credentials[0]))
+      }
     }
   }
 
-  if (parts.length === 2) {
-    const [host, port] = parts
-    if (host && port) return `${protocol}://${host.trim()}:${port.trim()}`
-  }
-
-  throw new Error(`Unsupported proxy format for ${defaultProtocol}`)
+  if (!candidates.length) throw new Error(`Unsupported proxy format for ${defaultProtocol}`)
+  return candidates
 }
 
 function redact(value) {
@@ -153,19 +186,28 @@ async function main() {
     throw new Error('Both ZBROWSER_TEST_HTTP_PROXY_URL and ZBROWSER_TEST_SOCKS5_PROXY are required')
   }
 
-  const normalizedHttpProxy = normalizeProxyInput(HTTP_PROXY, 'http')
-  const normalizedSocks5Proxy = normalizeProxyInput(SOCKS5_PROXY, 'socks5')
+  const normalizedHttpCandidates = normalizeProxyCandidates(HTTP_PROXY, 'http')
+  const normalizedSocks5Candidates = normalizeProxyCandidates(SOCKS5_PROXY, 'socks5')
 
   const directIp = await fetchText('https://ipv4.icanhazip.com/')
   const results = []
-  for (const [name, proxy] of [['http', normalizedHttpProxy], ['socks5', normalizedSocks5Proxy]]) {
-    try {
-      const result = await probe(name, proxy, directIp)
-      results.push(result)
-      console.log(`PASS ${name}: exit=${result.exitIp} country=${result.countryCode ?? '-'} timezone=${result.timezone ?? '-'}`)
-    } catch (error) {
-      results.push({ name, ok: false, error: redact(error instanceof Error ? error.message : error) })
-      console.error(`FAIL ${name}: ${redact(error instanceof Error ? error.message : error)}`)
+  for (const [name, candidates] of [['http', normalizedHttpCandidates], ['socks5', normalizedSocks5Candidates]]) {
+    let passed
+    let lastError
+    for (const proxy of candidates) {
+      try {
+        passed = await probe(name, proxy, directIp)
+        break
+      } catch (error) {
+        lastError = error
+      }
+    }
+    if (passed) {
+      results.push(passed)
+      console.log(`PASS ${name}: exit=${passed.exitIp} country=${passed.countryCode ?? '-'} timezone=${passed.timezone ?? '-'}`)
+    } else {
+      results.push({ name, ok: false, error: redact(lastError instanceof Error ? lastError.message : lastError) })
+      console.error(`FAIL ${name}: ${redact(lastError instanceof Error ? lastError.message : lastError)}`)
     }
   }
 
