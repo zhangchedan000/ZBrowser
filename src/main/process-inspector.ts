@@ -72,7 +72,7 @@ async function waitForExit(pid: number, durationMs: number): Promise<boolean> {
 export class SystemProcessInspector implements ProcessInspector {
   async list(): Promise<SystemProcess[]> {
     if (process.platform === 'win32') {
-      const command = "$items = Get-CimInstance Win32_Process | Where-Object { $_.CommandLine -like '*--user-data-dir=*' } | Select-Object ProcessId,CommandLine; @($items) | ConvertTo-Json -Compress"
+      const command = "$items = Get-CimInstance Win32_Process -Filter \"CommandLine LIKE '%--user-data-dir=%'\" | Select-Object ProcessId,CommandLine; @($items) | ConvertTo-Json -Compress"
       const { stdout } = await execFileAsync('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', command], { maxBuffer: 8 * 1024 * 1024 })
       if (!stdout.trim()) return []
       const parsed = JSON.parse(stdout) as { ProcessId: number; CommandLine: string | null } | Array<{ ProcessId: number; CommandLine: string | null }>
