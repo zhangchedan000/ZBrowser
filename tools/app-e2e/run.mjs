@@ -404,6 +404,7 @@ async function main() {
         && editedLaunch.args.includes('--fingerprint-hardware-concurrency=16')
         && editedLaunch.args.includes('--fingerprint-screen-width=2560')
         && editedLaunch.args.includes('--fingerprint-screen-height=1440')
+        && editedLaunch.args.includes('--fingerprint-device-scale-factor=1')
         && editedLaunch.args.includes('--fingerprint-language=en-US')
         && editedLaunch.args.includes('--lang=en-US')
         && editedLaunch.args.includes('--accept-lang=en-US,en')
