@@ -1,3 +1,4 @@
+import { resolve } from 'node:path'
 import type { EngineStatus } from '../../shared/types'
 import type { Logger } from '../app-logger'
 import { KernelManager } from '../kernel-manager'
@@ -7,13 +8,13 @@ import { KernelRegistry, type ManagedKernelRecord } from './kernel-registry'
 export class ManagedKernelManager extends KernelManager {
   constructor(
     vaultPath: string,
-    settings: SettingsStore,
+    private readonly managedSettings: SettingsStore,
     onProgress: ConstructorParameters<typeof KernelManager>[2],
     logger: Logger | undefined,
     kernelUsers: ConstructorParameters<typeof KernelManager>[4],
     private readonly registry: KernelRegistry
   ) {
-    super(vaultPath, settings, onProgress, logger, kernelUsers)
+    super(vaultPath, managedSettings, onProgress, logger, kernelUsers)
   }
 
   async initialize(): Promise<void> {
@@ -53,6 +54,8 @@ export class ManagedKernelManager extends KernelManager {
     const installed = await super.installed()
     const registered = await this.registry.list()
     const installedIds = new Set<string>()
+    const configuredExecutable = this.managedSettings.get().browserExecutable
+    const activeExecutable = configuredExecutable ? resolve(configuredExecutable) : undefined
 
     for (const release of installed) {
       if (!release.executable) continue
@@ -69,7 +72,7 @@ export class ManagedKernelManager extends KernelManager {
         executablePath: release.executable,
         installedAt: release.publishedAt,
         sha256: release.sha256,
-        enabled: false
+        enabled: activeExecutable === resolve(release.executable)
       })
     }
 
