@@ -218,6 +218,13 @@ export class BrowserLauncher {
       }
       const pipeControlEnabled = process.platform !== 'win32'
       if (pipeControlEnabled) args.push('--remote-debugging-pipe')
+      else if (e2eEnabled) {
+        // Windows production launches keep remote debugging disabled. E2E uses
+        // an ephemeral loopback-only port so the test harness can inspect the
+        // actual page-visible fingerprint surfaces of the spawned Chromium.
+        args.push('--remote-debugging-address=127.0.0.1')
+        args.push('--remote-debugging-port=0')
+      }
       await writeFile(
         join(runtimePath, 'last-launch.json'),
         JSON.stringify({ executable: engine.executable, args, launchedAt: new Date().toISOString() }, null, 2),
