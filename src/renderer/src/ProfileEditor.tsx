@@ -30,6 +30,7 @@ import {
   refreshSeededGpuIdentity
 } from '../../shared/hardware-profiles'
 import { effectiveNetworkIdentity, localeForCountry } from '../../shared/network-identity'
+import { isKernelDowngrade } from '../../shared/kernel-version'
 import type { BrowserExtension, BrowserProfileView, EngineStatus, HardwareProfileId, KernelRelease, ProfileDraft, ProxyTestResult } from '../../shared/types'
 
 interface EditorValues extends Omit<ProfileDraft, 'startUrls' | 'color'> {
@@ -201,10 +202,14 @@ export function ProfileEditor({ open, profile, suggestedIndex, saving, extension
         <Select
           options={[
             { value: '', label: `自动跟随当前内核${engine?.version ? ` · ${engine.version}` : ''}` },
-            ...kernels.map((kernel) => ({
-              value: kernel.version,
-              label: `${kernel.version}${kernel.origin === 'local-build' ? ' · 本地构建' : ''}`
-            })),
+            ...kernels.map((kernel) => {
+              const downgrade = Boolean(profile?.kernelVersion && isKernelDowngrade(profile.kernelVersion, kernel.version))
+              return {
+                value: kernel.version,
+                label: `${kernel.version}${kernel.origin === 'local-build' ? ' · 本地构建' : ''}${downgrade ? ' · 不可降级' : ''}`,
+                disabled: downgrade
+              }
+            }),
             ...(kernelVersion && !pinnedKernel ? [{ value: kernelVersion, label: `${kernelVersion} · 当前未安装` }] : [])
           ]}
         />
