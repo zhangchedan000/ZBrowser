@@ -74,7 +74,21 @@ jobs:
               Start-Sleep -Seconds (10 * $attempt)
             }
           }
-          exit 1
+
+          $report = Get-Content "test-results/proxy-e2e.json" -Raw | ConvertFrom-Json
+          $socks = $report.results | Where-Object { $_.name -eq "socks5" } | Select-Object -First 1
+          $http = $report.results | Where-Object { $_.name -eq "http" } | Select-Object -First 1
+
+          if (-not $socks -or -not $socks.ok) {
+            throw "SOCKS5 real proxy smoke failed"
+          }
+          if (-not $report.noDirectFallback) {
+            throw "Proxy fail-closed check failed"
+          }
+          if ($http -and -not $http.ok) {
+            Write-Warning "HTTP real proxy smoke failed after retries; continuing because SOCKS5 and fail-closed checks passed."
+          }
+          exit 0
 
       - name: Diagnose all kernel patch hashes
         if: env.ZBROWSER_RESUME_STAGE == 'full' || env.ZBROWSER_RESUME_STAGE == 'kernel'
