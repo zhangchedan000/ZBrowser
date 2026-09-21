@@ -485,6 +485,19 @@ async function main() {
         && firstRun.editedA.fingerprint.webrtcPolicy === 'proxy_only'
         && firstRun.editedA.fingerprint.disabledSpoofing.includes('canvas')
         && firstRun.editedA.fingerprint.disabledSpoofing.includes('audio'),
+      runtimeHardwareFingerprintVisible: runtimeFingerprint.hardwareConcurrency === 16
+        && runtimeFingerprint.deviceMemory === 8
+        && runtimeFingerprint.devicePixelRatio === 1
+        && runtimeFingerprint.screen.width === 2560
+        && runtimeFingerprint.screen.height === 1440
+        && runtimeFingerprint.screen.colorDepth === 24
+        && runtimeFingerprint.screen.pixelDepth === 24
+        && runtimeFingerprint.platform === 'Win32'
+        && runtimeFingerprint.language === 'en-US'
+        && runtimeFingerprint.timezone === 'America/New_York'
+        && runtimeFingerprint.uaData?.platform === 'Windows'
+        && runtimeFingerprint.uaData?.architecture === 'x86'
+        && runtimeFingerprint.uaData?.bitness === '64',
       fingerprintEditReachedLaunchArgs: Array.isArray(editedLaunch.args)
         && editedLaunch.args.includes('--fingerprint-platform=windows')
         && editedLaunch.args.includes('--fingerprint-platform-version=10.0.0')
@@ -533,6 +546,7 @@ async function main() {
       app: options.app,
       appMode: options.packaged ? 'packaged' : 'development-runtime',
       browser: options.browser || `managed:${options.installKernelVersion}`,
+      runtimeFingerprint,
       checks,
       passed: Object.values(checks).every(Boolean),
       retainedDataPath: options.keepData ? root : undefined
