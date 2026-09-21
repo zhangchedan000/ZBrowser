@@ -60,6 +60,14 @@ export interface FingerprintConfig {
   proxyExitPolicy: ProxyExitPolicy
   screenWidth: number
   screenHeight: number
+  /** Browser-visible hardware identity. Optional for legacy/host-matched profiles. */
+  architecture?: 'x86' | 'arm'
+  bitness?: '64'
+  deviceMemoryGb?: 0.25 | 0.5 | 1 | 2 | 4 | 8
+  devicePixelRatio?: number
+  colorDepth?: 24
+  pixelDepth?: 24
+  hardwarePersonaId?: string
   disabledSpoofing: Array<'font' | 'audio' | 'canvas' | 'clientrects' | 'gpu'>
 }
 
