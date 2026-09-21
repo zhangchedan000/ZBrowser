@@ -47,7 +47,8 @@ function parseArguments(argv) {
     packaged: false,
     keepData: false,
     expectedKernelVersions: [],
-    installKernelVersion: ''
+    installKernelVersion: '',
+    requireCustomKernelSurfaces: false
   }
   for (let index = 0; index < argv.length; index += 1) {
     const argument = argv[index]
@@ -58,6 +59,7 @@ function parseArguments(argv) {
     else if (argument === '--keep-data') options.keepData = true
     else if (argument === '--expected-kernel-version') options.expectedKernelVersions.push(argv[++index] ?? '')
     else if (argument === '--install-kernel-version') options.installKernelVersion = argv[++index] ?? ''
+    else if (argument === '--require-custom-kernel-surfaces') options.requireCustomKernelSurfaces = true
     else throw new Error(`Unknown argument: ${argument}`)
   }
   if (!options.browser && !options.installKernelVersion) {
@@ -474,6 +476,19 @@ async function main() {
     second = undefined
 
     const owners = await Promise.all(secondRun.profiles.map((profile) => readOwner(appData, profile.id)))
+    const runtimeBaseFingerprintVisible = runtimeFingerprint.hardwareConcurrency === 16
+      && runtimeFingerprint.devicePixelRatio === 1
+      && runtimeFingerprint.screen.colorDepth === 24
+      && runtimeFingerprint.screen.pixelDepth === 24
+      && runtimeFingerprint.platform === 'Win32'
+      && runtimeFingerprint.language === 'en-US'
+      && runtimeFingerprint.timezone === 'America/New_York'
+    const runtimeCustomKernelHardwareFingerprintVisible = runtimeFingerprint.deviceMemory === 8
+      && runtimeFingerprint.screen.width === 2560
+      && runtimeFingerprint.screen.height === 1440
+      && runtimeFingerprint.uaData?.platform === 'Windows'
+      && runtimeFingerprint.uaData?.architecture === 'x86'
+      && runtimeFingerprint.uaData?.bitness === '64'
     const checks = {
       createdIndependentProfiles: firstRun.a.id !== firstRun.updated.id,
       duplicatedWithNewIdentityAndSeed: firstRun.copy.id !== firstRun.a.id
@@ -491,19 +506,8 @@ async function main() {
         && firstRun.editedA.fingerprint.webrtcPolicy === 'proxy_only'
         && firstRun.editedA.fingerprint.disabledSpoofing.includes('canvas')
         && firstRun.editedA.fingerprint.disabledSpoofing.includes('audio'),
-      runtimeHardwareFingerprintVisible: runtimeFingerprint.hardwareConcurrency === 16
-        && runtimeFingerprint.deviceMemory === 8
-        && runtimeFingerprint.devicePixelRatio === 1
-        && runtimeFingerprint.screen.width === 2560
-        && runtimeFingerprint.screen.height === 1440
-        && runtimeFingerprint.screen.colorDepth === 24
-        && runtimeFingerprint.screen.pixelDepth === 24
-        && runtimeFingerprint.platform === 'Win32'
-        && runtimeFingerprint.language === 'en-US'
-        && runtimeFingerprint.timezone === 'America/New_York'
-        && runtimeFingerprint.uaData?.platform === 'Windows'
-        && runtimeFingerprint.uaData?.architecture === 'x86'
-        && runtimeFingerprint.uaData?.bitness === '64',
+      runtimeHardwareFingerprintVisible: runtimeBaseFingerprintVisible
+        && (!options.requireCustomKernelSurfaces || runtimeCustomKernelHardwareFingerprintVisible),
       fingerprintEditReachedLaunchArgs: Array.isArray(editedLaunch.args)
         && editedLaunch.args.includes('--fingerprint-platform=windows')
         && editedLaunch.args.includes('--fingerprint-platform-version=10.0.0')
@@ -553,7 +557,12 @@ async function main() {
       app: options.app,
       appMode: options.packaged ? 'packaged' : 'development-runtime',
       browser: options.browser || `managed:${options.installKernelVersion}`,
+      requireCustomKernelSurfaces: options.requireCustomKernelSurfaces,
       runtimeFingerprint,
+      runtimeSurfaceDiagnostics: {
+        baseFingerprintVisible: runtimeBaseFingerprintVisible,
+        customKernelHardwareFingerprintVisible: runtimeCustomKernelHardwareFingerprintVisible
+      },
       checks,
       passed: Object.values(checks).every(Boolean),
       retainedDataPath: options.keepData ? root : undefined
