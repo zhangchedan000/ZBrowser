@@ -9,6 +9,34 @@ const HTTP_PROXY = process.env.ZBROWSER_TEST_HTTP_PROXY_URL?.trim()
 const SOCKS5_PROXY = process.env.ZBROWSER_TEST_SOCKS5_PROXY?.trim()
 const OUTPUT = resolve(process.env.ZBROWSER_PROXY_E2E_OUTPUT || 'test-results/proxy-e2e.json')
 
+function normalizeProxyInput(raw, defaultProtocol) {
+  const value = String(raw ?? '').trim()
+  if (!value) return ''
+
+  const curlMatch = value.match(/(?:^|\s)-x\s+([^\s]+)/i)
+  if (curlMatch?.[1]) return normalizeProxyInput(curlMatch[1], defaultProtocol)
+
+  if (/^[a-z][a-z0-9+.-]*:\/\//i.test(value)) return value
+
+  const parts = value.split(':')
+  if (parts.length >= 4) {
+    const host = parts.shift()
+    const port = parts.shift()
+    const username = parts.shift()
+    const password = parts.join(':')
+    if (host && port && username && password) {
+      return `${defaultProtocol}://${encodeURIComponent(username)}:${encodeURIComponent(password)}@${host}:${port}`
+    }
+  }
+
+  if (parts.length === 2) {
+    const [host, port] = parts
+    if (host && port) return `${defaultProtocol}://${host}:${port}`
+  }
+
+  throw new Error(`Unsupported proxy format for ${defaultProtocol}`)
+}
+
 function redact(value) {
   return String(value ?? '')
     .replace(/\/\/([^/@:\s]+):([^/@\s]+)@/g, '//***:***@')
@@ -122,9 +150,12 @@ async function main() {
     throw new Error('Both ZBROWSER_TEST_HTTP_PROXY_URL and ZBROWSER_TEST_SOCKS5_PROXY are required')
   }
 
+  const normalizedHttpProxy = normalizeProxyInput(HTTP_PROXY, 'http')
+  const normalizedSocks5Proxy = normalizeProxyInput(SOCKS5_PROXY, 'socks5')
+
   const directIp = await fetchText('https://ipv4.icanhazip.com/')
   const results = []
-  for (const [name, proxy] of [['http', HTTP_PROXY], ['socks5', SOCKS5_PROXY]]) {
+  for (const [name, proxy] of [['http', normalizedHttpProxy], ['socks5', normalizedSocks5Proxy]]) {
     try {
       const result = await probe(name, proxy, directIp)
       results.push(result)
