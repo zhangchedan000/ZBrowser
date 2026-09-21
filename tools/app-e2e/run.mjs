@@ -316,6 +316,12 @@ async function probeRuntimeFingerprint(userDataPath, profileId) {
         hardwareConcurrency: navigator.hardwareConcurrency,
         deviceMemory: navigator.deviceMemory,
         devicePixelRatio: window.devicePixelRatio,
+        window: {
+          outerWidth: window.outerWidth,
+          outerHeight: window.outerHeight,
+          innerWidth: window.innerWidth,
+          innerHeight: window.innerHeight
+        },
         screen: {
           width: screen.width,
           height: screen.height,
@@ -505,6 +511,7 @@ async function main() {
         && editedLaunch.args.includes('--fingerprint-screen-width=2560')
         && editedLaunch.args.includes('--fingerprint-screen-height=1440')
         && editedLaunch.args.includes('--fingerprint-device-scale-factor=1')
+        && editedLaunch.args.includes('--window-size=1200,800')
         && editedLaunch.args.includes('--fingerprint-language=en-US')
         && editedLaunch.args.includes('--lang=en-US')
         && editedLaunch.args.includes('--accept-lang=en-US,en')
