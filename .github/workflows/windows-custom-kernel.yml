@@ -1,0 +1,111 @@
+name: Windows Custom Kernel Build
+
+on:
+  workflow_dispatch:
+    inputs:
+      jobs:
+        description: Ninja parallel jobs
+        required: false
+        default: "12"
+      build_root:
+        description: Persistent NTFS build root on the self-hosted runner
+        required: false
+        default: "D:\\zbrowser-kernel"
+
+permissions:
+  contents: read
+
+jobs:
+  build-custom-kernel:
+    runs-on: [self-hosted, Windows, X64, zbrowser-kernel]
+    timeout-minutes: 720
+    env:
+      ZBROWSER_KERNEL_BUILD_ROOT: ${{ inputs.build_root }}
+    steps:
+      - name: Checkout ZBrowser
+        uses: actions/checkout@v4
+
+      - name: Prepare clean Python venv
+        shell: pwsh
+        run: |
+          $venv = Join-Path $env:ZBROWSER_KERNEL_BUILD_ROOT "venv"
+          if (-not (Test-Path (Join-Path $venv "Scripts\\python.exe"))) {
+            py -3.12 -m venv $venv
+          }
+          (Join-Path $venv "Scripts") | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+
+      - name: Verify Windows kernel prerequisites
+        shell: pwsh
+        run: |
+          & .\\tools\\windows-kernel\\Check-Prerequisites.ps1 -BuildRoot $env:ZBROWSER_KERNEL_BUILD_ROOT
+
+      - name: Prepare pinned custom Chromium source
+        shell: pwsh
+        run: |
+          & .\\tools\\windows-kernel\\Prepare-Source.ps1 -BuildRoot $env:ZBROWSER_KERNEL_BUILD_ROOT
+
+      - name: Build and export custom kernel
+        shell: pwsh
+        run: |
+          $jobs = [int]"${{ inputs.jobs }}"
+          & .\\tools\\windows-kernel\\Build-Kernel.ps1 -BuildRoot $env:ZBROWSER_KERNEL_BUILD_ROOT -Jobs $jobs
+
+      - name: Install app dependencies
+        shell: pwsh
+        run: npm ci
+
+      - name: Ensure Electron runtime
+        shell: pwsh
+        run: |
+          $electron = "node_modules/electron/dist/electron.exe"
+          if (-not (Test-Path $electron)) {
+            node node_modules/electron/install.js
+          }
+          if (-not (Test-Path $electron)) {
+            throw "Electron runtime unavailable: $electron"
+          }
+
+      - name: Build ZBrowser
+        shell: pwsh
+        run: npm run build
+
+      - name: Resolve custom chrome.exe
+        id: kernel
+        shell: pwsh
+        run: |
+          $chrome = Join-Path $env:ZBROWSER_KERNEL_BUILD_ROOT "ungoogled-chromium-windows\\build\\src\\out\\Default\\chrome.exe"
+          if (-not (Test-Path $chrome)) {
+            throw "Custom Chromium executable not found: $chrome"
+          }
+          "chrome=$chrome" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+          $artifactRoot = Join-Path $env:ZBROWSER_KERNEL_BUILD_ROOT "artifacts\\144.0.7559.132-windows-x64"
+          if (-not (Test-Path $artifactRoot)) {
+            throw "Custom Chromium artifact directory not found: $artifactRoot"
+          }
+          "artifact_root=$artifactRoot" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+
+      - name: Runtime fingerprint E2E against custom kernel
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path test-results | Out-Null
+          npm run audit:app-e2e -- --browser "${{ steps.kernel.outputs.chrome }}" --require-custom-kernel-surfaces --output test-results/app-e2e-custom-kernel.json
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Upload custom kernel artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ZBrowser-Custom-Kernel-144-Windows-x64
+          path: ${{ steps.kernel.outputs.artifact_root }}/*
+          if-no-files-found: warn
+          compression-level: 0
+          retention-days: 30
+
+      - name: Upload custom kernel runtime report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ZBrowser-Custom-Kernel-Runtime-E2E
+          path: test-results/*.json
+          if-no-files-found: warn
+          retention-days: 30
