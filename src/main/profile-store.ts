@@ -4,6 +4,7 @@ import { dirname, join } from 'node:path'
 import type { BrowserProfile, DeletedProfileSummary, ProfileBatchClassification, ProfileDraft, ProfileStoreHealth, ProxyCheckSummary, WebRtcPolicy } from '../shared/types'
 import { defaultProfileWindow, seedFromId } from '../shared/defaults'
 import { refreshSeededGpuIdentity } from '../shared/hardware-profiles'
+import { isKernelDowngrade } from '../shared/kernel-version'
 import { validateProfileDraft } from '../shared/validation'
 import { identitySecretCodec, type SecretCodec } from './secret-codec'
 import { privateProxyConfig, sameProxyIdentity } from './profile-secrets'
@@ -305,6 +306,9 @@ export class ProfileStore {
       throw new Error('请先关闭浏览器环境再修改配置')
     }
     const draft = validateProfileDraft(input)
+    if (isKernelDowngrade(current.kernelVersion, draft.kernelVersion)) {
+      throw new Error(`为保持环境指纹稳定，已阻止内核从 ${current.kernelVersion} 降级到 ${draft.kernelVersion}；请升级版本或新建环境使用旧内核`)
+    }
     const keepStoredPassword = draft.proxy.protocol !== 'direct'
       && !draft.proxy.password
       && draft.proxy.passwordStored
