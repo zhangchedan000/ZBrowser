@@ -53,6 +53,7 @@ export function buildLaunchArgs(profile: BrowserProfile, options: LaunchArgument
     `--fingerprint-hardware-concurrency=${hardwareConcurrency}`,
     `--fingerprint-screen-width=${fp.screenWidth}`,
     `--fingerprint-screen-height=${fp.screenHeight}`,
+    ...(fp.devicePixelRatio ? [`--fingerprint-device-scale-factor=${fp.devicePixelRatio}`] : []),
     `--fingerprint-language=${networkIdentity.language}`,
     `--lang=${networkIdentity.language}`,
     `--accept-lang=${networkIdentity.acceptLanguages}`,
