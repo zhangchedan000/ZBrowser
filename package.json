@@ -12,7 +12,7 @@
     "dev": "electron-vite dev",
     "build": "npm run typecheck && electron-vite build",
     "dist:mac": "npm run build && electron-builder --mac dmg zip",
-    "dist:win": "npm run build && electron-builder --win msi portable zip --x64",
+    "dist:win": "npm run build && electron-builder --win msi portable zip --x64 --publish never",
     "preview": "electron-vite preview",
     "typecheck": "tsc --noEmit",
     "test": "npm run typecheck && vitest run --fileParallelism=false && npm run kernel:verify-lock",
