@@ -1,5 +1,89 @@
 import type { BrowserPlatform, FingerprintConfig, HardwareProfileId } from './types'
+import { hardwarePersona } from './fingerprint-hardware-database'
 import windowsGpuCatalog from './windows-gpu-catalog.json'
+
+export interface HardwareSurfaceIdentity {
+  personaId?: string
+  architecture?: 'x86' | 'arm'
+  bitness?: '64'
+  deviceMemoryGb?: 0.25 | 0.5 | 1 | 2 | 4 | 8
+  devicePixelRatio?: number
+  colorDepth?: 24
+  pixelDepth?: 24
+}
+
+const HARDWARE_PROFILE_PERSONAS: Partial<Record<HardwareProfileId, string>> = {
+  'windows-10-rtx3060': 'win-mainstream-3060-1080p',
+  'windows-11-rtx4060': 'win-mainstream-4060-1080p',
+  'windows-11-rtx4070': 'win-performance-4070-1440p',
+  'macos-m1': 'mac-mainstream-m1'
+}
+
+export function effectiveHardwareSurfaceIdentity(
+  config: Pick<FingerprintConfig, 'hardwareProfileId' | 'platform'>
+): HardwareSurfaceIdentity {
+  const personaId = HARDWARE_PROFILE_PERSONAS[config.hardwareProfileId]
+  const persona = personaId ? hardwarePersona(personaId) : undefined
+  if (persona) {
+    return {
+      personaId: persona.id,
+      architecture: persona.architecture,
+      bitness: persona.bitness,
+      deviceMemoryGb: persona.browserDeviceMemoryGb,
+      devicePixelRatio: persona.devicePixelRatio,
+      colorDepth: persona.colorDepth,
+      pixelDepth: persona.pixelDepth
+    }
+  }
+
+  if (config.hardwareProfileId === 'windows-seeded-nvidia') {
+    return {
+      architecture: 'x86',
+      bitness: '64',
+      deviceMemoryGb: 8,
+      devicePixelRatio: 1,
+      colorDepth: 24,
+      pixelDepth: 24
+    }
+  }
+
+  if (config.hardwareProfileId === 'macos-seeded-apple'
+    || config.hardwareProfileId === 'macos-m3-pro'
+    || config.hardwareProfileId === 'macos-m4-pro') {
+    return {
+      architecture: 'arm',
+      bitness: '64',
+      deviceMemoryGb: 8,
+      devicePixelRatio: 2,
+      colorDepth: 24,
+      pixelDepth: 24
+    }
+  }
+
+  return {}
+}
+
+export function hardwareIdentityWarnings(config: FingerprintConfig): string[] {
+  const expected = effectiveHardwareSurfaceIdentity(config)
+  const warnings: string[] = []
+  if (expected.architecture && config.architecture && config.architecture !== expected.architecture) {
+    warnings.push(`架构 ${config.architecture} 与硬件画像 ${expected.architecture} 不一致`)
+  }
+  if (expected.bitness && config.bitness && config.bitness !== expected.bitness) {
+    warnings.push(`位数 ${config.bitness} 与硬件画像 ${expected.bitness} 不一致`)
+  }
+  if (expected.deviceMemoryGb && config.deviceMemoryGb && config.deviceMemoryGb !== expected.deviceMemoryGb) {
+    warnings.push(`deviceMemory ${config.deviceMemoryGb}GB 与硬件画像 ${expected.deviceMemoryGb}GB 不一致`)
+  }
+  if (expected.devicePixelRatio && config.devicePixelRatio
+    && Math.abs(config.devicePixelRatio - expected.devicePixelRatio) > 0.01) {
+    warnings.push(`DPR ${config.devicePixelRatio} 与硬件画像 ${expected.devicePixelRatio} 不一致`)
+  }
+  if (config.colorDepth && config.pixelDepth && config.colorDepth !== config.pixelDepth) {
+    warnings.push('colorDepth 与 pixelDepth 不一致')
+  }
+  return warnings
+}
 
 export interface GpuIdentity {
   bucket: number
@@ -269,6 +353,10 @@ export function applyHardwareProfile(
   const gpuBucket = seededIdentity?.bucket
     ?? preservedSeededBucket
     ?? (profile.renderIdentityMode === 'fixed-template' ? profile.gpuBucket : undefined)
+  const surface = effectiveHardwareSurfaceIdentity({
+    hardwareProfileId: profile.id,
+    platform: profile.platform
+  })
   return {
     ...config,
     hardwareProfileId: profile.id,
@@ -280,7 +368,14 @@ export function applyHardwareProfile(
     platformVersion: profile.platformVersion,
     hardwareConcurrency: profile.hardwareConcurrency,
     screenWidth: profile.screenWidth,
-    screenHeight: profile.screenHeight
+    screenHeight: profile.screenHeight,
+    architecture: surface.architecture,
+    bitness: surface.bitness,
+    deviceMemoryGb: surface.deviceMemoryGb,
+    devicePixelRatio: surface.devicePixelRatio,
+    colorDepth: surface.colorDepth,
+    pixelDepth: surface.pixelDepth,
+    hardwarePersonaId: surface.personaId
   }
 }
 
