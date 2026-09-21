@@ -6,6 +6,8 @@ import {
   effectiveDisabledSpoofing,
   effectiveFingerprintSeed,
   effectiveGpuIdentity,
+  effectiveHardwareSurfaceIdentity,
+  hardwareIdentityWarnings,
   HARDWARE_PROFILES,
   hardwareProfile,
   defaultHardwareProfileId,
@@ -103,6 +105,31 @@ describe('coherent hardware profiles', () => {
 
     expect(effectiveFingerprintSeed(legacySeeded)).toBe(42)
     expect(effectiveGpuIdentity(legacySeeded)).toBeUndefined()
+  })
+
+  it('binds fixed hardware templates to browser-visible hardware personas', () => {
+    const config = applyHardwareProfile(defaultFingerprint(42), 'windows-11-rtx4070')
+    expect(config).toMatchObject({
+      architecture: 'x86',
+      bitness: '64',
+      deviceMemoryGb: 8,
+      devicePixelRatio: 1,
+      colorDepth: 24,
+      pixelDepth: 24,
+      hardwarePersonaId: 'win-performance-4070-1440p'
+    })
+    expect(effectiveHardwareSurfaceIdentity(config).personaId).toBe('win-performance-4070-1440p')
+    expect(hardwareIdentityWarnings(config)).toEqual([])
+  })
+
+  it('flags manual hardware fields that conflict with the selected persona', () => {
+    const config = {
+      ...applyHardwareProfile(defaultFingerprint(42), 'macos-m1'),
+      architecture: 'x86' as const,
+      devicePixelRatio: 1
+    }
+    expect(hardwareIdentityWarnings(config).join(' ')).toContain('架构')
+    expect(hardwareIdentityWarnings(config).join(' ')).toContain('DPR')
   })
 
   it('migrates stored render identity contracts to v4 without changing the pinned GPU bucket', () => {
