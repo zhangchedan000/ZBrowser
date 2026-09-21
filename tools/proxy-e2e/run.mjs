@@ -13,25 +13,28 @@ function normalizeProxyInput(raw, defaultProtocol) {
   const value = String(raw ?? '').trim()
   if (!value) return ''
 
-  const curlMatch = value.match(/(?:^|\s)-x\s+([^\s]+)/i)
-  if (curlMatch?.[1]) return normalizeProxyInput(curlMatch[1], defaultProtocol)
-
-  if (/^[a-z][a-z0-9+.-]*:\/\//i.test(value)) return value
+  const protocol = defaultProtocol === 'socks5' ? 'socks' : defaultProtocol
+  const explicit = value.match(/(?:https?|socks5h?|socks):\/\/[^\s]+/i)?.[0]
+  if (explicit) {
+    const parsed = new URL(explicit.replace(/["']+$/, ''))
+    if (parsed.protocol === 'socks5:') parsed.protocol = 'socks:'
+    return parsed.toString().replace(/\/$/, '')
+  }
 
   const parts = value.split(':')
   if (parts.length >= 4) {
     const host = parts.shift()
     const port = parts.shift()
     const username = parts.shift()
-    const password = parts.join(':')
+    const password = parts.join(':').trim()
     if (host && port && username && password) {
-      return `${defaultProtocol}://${encodeURIComponent(username)}:${encodeURIComponent(password)}@${host}:${port}`
+      return `${protocol}://${encodeURIComponent(username)}:${encodeURIComponent(password)}@${host.trim()}:${port.trim()}`
     }
   }
 
   if (parts.length === 2) {
     const [host, port] = parts
-    if (host && port) return `${defaultProtocol}://${host}:${port}`
+    if (host && port) return `${protocol}://${host.trim()}:${port.trim()}`
   }
 
   throw new Error(`Unsupported proxy format for ${defaultProtocol}`)
