@@ -89,6 +89,19 @@ export function validateProfileDraft(draft: ProfileDraft): ProfileDraft {
   if (!Number.isInteger(fp.screenWidth) || !Number.isInteger(fp.screenHeight) || fp.screenWidth < 800 || fp.screenHeight < 600) {
     throw new Error('屏幕分辨率不能小于 800×600')
   }
+  if (fp.architecture !== undefined && !['x86', 'arm'].includes(fp.architecture)) throw new Error('CPU 架构无效')
+  if (fp.bitness !== undefined && fp.bitness !== '64') throw new Error('浏览器位数无效')
+  if (fp.deviceMemoryGb !== undefined && ![0.25, 0.5, 1, 2, 4, 8].includes(fp.deviceMemoryGb)) {
+    throw new Error('deviceMemory 必须使用浏览器允许的离散值')
+  }
+  if (fp.devicePixelRatio !== undefined && (!Number.isFinite(fp.devicePixelRatio) || fp.devicePixelRatio < 0.5 || fp.devicePixelRatio > 4)) {
+    throw new Error('DPR 必须在 0.5–4 之间')
+  }
+  if (fp.colorDepth !== undefined && fp.colorDepth !== 24) throw new Error('当前只支持 24-bit colorDepth')
+  if (fp.pixelDepth !== undefined && fp.pixelDepth !== 24) throw new Error('当前只支持 24-bit pixelDepth')
+  if (fp.hardwarePersonaId !== undefined && (typeof fp.hardwarePersonaId !== 'string' || fp.hardwarePersonaId.length > 100)) {
+    throw new Error('硬件画像标识无效')
+  }
   const textFields = [fp.language, fp.acceptLanguages, fp.timezone, fp.platformVersion, fp.brandVersion]
   if (!textFields.every((value) => typeof value === 'string')) throw new Error('指纹文本配置格式无效')
   if (!fp.language.trim() || !fp.acceptLanguages.trim() || !fp.timezone.trim()) {
@@ -157,6 +170,13 @@ export function validateProfileDraft(draft: ProfileDraft): ProfileDraft {
       hardwareConcurrency: fp.hardwareConcurrency,
       screenWidth: fp.screenWidth,
       screenHeight: fp.screenHeight,
+      architecture: fp.architecture,
+      bitness: fp.bitness,
+      deviceMemoryGb: fp.deviceMemoryGb,
+      devicePixelRatio: fp.devicePixelRatio,
+      colorDepth: fp.colorDepth,
+      pixelDepth: fp.pixelDepth,
+      hardwarePersonaId: fp.hardwarePersonaId,
       disabledSpoofing: [...fp.disabledSpoofing]
     }
   }
