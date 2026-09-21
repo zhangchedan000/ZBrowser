@@ -51,6 +51,18 @@ function normalizeProxyCandidates(raw, defaultProtocol) {
   const atMatch = value.match(/([^\s:@]+):([^\s@]+)@([^\s:]+):(\d{1,5})/)
   if (atMatch) add(proxyUrl(protocol, atMatch[3], atMatch[4], atMatch[1], atMatch[2]))
 
+  const compactTuple = value.match(/((?:\d{1,3}\.){3}\d{1,3})\s*[:|,;\s]\s*(\d{1,5})\s*[:|,;\s]\s*([^:|,;\s]+)\s*[:|,;\s]\s*([^:|,;\s]+)/)
+  if (compactTuple) {
+    add(proxyUrl(protocol, compactTuple[1], compactTuple[2], compactTuple[3], compactTuple[4]))
+    add(proxyUrl(protocol, compactTuple[1], compactTuple[2], compactTuple[4], compactTuple[3]))
+  }
+
+  const reverseTuple = value.match(/([^:|,;\s]+)\s*[:|,;\s]\s*([^:|,;\s]+)\s*[:|,;\s]\s*((?:\d{1,3}\.){3}\d{1,3})\s*[:|,;\s]\s*(\d{1,5})/)
+  if (reverseTuple) {
+    add(proxyUrl(protocol, reverseTuple[3], reverseTuple[4], reverseTuple[1], reverseTuple[2]))
+    add(proxyUrl(protocol, reverseTuple[3], reverseTuple[4], reverseTuple[2], reverseTuple[1]))
+  }
+
   const tokens = value.split(/[|,;\s:]+/).map((item) => item.trim()).filter(Boolean)
   if (tokens.length === 2 && looksLikeHost(tokens[0]) && looksLikePort(tokens[1])) {
     add(proxyUrl(protocol, tokens[0], tokens[1]))
@@ -69,7 +81,17 @@ function normalizeProxyCandidates(raw, defaultProtocol) {
     }
   }
 
-  if (!candidates.length) throw new Error(`Unsupported proxy format for ${defaultProtocol}`)
+  if (!candidates.length) {
+    const shape = {
+      length: value.length,
+      colonCount: (value.match(/:/g) || []).length,
+      hasAt: value.includes('@'),
+      hasScheme: /:\/\//.test(value),
+      whitespaceCount: (value.match(/\s/g) || []).length,
+      tokenCount: tokens.length
+    }
+    throw new Error(`Unsupported proxy format for ${defaultProtocol}; shape=${JSON.stringify(shape)}`)
+  }
   return candidates
 }
 
