@@ -5,7 +5,7 @@ import { registerIpc } from './ipc'
 import { ProfileStore } from './profile-store'
 import { ElectronSecretCodec } from './secret-codec'
 import { SettingsStore } from './settings-store'
-import { KernelManager } from './kernel-manager'
+import { ManagedKernelManager } from './kernel/managed-kernel-manager'
 import { KernelRegistry } from './kernel/kernel-registry'
 import { AppLogger } from './app-logger'
 import { ExtensionStore } from './extension-store'
@@ -93,14 +93,15 @@ app.whenReady().then(async () => {
     mainWindow?.webContents.send('profiles:changed', publicProfile(profile))
   }, extensions, logger)
   await launcher.initialize()
-  const kernels = new KernelManager(
+  const kernels = new ManagedKernelManager(
     vaultPath,
     settings,
     (progress) => mainWindow?.webContents.send('engine:install-progress', progress),
     logger,
-    (version) => profiles.kernelUsers(version)
+    (version) => profiles.kernelUsers(version),
+    kernelRegistry
   )
-  await kernelRegistry.list()
+  await kernels.initialize()
   const cookies = new CookieManager(profiles, settings, logger)
   const backups = new ProfileBackupManager(profiles, app.getVersion(), logger)
   const workspaceMigration = new WorkspaceMigrationManager(profiles, extensions, app.getVersion(), logger)
