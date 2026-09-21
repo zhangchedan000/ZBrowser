@@ -45,6 +45,12 @@ export function buildLaunchArgs(profile: BrowserProfile, options: LaunchArgument
   const networkIdentity = effectiveNetworkIdentity(fp, options.proxyIdentity, {
     allowGeoConflict: options.allowGeoConflict
   })
+  const windowWidth = profile.window.mode === 'custom'
+    ? profile.window.width
+    : Math.min(profile.window.width || 1200, Math.max(800, fp.screenWidth - 160))
+  const windowHeight = profile.window.mode === 'custom'
+    ? profile.window.height
+    : Math.min(profile.window.height || 800, Math.max(600, fp.screenHeight - 160))
   const args = [
     `--user-data-dir=${options.userDataDir}`,
     `--fingerprint=${seed}`,
@@ -58,7 +64,7 @@ export function buildLaunchArgs(profile: BrowserProfile, options: LaunchArgument
     `--lang=${networkIdentity.language}`,
     `--accept-lang=${networkIdentity.acceptLanguages}`,
     `--timezone=${networkIdentity.timezone}`,
-    `--window-size=${profile.window.mode === 'custom' ? profile.window.width : fp.screenWidth},${profile.window.mode === 'custom' ? profile.window.height : fp.screenHeight}`,
+    `--window-size=${windowWidth},${windowHeight}`,
     `--window-name=${profileWindowName(profile)}`,
     `--zbrowser-profile-serial=${profile.serialNumber}`,
     `--zbrowser-profile-id=${profile.id}`,
