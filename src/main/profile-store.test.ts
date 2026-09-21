@@ -203,6 +203,24 @@ describe('ProfileStore', () => {
     expect(await repository.kernelUsers(draft.kernelVersion)).toEqual(['固定内核环境'])
   })
 
+  it('allows pinned kernel upgrades but blocks downgrades for an existing profile', async () => {
+    const repository = await store()
+    const original = defaultProfileDraft()
+    original.kernelVersion = '144.0.7559.132'
+    const profile = await repository.create(original)
+
+    const upgraded = defaultProfileDraft()
+    upgraded.name = profile.name
+    upgraded.kernelVersion = '148.0.7778.215'
+    await expect(repository.update(profile.id, upgraded)).resolves.toMatchObject({ kernelVersion: '148.0.7778.215' })
+
+    const downgraded = defaultProfileDraft()
+    downgraded.name = profile.name
+    downgraded.kernelVersion = '144.0.7559.132'
+    await expect(repository.update(profile.id, downgraded)).rejects.toThrow('已阻止内核从 148.0.7778.215 降级到 144.0.7559.132')
+    expect(repository.get(profile.id).kernelVersion).toBe('148.0.7778.215')
+  })
+
   it('permanently purges only validated recycle entries', async () => {
     const repository = await store()
     const profile = await repository.create(defaultProfileDraft())
