@@ -278,6 +278,72 @@ async function readLastLaunch(userDataPath, id) {
   return JSON.parse(await readFile(join(userDataPath, 'vault', 'profiles', id, 'runtime', 'last-launch.json'), 'utf8'))
 }
 
+async function connectProfilePage(userDataPath, profileId) {
+  const profileData = join(userDataPath, 'vault', 'profiles', profileId, 'user-data')
+  const activePortPath = join(profileData, 'DevToolsActivePort')
+  for (let attempt = 0; attempt < 200; attempt += 1) {
+    try {
+      const active = (await readFile(activePortPath, 'utf8')).trim().split(/\r?\n/)
+      const port = Number(active[0])
+      if (!Number.isInteger(port) || port <= 0) throw new Error('invalid DevToolsActivePort')
+      const response = await fetch(`http://127.0.0.1:${port}/json/list`, { signal: AbortSignal.timeout(1000) })
+      if (!response.ok) throw new Error(`DevTools HTTP ${response.status}`)
+      const targets = await response.json()
+      const target = targets.find((item) => item.type === 'page' && item.webSocketDebuggerUrl && /^https?:/i.test(item.url))
+        ?? targets.find((item) => item.type === 'page' && item.webSocketDebuggerUrl)
+      if (target) {
+        const client = new CdpClient(target.webSocketDebuggerUrl)
+        await client.open()
+        return client
+      }
+    } catch {
+      // Fingerprint Chromium is still starting.
+    }
+    await delay(100)
+  }
+  throw new Error(`Timed out waiting for profile browser CDP: ${profileId}`)
+}
+
+async function probeRuntimeFingerprint(userDataPath, profileId) {
+  const client = await connectProfilePage(userDataPath, profileId)
+  try {
+    return await evaluate(client, `(async () => {
+      const uaData = navigator.userAgentData
+      const highEntropy = uaData?.getHighEntropyValues
+        ? await uaData.getHighEntropyValues(['architecture', 'bitness', 'platformVersion', 'fullVersionList'])
+        : {}
+      return {
+        hardwareConcurrency: navigator.hardwareConcurrency,
+        deviceMemory: navigator.deviceMemory,
+        devicePixelRatio: window.devicePixelRatio,
+        screen: {
+          width: screen.width,
+          height: screen.height,
+          availWidth: screen.availWidth,
+          availHeight: screen.availHeight,
+          colorDepth: screen.colorDepth,
+          pixelDepth: screen.pixelDepth
+        },
+        platform: navigator.platform,
+        language: navigator.language,
+        languages: navigator.languages,
+        timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+        uaData: uaData ? {
+          platform: uaData.platform,
+          mobile: uaData.mobile,
+          brands: uaData.brands,
+          architecture: highEntropy.architecture,
+          bitness: highEntropy.bitness,
+          platformVersion: highEntropy.platformVersion,
+          fullVersionList: highEntropy.fullVersionList
+        } : null
+      }
+    })()`)
+  } finally {
+    client.close()
+  }
+}
+
 async function main() {
   const options = parseArguments(process.argv.slice(2))
   await access(options.app)
