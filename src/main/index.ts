@@ -6,6 +6,7 @@ import { ProfileStore } from './profile-store'
 import { ElectronSecretCodec } from './secret-codec'
 import { SettingsStore } from './settings-store'
 import { KernelManager } from './kernel-manager'
+import { KernelRegistry } from './kernel/kernel-registry'
 import { AppLogger } from './app-logger'
 import { ExtensionStore } from './extension-store'
 import { CookieManager } from './cookie-manager'
@@ -76,24 +77,16 @@ app.whenReady().then(async () => {
   const profiles = new ProfileStore(vaultPath, new ElectronSecretCodec())
   const settings = new SettingsStore(vaultPath)
   const extensions = new ExtensionStore(vaultPath, logger)
+  const kernelRegistry = new KernelRegistry(join(vaultPath, 'kernels'))
   await logger.initialize()
+  await kernelRegistry.list()
   const appSessionSnapshot = await appSession.begin(app.getVersion())
-  if (appSessionSnapshot.previousUnclean) {
-    logger.error('检测到上次 ZBrowser 未正常退出', appSessionSnapshot.previousUnclean)
-  }
+  if (appSessionSnapshot.previousUnclean) logger.error('检测到上次 ZBrowser 未正常退出', appSessionSnapshot.previousUnclean)
   await Promise.all([profiles.initialize(), settings.initialize(), extensions.initialize()])
   const kernelMigration = await migrateMacLegacyKernelSelection(settings, vaultPath)
-  if (kernelMigration.migrated) {
-    logger.info('已将 macOS 旧版托管内核切换为应用内置新版内核', {
-      previousVersion: kernelMigration.previousVersion,
-      bundledVersion: kernelMigration.bundledVersion
-    })
-  }
+  if (kernelMigration.migrated) logger.info('已迁移旧版内核选择', kernelMigration)
   const purgedTrashCount = await profiles.purgeTrashOlderThan(settings.get().recycleRetentionDays)
-  if (purgedTrashCount) logger.info('已按保留策略自动清理环境回收站', { count: purgedTrashCount })
-  const profileStorageHealth = profiles.storageHealth()
-  if (profileStorageHealth.recoveredFromBackup) logger.error('环境元数据已从备份恢复', profileStorageHealth)
-  if (!profileStorageHealth.backupHealthy) logger.error('环境元数据备份不可用', profileStorageHealth.backupError)
+  if (purgedTrashCount) logger.info('已自动清理环境回收站', { count: purgedTrashCount })
   logger.info('ZBrowser 已启动', { version: app.getVersion(), platform: process.platform, arch: process.arch })
 
   launcher = new BrowserLauncher(profiles, settings, (profile) => {
@@ -107,6 +100,7 @@ app.whenReady().then(async () => {
     logger,
     (version) => profiles.kernelUsers(version)
   )
+  await kernelRegistry.list()
   const cookies = new CookieManager(profiles, settings, logger)
   const backups = new ProfileBackupManager(profiles, app.getVersion(), logger)
   const workspaceMigration = new WorkspaceMigrationManager(profiles, extensions, app.getVersion(), logger)
@@ -116,27 +110,16 @@ app.whenReady().then(async () => {
   const environmentChecks = new EnvironmentCheckHistoryStore(vaultPath)
   registerIpc({ profiles, settings, launcher, kernels, extensions, cookies, logger, backups, workspaceMigration, appSession, updater, environmentChecks })
   mainWindow = createWindow()
-  if (app.isPackaged && process.env.ZBROWSER_E2E !== '1' && process.env.PRISM_E2E !== '1') {
-    setTimeout(() => void updater.check().catch(() => undefined), 10_000)
-  }
-
-  app.on('activate', () => {
-    if (BrowserWindow.getAllWindows().length === 0) mainWindow = createWindow()
-  })
+  if (app.isPackaged && process.env.ZBROWSER_E2E !== '1' && process.env.PRISM_E2E !== '1') setTimeout(() => void updater.check().catch(() => undefined), 10_000)
 }).catch(async (error) => {
   logger?.error('ZBrowser 启动失败', error)
   await logger?.flush()
-  dialog.showErrorBox(
-    'ZBrowser 无法启动',
-    '应用启动失败，但现有环境数据没有被修改。请重新启动；如仍然失败，请查看日志文件。'
-  )
+  dialog.showErrorBox('ZBrowser 无法启动', '应用启动失败，请查看日志。')
   app.quit()
 })
 
-app.on('second-instance', () => {
-  if (!mainWindow) return
-  if (mainWindow.isMinimized()) mainWindow.restore()
-  mainWindow.focus()
+app.on('activate', () => {
+  if (BrowserWindow.getAllWindows().length === 0) mainWindow = createWindow()
 })
 
 app.on('before-quit', (event) => {
@@ -145,8 +128,7 @@ app.on('before-quit', (event) => {
   const current = launcher
   launcher = null
   void Promise.allSettled([current.closeAll()]).finally(async () => {
-    logger?.info('ZBrowser 已退出')
-    await appSession?.complete().catch((error) => logger?.error('清理应用会话标记失败', error))
+    await appSession?.complete().catch(() => undefined)
     await logger?.flush()
     app.quit()
   })
@@ -156,11 +138,5 @@ app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit()
 })
 
-process.on('uncaughtExceptionMonitor', (error) => {
-  logger?.error('主进程未捕获异常', error)
-})
-
-process.on('unhandledRejection', (reason) => {
-  logger?.error('主进程未处理 Promise 拒绝', reason)
-  console.error(reason)
-})
+process.on('uncaughtExceptionMonitor', (error) => logger?.error('主进程未捕获异常', error))
+process.on('unhandledRejection', (reason) => logger?.error('主进程未处理 Promise 拒绝', reason))
