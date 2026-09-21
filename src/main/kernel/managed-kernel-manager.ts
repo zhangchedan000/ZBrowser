@@ -1,5 +1,5 @@
 import { resolve } from 'node:path'
-import type { EngineStatus } from '../../shared/types'
+import type { AppSettings, EngineStatus } from '../../shared/types'
 import type { Logger } from '../app-logger'
 import { KernelManager } from '../kernel-manager'
 import type { SettingsStore } from '../settings-store'
@@ -35,6 +35,15 @@ export class ManagedKernelManager extends KernelManager {
 
   override async activate(version: string): Promise<EngineStatus> {
     const engine = await super.activate(version)
+    await this.syncRegistry()
+    return engine
+  }
+
+  override async configure(
+    patch: Pick<AppSettings, 'browserExecutable' | 'fingerprintKernel' | 'enginePreference'>,
+    resolvedExecutable = patch.browserExecutable
+  ): Promise<EngineStatus> {
+    const engine = await super.configure(patch, resolvedExecutable)
     await this.syncRegistry()
     return engine
   }

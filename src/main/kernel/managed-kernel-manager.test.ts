@@ -96,6 +96,19 @@ describe('ManagedKernelManager registry synchronization', () => {
     })
     expect(records.some((record) => record.version === '143.0.0.1')).toBe(false)
 
+    const externalRoot = join(vaultPath, 'external-browser')
+    const externalExecutable = join(externalRoot, 'chrome.exe')
+    await mkdir(externalRoot, { recursive: true })
+    await writeFile(externalExecutable, 'external-browser-binary')
+    await manager.configure({
+      browserExecutable: externalExecutable,
+      fingerprintKernel: false,
+      enginePreference: 'auto'
+    })
+    records = await registry.list()
+    expect(records.find((record) => record.id === `fingerprint-chromium-${releaseVersion}`)?.enabled).toBe(false)
+    expect(records.find((record) => record.id === `custom-${customVersion}`)?.enabled).toBe(false)
+
     await settings.update({ browserExecutable: customExecutable })
     await manager.initialize()
     records = await registry.list()
