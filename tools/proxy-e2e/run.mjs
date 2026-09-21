@@ -46,16 +46,25 @@ async function fetchJson(url, dispatcher) {
 }
 
 async function withBridge(upstream, fn) {
+  let bridgeFailure = ''
   const server = new proxyChain.Server({
     host: '127.0.0.1',
     port: 0,
     prepareRequestFunction: () => ({ upstreamProxyUrl: upstream })
   })
+  server.on('requestFailed', ({ error }) => {
+    bridgeFailure = redact(error instanceof Error ? error.message : error)
+  })
   await server.listen()
   const local = `http://127.0.0.1:${server.port}`
   const dispatcher = new ProxyAgent(local)
   try {
-    return await fn(dispatcher)
+    try {
+      return await fn(dispatcher)
+    } catch (error) {
+      const base = error instanceof Error ? error.message : String(error)
+      throw new Error(bridgeFailure ? `${base}; upstream=${bridgeFailure}` : base)
+    }
   } finally {
     await dispatcher.close().catch(() => undefined)
     await server.close(true).catch(() => undefined)
