@@ -1,6 +1,6 @@
 import type { BrowserProfileView, EngineStatus } from './types'
 import { fingerprintVersionWarning } from './fingerprint-consistency'
-import { hardwareProfile } from './hardware-profiles'
+import { hardwareIdentityWarnings, hardwareProfile } from './hardware-profiles'
 import { effectiveNetworkIdentity, localeForCountry } from './network-identity'
 
 export type EnvironmentCheckLevel = 'ok' | 'warning' | 'error' | 'info'
@@ -133,6 +133,23 @@ export function buildEnvironmentChecks(
       detail: matches ? undefined : '硬件模板与操作系统平台不一致。'
     })
   }
+
+  const hardwareWarnings = hardwareIdentityWarnings(fp)
+  items.push({
+    key: 'hardware-identity',
+    label: '硬件身份一致性',
+    level: hardwareWarnings.length ? 'warning' : 'ok',
+    summary: hardwareWarnings.length
+      ? `${hardwareWarnings.length} 项硬件指纹冲突`
+      : [
+          fp.architecture && fp.bitness ? `${fp.architecture}-${fp.bitness}` : undefined,
+          fp.deviceMemoryGb ? `deviceMemory ${fp.deviceMemoryGb}GB` : undefined,
+          fp.devicePixelRatio ? `DPR ${fp.devicePixelRatio}` : undefined
+        ].filter(Boolean).join(' · ') || '使用模板默认硬件身份',
+    detail: hardwareWarnings.length
+      ? hardwareWarnings.join('；')
+      : 'CPU 架构、浏览器可见内存、DPR 与硬件画像保持一致。'
+  })
 
   const versionIssue = fingerprintVersionWarning(fp.brandVersion, engine)
   items.push({
