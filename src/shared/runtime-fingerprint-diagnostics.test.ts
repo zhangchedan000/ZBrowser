@@ -124,4 +124,26 @@ describe('runtime fingerprint diagnostics', () => {
 
     expect(checks.find((check) => check.key === 'runtime-font-inventory')?.status).toBe('error')
   })
+
+  it('keeps core checks strict but downgrades non-representative headless render surfaces', () => {
+    const observed = runtime()
+    observed.webgl!.unmaskedVendor = 'Google Inc. (Google)'
+    observed.webgl!.unmaskedRenderer = 'ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device), SwiftShader driver)'
+    observed.webgpu = { available: true, vendor: 'google', architecture: 'swiftshader' }
+    observed.fonts = {
+      method: 'canvas-metric-v1',
+      checked: ['Segoe UI', 'Consolas', 'Segoe UI Emoji', 'Helvetica Neue', 'Menlo', 'Apple Color Emoji'],
+      detected: []
+    }
+
+    const checks = buildRuntimeFingerprintChecks(fixture(), observed, engine, {
+      renderSurfacesRepresentative: false
+    })
+
+    expect(checks.find((check) => check.key === 'runtime-webgl-renderer')?.status).toBe('warning')
+    expect(checks.find((check) => check.key === 'runtime-webgpu-vendor')?.status).toBe('warning')
+    expect(checks.find((check) => check.key === 'runtime-font-inventory')?.status).toBe('warning')
+    expect(checks.find((check) => check.key === 'runtime-user-agent-version')?.status).toBe('pass')
+    expect(checks.filter((check) => check.status === 'error')).toEqual([])
+  })
 })

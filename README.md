@@ -18,7 +18,7 @@ ZBrowser 是一个本地优先、开源的多环境指纹浏览器项目，当�
 - 每个 Profile 的“环境检测”入口。
 - 本地配置一致性检查：代理、时区、语言/地区、WebRTC、硬件模板、浏览器版本、屏幕和 Seed。
 - 新环境只推荐并允许选择与宿主系统一致的硬件 Persona；旧的跨系统环境保持原指纹但标记高风险，不会静默重写。
-- 实际指纹诊断会读取 WebGL/WebGPU vendor、renderer/architecture 和 Windows/macOS 字体锚点，与当前 Persona 做运行时一致性核验。
+- 实际指纹诊断会用正常窗口模式读取 WebGL/WebGPU vendor、renderer/architecture 和 Windows/macOS 字体锚点，与当前 Persona 做运行时一致性核验；CI 的 headless 渲染结果只作为非代表性告警。
 - 临时检测网址启动机制：检测页使用当前 Profile 打开，但不会改写该环境原本保存的启动网址。
 - 检测网址参数校验，仅允许 HTTP/HTTPS。
 

@@ -25,8 +25,10 @@ import type { Readable, Writable } from 'node:stream'
 type ProxyTester = (config: ProxyConfig) => Promise<ProxyTestResult>
 
 interface InternalProfileLaunchOptions extends ProfileLaunchOptions {
-  /** Internal-only: starts Chromium headlessly with a secure CDP pipe for runtime fingerprint checks. */
+  /** Internal-only: starts Chromium headlessly with a secure CDP pipe for version checks. */
   runtimeVersionProbe?: boolean
+  /** Internal-only: starts a normal headed Chromium with a secure CDP pipe for real render/font checks. */
+  runtimeFingerprintProbe?: boolean
 }
 
 interface RunningBrowser {
@@ -234,7 +236,9 @@ export class BrowserLauncher {
         if (process.platform === 'darwin') args.push('--use-mock-keychain')
       }
       if (options.runtimeVersionProbe && !args.includes('--headless=new')) args.push('--headless=new')
-      const pipeControlEnabled = process.platform !== 'win32' || options.runtimeVersionProbe === true
+      const pipeControlEnabled = process.platform !== 'win32'
+        || options.runtimeVersionProbe === true
+        || options.runtimeFingerprintProbe === true
       const loopbackDebugging = process.platform === 'win32' && !pipeControlEnabled
       const devToolsActivePortPath = join(this.profiles.profileDataPath(id), 'DevToolsActivePort')
       if (pipeControlEnabled) {
@@ -940,10 +944,14 @@ export class BrowserLauncher {
     }
 
     try {
-      await this.launch(id, { startUrls: [], runtimeVersionProbe: true })
+      await this.launch(id, { startUrls: [], runtimeFingerprintProbe: true })
       const snapshot = await (await this.controlSession(id)).runtimeFingerprintSnapshot()
       const current = this.profiles.get(id)
-      const checks = buildRuntimeFingerprintChecks(current, snapshot, engine)
+      const e2eHeadless = process.env.ZBROWSER_E2E_BROWSER_HEADLESS === '1'
+        || process.env.PRISM_E2E_BROWSER_HEADLESS === '1'
+      const checks = buildRuntimeFingerprintChecks(current, snapshot, engine, {
+        renderSurfacesRepresentative: !e2eHeadless
+      })
       return {
         profileId: id,
         checkedAt: new Date().toISOString(),

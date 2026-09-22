@@ -15,6 +15,14 @@ export interface RuntimeFingerprintProfileLike {
   proxyCheck?: ProxyCheckSummary
 }
 
+export interface RuntimeFingerprintCheckOptions {
+  /**
+   * False only for CI/headless probes where GPU/font surfaces are not
+   * representative of the normal headed browser. Core UA/network checks stay strict.
+   */
+  renderSurfacesRepresentative?: boolean
+}
+
 function add(
   checks: LaunchDiagnosticCheck[],
   key: string,
@@ -90,16 +98,19 @@ function addRenderingSurfaceChecks(
   checks: LaunchDiagnosticCheck[],
   runtime: RuntimeFingerprintSnapshot,
   gpuModel: string | undefined,
-  hostNative: boolean
+  hostNative: boolean,
+  representative: boolean
 ): void {
   const webgl = runtime.webgl
   if (!webgl?.available) {
-    add(checks, 'runtime-webgl-renderer', 'WebGL GPU', 'error', '运行时无法创建 WebGL 上下文')
+    add(checks, 'runtime-webgl-renderer', 'WebGL GPU', representative ? 'error' : 'warning',
+      representative ? '运行时无法创建 WebGL 上下文' : 'Headless/CI 探测无法提供代表性的 WebGL 上下文')
   } else {
     const renderer = webgl.unmaskedRenderer || webgl.renderer || ''
     const vendor = webgl.unmaskedVendor || webgl.vendor || ''
     if (/swiftshader/i.test(renderer)) {
-      add(checks, 'runtime-webgl-renderer', 'WebGL GPU', 'error', `检测到 SwiftShader：${renderer}`)
+      add(checks, 'runtime-webgl-renderer', 'WebGL GPU', representative ? 'error' : 'warning',
+        representative ? `检测到 SwiftShader：${renderer}` : `Headless/CI 使用 SwiftShader，不代表正常窗口模式：${renderer}`)
     } else if (hostNative || !gpuModel || gpuModel === '本机 GPU') {
       add(checks, 'runtime-webgl-renderer', 'WebGL GPU', 'pass', renderer || '使用本机 WebGL 渲染器')
     } else {
@@ -108,8 +119,12 @@ function addRenderingSurfaceChecks(
         checks,
         'runtime-webgl-renderer',
         'WebGL GPU',
-        matches ? 'pass' : 'error',
-        matches ? `${renderer} · 与 Persona ${gpuModel} 一致` : `实际 ${renderer || '未知'} / Persona ${gpuModel}`
+        matches ? 'pass' : representative ? 'error' : 'warning',
+        matches
+          ? `${renderer} · 与 Persona ${gpuModel} 一致`
+          : representative
+            ? `实际 ${renderer || '未知'} / Persona ${gpuModel}`
+            : `Headless/CI renderer 非代表性：${renderer || '未知'} / Persona ${gpuModel}`
       )
       const expectedVendor = expectedGpuVendor(gpuModel)
       if (expectedVendor) {
@@ -118,8 +133,12 @@ function addRenderingSurfaceChecks(
           checks,
           'runtime-webgl-vendor',
           'WebGL vendor',
-          vendorMatches ? 'pass' : 'error',
-          vendorMatches ? vendor : `实际 ${vendor || '未知'} / 预期 ${expectedVendor}`
+          vendorMatches ? 'pass' : representative ? 'error' : 'warning',
+          vendorMatches
+            ? vendor
+            : representative
+              ? `实际 ${vendor || '未知'} / 预期 ${expectedVendor}`
+              : `Headless/CI vendor 非代表性：${vendor || '未知'} / 预期 ${expectedVendor}`
         )
       }
     }
@@ -137,8 +156,12 @@ function addRenderingSurfaceChecks(
   const vendor = expectedGpuVendor(gpuModel)
   if (vendor && webgpu.vendor) {
     const matches = normalizeSurface(webgpu.vendor).includes(vendor)
-    add(checks, 'runtime-webgpu-vendor', 'WebGPU vendor', matches ? 'pass' : 'error',
-      matches ? webgpu.vendor : `实际 ${webgpu.vendor} / 预期 ${vendor}`)
+    add(checks, 'runtime-webgpu-vendor', 'WebGPU vendor', matches ? 'pass' : representative ? 'error' : 'warning',
+      matches
+        ? webgpu.vendor
+        : representative
+          ? `实际 ${webgpu.vendor} / 预期 ${vendor}`
+          : `Headless/CI vendor 非代表性：${webgpu.vendor} / 预期 ${vendor}`)
   } else {
     add(checks, 'runtime-webgpu-vendor', 'WebGPU vendor', 'warning', 'WebGPU Adapter 未返回可核验 vendor')
   }
@@ -146,8 +169,12 @@ function addRenderingSurfaceChecks(
   if (architecture) {
     if (webgpu.architecture) {
       const matches = normalizeSurface(webgpu.architecture) === architecture
-      add(checks, 'runtime-webgpu-architecture', 'WebGPU architecture', matches ? 'pass' : 'error',
-        matches ? webgpu.architecture : `实际 ${webgpu.architecture} / 预期 ${architecture}`)
+      add(checks, 'runtime-webgpu-architecture', 'WebGPU architecture', matches ? 'pass' : representative ? 'error' : 'warning',
+        matches
+          ? webgpu.architecture
+          : representative
+            ? `实际 ${webgpu.architecture} / 预期 ${architecture}`
+            : `Headless/CI architecture 非代表性：${webgpu.architecture} / 预期 ${architecture}`)
     } else {
       add(checks, 'runtime-webgpu-architecture', 'WebGPU architecture', 'warning', `Adapter 未返回 architecture，Persona 预期 ${architecture}`)
     }
@@ -157,7 +184,8 @@ function addRenderingSurfaceChecks(
 function addFontSurfaceCheck(
   checks: LaunchDiagnosticCheck[],
   runtime: RuntimeFingerprintSnapshot,
-  platform: FingerprintConfig['platform']
+  platform: FingerprintConfig['platform'],
+  representative: boolean
 ): void {
   const fonts = runtime.fonts
   if (!fonts || fonts.method === 'unavailable') {
@@ -175,8 +203,10 @@ function addFontSurfaceCheck(
       checks,
       'runtime-font-inventory',
       '系统字体锚点',
-      'error',
-      `未检测到 ${platform === 'windows' ? 'Windows' : 'macOS'} 核心字体锚点；实际检测到：${fonts.detected.join('、') || '无'}`
+      representative ? 'error' : 'warning',
+      representative
+        ? `未检测到 ${platform === 'windows' ? 'Windows' : 'macOS'} 核心字体锚点；实际检测到：${fonts.detected.join('、') || '无'}`
+        : `Headless/CI 字体库存非代表性；检测到：${fonts.detected.join('、') || '无'}`
     )
     return
   }
@@ -195,7 +225,8 @@ function addFontSurfaceCheck(
 export function buildRuntimeFingerprintChecks(
   profile: RuntimeFingerprintProfileLike,
   runtime: RuntimeFingerprintSnapshot,
-  engine: EngineStatus | null
+  engine: EngineStatus | null,
+  options: RuntimeFingerprintCheckOptions = {}
 ): LaunchDiagnosticCheck[] {
   const checks: LaunchDiagnosticCheck[] = []
   const fp = profile.fingerprint
@@ -260,8 +291,9 @@ export function buildRuntimeFingerprintChecks(
     add(checks, 'runtime-languages-primary', 'navigator.languages[0]', 'warning', '运行时未返回 languages 列表')
   }
 
-  addRenderingSurfaceChecks(checks, runtime, persona.gpuModel, persona.source === 'host-native')
-  addFontSurfaceCheck(checks, runtime, fp.platform)
+  const representativeRenderSurfaces = options.renderSurfacesRepresentative !== false
+  addRenderingSurfaceChecks(checks, runtime, persona.gpuModel, persona.source === 'host-native', representativeRenderSurfaces)
+  addFontSurfaceCheck(checks, runtime, fp.platform, representativeRenderSurfaces)
 
   if (!engine?.fingerprintKernel || !engine.version) {
     add(checks, 'runtime-user-agent-version', 'User-Agent 版本', 'warning', '当前不是可核验版本的 Fingerprint Chromium 内核')
