@@ -414,6 +414,7 @@ async function main() {
     const firstRun = await evaluate(first.client, `(async () => {
       const expectedKernelVersions = ${JSON.stringify(options.expectedKernelVersions)}
       const installKernelVersion = ${JSON.stringify(options.installKernelVersion)}
+      const syntheticKernelVersion = ${JSON.stringify(syntheticKernelVersion)}
       let managedKernelInstall = null
       let remoteCatalog = []
       if (installKernelVersion) {
@@ -439,6 +440,32 @@ async function main() {
         } catch {
           proKernelLockedWithoutLicense = true
         }
+      }
+      const engineStatus = await window.browserApi.engine.status()
+      let upgradeFlow = { exercised: false, backupCreated: false, rollbackRestored: false, checkpointCleared: false }
+      if (installKernelVersion && syntheticKernelVersion) {
+        const upgradeProbeDraft = ${JSON.stringify(draft('E2E 内核升级回滚', 300003, site.url))}
+        upgradeProbeDraft.kernelVersion = installKernelVersion
+        upgradeProbeDraft.kernelFamily = 'fingerprint-chromium'
+        const upgradeProbe = await window.browserApi.profiles.create(upgradeProbeDraft)
+        const upgradedResult = await window.browserApi.profiles.upgradeKernel(upgradeProbe.id, syntheticKernelVersion, 'fingerprint-chromium')
+        const checkpoint = await window.browserApi.profiles.kernelUpgradeCheckpoint(upgradeProbe.id)
+        const rolledBack = await window.browserApi.profiles.rollbackKernelUpgrade(upgradeProbe.id)
+        const cleared = await window.browserApi.profiles.kernelUpgradeCheckpoint(upgradeProbe.id)
+        upgradeFlow = {
+          exercised: true,
+          backupCreated: Boolean(checkpoint
+            && upgradedResult.checkpoint?.fromVersion === installKernelVersion
+            && checkpoint.fromVersion === installKernelVersion
+            && checkpoint.toVersion === syntheticKernelVersion),
+          rollbackRestored: upgradedResult.profile?.kernelVersion === syntheticKernelVersion
+            && rolledBack.kernelVersion === installKernelVersion
+            && rolledBack.kernelFamily === 'fingerprint-chromium',
+          checkpointCleared: cleared === null,
+          upgradedVersion: upgradedResult.profile?.kernelVersion,
+          rolledBackVersion: rolledBack.kernelVersion
+        }
+        await window.browserApi.profiles.remove(upgradeProbe.id)
       }
       const a = await window.browserApi.profiles.create(${JSON.stringify(draft('E2E 环境 A', 100001, site.url))})
       const b = await window.browserApi.profiles.create(${JSON.stringify(draft('E2E 环境 B', 200002, site.url))})
@@ -476,8 +503,15 @@ async function main() {
       ])
       await new Promise(resolve => setTimeout(resolve, 1500))
       const running = await window.browserApi.profiles.list()
+      let runningKernelUpgradeBlocked = false
+      try {
+        await window.browserApi.profiles.upgradeKernel(editedA.id, syntheticKernelVersion || '999.0.0.1', 'fingerprint-chromium')
+      } catch (error) {
+        runningKernelUpgradeBlocked = String(error?.message || error).includes('请先关闭浏览器环境再升级内核')
+      }
       return {
         a, editedA, updated, copy, kernelCatalog, remoteCatalog, managedKernelInstall, communityKernelActivated, proKernelLockedWithoutLicense,
+        engineStatus, upgradeFlow, runningKernelUpgradeBlocked,
         launchedStatuses: launched.map(profile => profile.status),
         runningStatuses: running.filter(profile => [a.id, updated.id].includes(profile.id)).map(profile => profile.status),
         crashHistory: await window.browserApi.profiles.crashHistory(a.id)
