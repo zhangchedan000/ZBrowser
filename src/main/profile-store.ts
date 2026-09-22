@@ -196,6 +196,7 @@ export class ProfileStore {
         color: stored.color as string,
         startUrls: stored.startUrls,
         kernelVersion: typeof stored.kernelVersion === 'string' ? stored.kernelVersion : '',
+        kernelFamily: stored.kernelFamily === 'fingerprint-chromium' || stored.kernelFamily === 'custom' ? stored.kernelFamily : undefined,
         window: stored.window ?? defaultProfileWindow(),
         proxy: { ...stored.proxy, password: this.secrets.decode(stored.proxy.password) },
         fingerprint: {
@@ -345,6 +346,7 @@ export class ProfileStore {
       color: source.color,
       startUrls: [...source.startUrls],
       kernelVersion: source.kernelVersion,
+      kernelFamily: source.kernelFamily,
       window: { ...source.window },
       proxy: { ...source.proxy },
       fingerprint: refreshSeededGpuIdentity({ ...source.fingerprint, seed })
@@ -373,6 +375,7 @@ export class ProfileStore {
         color: current.color,
         startUrls: current.startUrls,
         kernelVersion: current.kernelVersion,
+        kernelFamily: current.kernelFamily,
         window: current.window,
         proxy: current.proxy,
         fingerprint: current.fingerprint
