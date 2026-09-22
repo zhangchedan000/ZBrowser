@@ -16,6 +16,7 @@ export type ProxyProtocol = 'direct' | 'http' | 'https' | 'socks5'
 export type WebRtcPolicy = 'proxy_only' | 'public_only' | 'default'
 export type NetworkIdentityMode = 'manual' | 'proxy'
 export type ProxyExitPolicy = 'warn' | 'block'
+export type ProfileEnvironmentType = 'account' | 'temporary'
 export type ProfileStatus = 'closed' | 'starting' | 'running' | 'stopping' | 'orphaned' | 'error'
 export interface ProfileLaunchOptions {
   allowGeoConflict?: boolean
@@ -90,6 +91,10 @@ export interface BrowserProfile {
   window: ProfileWindowConfig
   favorite: boolean
   proxy: ProxyConfig
+  /** Account environments never auto-switch proxies. Temporary environments may use explicit rotation tools. */
+  environmentType?: ProfileEnvironmentType
+  /** Internal binding to a managed proxy-pool entry. */
+  proxyPoolEntryId?: string
   fingerprint: FingerprintConfig
   createdAt: string
   updatedAt: string
@@ -108,7 +113,7 @@ export type BrowserProfileView = Omit<BrowserProfile, 'proxy'> & { proxy: Public
 
 export type ProfileDraft = Pick<
   BrowserProfile,
-  'name' | 'note' | 'group' | 'tags' | 'extensionIds' | 'color' | 'startUrls' | 'kernelVersion' | 'kernelFamily' | 'window' | 'proxy' | 'fingerprint'
+  'name' | 'note' | 'group' | 'tags' | 'extensionIds' | 'color' | 'startUrls' | 'kernelVersion' | 'kernelFamily' | 'window' | 'proxy' | 'environmentType' | 'fingerprint'
 >
 
 export interface ProfileBatchClassification {
@@ -239,6 +244,39 @@ export interface ProxyTestResult {
 
 export interface ProxyCheckSummary extends ProxyTestResult {
   checkedAt: string
+}
+
+export type ProxyPoolHealth = 'unchecked' | 'healthy' | 'degraded' | 'failed' | 'quarantined'
+
+export interface ProxyPoolStats {
+  checks: number
+  successes: number
+  consecutiveFailures: number
+  successRate: number
+  averageLatencyMs?: number
+  lastCheckedAt?: string
+  lastSuccessAt?: string
+  lastFailureAt?: string
+}
+
+export interface ProxyPoolEntryInput {
+  name: string
+  tags: string[]
+  proxy: ProxyConfig
+}
+
+export interface ProxyPoolEntry {
+  id: string
+  name: string
+  tags: string[]
+  proxy: PublicProxyConfig
+  createdAt: string
+  updatedAt: string
+  check?: ProxyCheckSummary
+  health: ProxyPoolHealth
+  score: number
+  stats: ProxyPoolStats
+  assignedProfileIds: string[]
 }
 
 export interface ProfileStorageInfo {
@@ -508,6 +546,16 @@ export interface BrowserApi {
     download: () => Promise<AppUpdateStatus>
     openInstaller: () => Promise<void>
     onChanged: (listener: (status: AppUpdateStatus) => void) => () => void
+  }
+  proxyPool: {
+    list: () => Promise<ProxyPoolEntry[]>
+    create: (input: ProxyPoolEntryInput) => Promise<ProxyPoolEntry>
+    update: (id: string, input: ProxyPoolEntryInput) => Promise<ProxyPoolEntry>
+    remove: (id: string) => Promise<void>
+    test: (id: string) => Promise<ProxyPoolEntry>
+    testMany: (ids?: string[]) => Promise<ProxyPoolEntry[]>
+    assign: (proxyId: string, profileId: string) => Promise<BrowserProfileView>
+    assignBest: (profileId: string) => Promise<BrowserProfileView>
   }
   proxy: {
     test: (config: ProxyConfig, profileId?: string) => Promise<ProxyTestResult>

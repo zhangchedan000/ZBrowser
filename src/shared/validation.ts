@@ -51,6 +51,8 @@ export function validateProfileDraft(draft: ProfileDraft): ProfileDraft {
   const urls = draft.startUrls.map(normalizeUrl).filter(Boolean)
   if (urls.length > 50) throw new Error('启动页不能超过 50 个')
   const proxy = validateProxyConfig(draft.proxy)
+  const environmentType = draft.environmentType ?? 'account'
+  if (environmentType !== 'account' && environmentType !== 'temporary') throw new Error('环境类型无效')
   const rawWindow = draft.window ?? { mode: 'auto', x: 0, y: 0, width: 1200, height: 800 }
   if (rawWindow.mode !== 'auto' && rawWindow.mode !== 'custom') throw new Error('浏览器窗口模式无效')
   const windowValues = [rawWindow.x, rawWindow.y, rawWindow.width, rawWindow.height]
@@ -149,6 +151,7 @@ export function validateProfileDraft(draft: ProfileDraft): ProfileDraft {
     startUrls: urls,
     kernelVersion,
     ...(kernelVersion ? (kernelFamily ? { kernelFamily } : {}) : { kernelFamily: undefined }),
+    environmentType,
     window: {
       mode: rawWindow.mode,
       x: rawWindow.x,

@@ -1,7 +1,7 @@
 import { app, BrowserWindow, dialog, ipcMain, shell } from 'electron'
 import { lstat, readFile, stat, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
-import type { ProfileDraft } from '../shared/types'
+import type { ProfileDraft, ProxyPoolEntry, ProxyPoolEntryInput } from '../shared/types'
 import { compareKernelVersions, kernelFamilyForRelease } from '../shared/kernel-version'
 import type { KernelManager } from './kernel-manager'
 import { listBundledBrowsers, locateBrowser, locateBrowserForProfile, locateBundledBrowser, normalizeBrowserSelection } from './browser-locator'
@@ -25,6 +25,7 @@ import type { UpdateManager } from './update-manager'
 import type { WorkspaceMigrationManager } from './workspace-migration'
 import type { EnvironmentCheckHistoryStore } from './environment-check-history'
 import type { LocalApiServer } from './local-api-server'
+import type { ProxyPoolStore } from './proxy-pool-store'
 import { createStoredZip, diagnosticProfileSummary, redactDiagnosticText } from './diagnostic-bundle'
 
 interface IpcDependencies {
@@ -41,11 +42,12 @@ interface IpcDependencies {
   updater: UpdateManager
   environmentChecks: EnvironmentCheckHistoryStore
   localApi: LocalApiServer
+  proxyPool: ProxyPoolStore
 }
 
 export function registerIpc({
   profiles, settings, launcher, kernels, extensions, cookies, logger, backups,
-  workspaceMigration, appSession, updater, environmentChecks, localApi
+  workspaceMigration, appSession, updater, environmentChecks, localApi, proxyPool
 }: IpcDependencies): void {
   async function pinKernelFamily(draft: ProfileDraft): Promise<ProfileDraft> {
     const version = draft.kernelVersion.trim()
@@ -449,6 +451,51 @@ export function registerIpc({
   ipcMain.handle('updates:open-installer', async () => {
     const error = await shell.openPath(await updater.downloadedPath())
     if (error) throw new Error(`无法打开更新安装程序：${error}`)
+  })
+  const proxyPoolView = (entry: ProxyPoolEntry): ProxyPoolEntry => ({
+    ...entry,
+    assignedProfileIds: profiles.list().filter((profile) => profile.proxyPoolEntryId === entry.id).map((profile) => profile.id)
+  })
+  ipcMain.handle('proxy-pool:list', () => proxyPool.list().map(proxyPoolView))
+  ipcMain.handle('proxy-pool:create', async (_event, input: ProxyPoolEntryInput) => proxyPoolView(await proxyPool.create(input)))
+  ipcMain.handle('proxy-pool:update', async (_event, id: string, input: ProxyPoolEntryInput) => {
+    if (profiles.list().some((profile) => profile.proxyPoolEntryId === id)) {
+      throw new Error('该代理已绑定环境，请先更换这些环境的代理后再修改代理地址或凭据')
+    }
+    return proxyPoolView(await proxyPool.update(id, input))
+  })
+  ipcMain.handle('proxy-pool:remove', async (_event, id: string) => {
+    const bound = profiles.list().filter((profile) => profile.proxyPoolEntryId === id)
+    if (bound.length) throw new Error(`该代理仍绑定 ${bound.length} 个环境，不能删除`)
+    await proxyPool.remove(id)
+  })
+  ipcMain.handle('proxy-pool:test', async (_event, id: string) => proxyPoolView(await proxyPool.test(id)))
+  ipcMain.handle('proxy-pool:test-many', async (_event, ids?: string[]) => (await proxyPool.testMany(ids)).map(proxyPoolView))
+  ipcMain.handle('proxy-pool:assign', async (_event, proxyId: string, profileId: string) => {
+    const entry = proxyPool.get(proxyId)
+    if (entry.health === 'unchecked' || entry.health === 'failed' || entry.health === 'quarantined') {
+      throw new Error('该代理当前不可分配，请先检测并确认健康状态')
+    }
+    const check = proxyPool.check(proxyId)
+    if (!check) throw new Error('代理尚未检测')
+    return publicProfile(await profiles.assignProxy(profileId, proxyPool.proxyConfig(proxyId), check, proxyId))
+  })
+  ipcMain.handle('proxy-pool:assign-best', async (_event, profileId: string) => {
+    const profile = profiles.get(profileId)
+    if ((profile.environmentType ?? 'account') !== 'temporary') {
+      throw new Error('账号环境禁止自动选择或切换代理；请手动指定代理')
+    }
+    const now = Date.now()
+    const candidate = proxyPool.list()
+      .filter((entry) => (entry.health === 'healthy' || entry.health === 'degraded')
+        && entry.check?.ok
+        && Number.isFinite(Date.parse(entry.check.checkedAt))
+        && now - Date.parse(entry.check.checkedAt) <= 24 * 60 * 60 * 1000)
+      .sort((a, b) => b.score - a.score || (a.stats.averageLatencyMs ?? Number.MAX_SAFE_INTEGER) - (b.stats.averageLatencyMs ?? Number.MAX_SAFE_INTEGER))[0]
+    if (!candidate) throw new Error('代理池中没有 24 小时内检测通过的可用代理')
+    const check = proxyPool.check(candidate.id)
+    if (!check) throw new Error('最佳代理缺少检测结果')
+    return publicProfile(await profiles.assignProxy(profileId, proxyPool.proxyConfig(candidate.id), check, candidate.id))
   })
   ipcMain.handle('proxy:test', (_event, config, profileId?: string) => {
     const validated = validateProxyConfig(config)

@@ -1,11 +1,12 @@
 import { randomUUID } from 'node:crypto'
 import { copyFile, lstat, mkdir, readFile, readdir, rename, rm, writeFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
-import type { BrowserProfile, DeletedProfileSummary, KernelFamily, ProfileBatchClassification, ProfileDraft, ProfileStoreHealth, ProxyCheckSummary, WebRtcPolicy } from '../shared/types'
+import type { BrowserProfile, DeletedProfileSummary, KernelFamily, ProfileBatchClassification, ProfileDraft, ProfileStoreHealth, ProxyCheckSummary, ProxyConfig, WebRtcPolicy } from '../shared/types'
 import { defaultProfileWindow, seedFromId } from '../shared/defaults'
 import { refreshSeededGpuIdentity } from '../shared/hardware-profiles'
 import { compareKernelVersions, isKernelDowngrade, sameKernelMajor, validKernelVersion } from '../shared/kernel-version'
-import { validateProfileDraft } from '../shared/validation'
+import { validateProfileDraft, validateProxyConfig } from '../shared/validation'
+import { applyRecommendedProxyNetworkIdentity } from '../shared/network-identity'
 import { identitySecretCodec, type SecretCodec } from './secret-codec'
 import { privateProxyConfig, sameProxyIdentity } from './profile-secrets'
 import { safePathSize } from './profile-data'
@@ -199,6 +200,7 @@ export class ProfileStore {
         kernelFamily: stored.kernelFamily === 'fingerprint-chromium' || stored.kernelFamily === 'custom' ? stored.kernelFamily : undefined,
         window: stored.window ?? defaultProfileWindow(),
         proxy: { ...stored.proxy, password: this.secrets.decode(stored.proxy.password) },
+        environmentType: stored.environmentType === 'temporary' ? 'temporary' : 'account',
         fingerprint: {
           ...stored.fingerprint,
           hardwareProfileId: stored.fingerprint.hardwareProfileId ?? 'legacy-custom',
@@ -219,6 +221,7 @@ export class ProfileStore {
         updatedAt: stored.updatedAt,
         lastOpenedAt: typeof stored.lastOpenedAt === 'string' ? stored.lastOpenedAt : undefined,
         proxyCheck: safeProxyCheck(stored.proxyCheck),
+        proxyPoolEntryId: typeof stored.proxyPoolEntryId === 'string' && /^[a-zA-Z0-9-]{1,100}$/.test(stored.proxyPoolEntryId) ? stored.proxyPoolEntryId : undefined,
         favorite: stored.favorite === true,
         status: 'closed',
         lastError: undefined
@@ -267,6 +270,15 @@ export class ProfileStore {
     if (!Array.isArray(inputs) || inputs.length === 0) throw new Error('没有可创建的浏览器环境')
     if (inputs.length > 500) throw new Error('单次最多创建 500 个浏览器环境')
     const drafts = inputs.map(validateProfileDraft)
+    const claimedAccountProxies: ProxyConfig[] = []
+    for (const draft of drafts) {
+      if ((draft.environmentType ?? 'account') !== 'account' || draft.proxy.protocol === 'direct') continue
+      this.assertAccountProxyAvailable(undefined, draft.proxy)
+      if (claimedAccountProxies.some((proxy) => sameProxyIdentity(proxy, draft.proxy))) {
+        throw new Error('同一批次中有多个账号环境使用同一个代理；账号环境必须一号一代理')
+      }
+      claimedAccountProxies.push(draft.proxy)
+    }
     if (this.nextSerialNumber + drafts.length - 1 > MAX_PROFILE_SERIAL) throw new Error('环境编号空间已用尽')
     const firstSerialNumber = this.nextSerialNumber
     this.nextSerialNumber += drafts.length
@@ -307,6 +319,9 @@ export class ProfileStore {
       throw new Error('请先关闭浏览器环境再修改配置')
     }
     const draft = validateProfileDraft(input)
+    if ((draft.environmentType ?? 'account') === 'account' && draft.proxy.protocol !== 'direct') {
+      this.assertAccountProxyAvailable(id, draft.proxy)
+    }
     if (isKernelDowngrade(current.kernelVersion, draft.kernelVersion)) {
       throw new Error(`为保持环境指纹稳定，已阻止内核从 ${current.kernelVersion} 降级到 ${draft.kernelVersion}；请升级版本或新建环境使用旧内核`)
     }
@@ -324,7 +339,10 @@ export class ProfileStore {
       id,
       createdAt: current.createdAt,
       updatedAt: new Date().toISOString(),
-      status: current.status
+      status: current.status,
+      proxyPoolEntryId: sameProxyIdentity(draft.proxy, current.proxy) && draft.proxy.password === current.proxy.password
+        ? current.proxyPoolEntryId
+        : undefined
     }
     if (!sameProxyIdentity(profile.proxy, current.proxy) || profile.proxy.password !== current.proxy.password) {
       delete profile.proxyCheck
@@ -408,8 +426,11 @@ export class ProfileStore {
       startUrls: [...source.startUrls],
       kernelVersion: source.kernelVersion,
       kernelFamily: source.kernelFamily,
+      environmentType: source.environmentType ?? 'account',
       window: { ...source.window },
-      proxy: { ...source.proxy },
+      proxy: (source.environmentType ?? 'account') === 'account'
+        ? { protocol: 'direct', host: '', username: '', password: '' }
+        : { ...source.proxy },
       fingerprint: refreshSeededGpuIdentity({ ...source.fingerprint, seed })
     })
   }
@@ -437,6 +458,7 @@ export class ProfileStore {
         startUrls: current.startUrls,
         kernelVersion: current.kernelVersion,
         kernelFamily: current.kernelFamily,
+        environmentType: current.environmentType ?? 'account',
         window: current.window,
         proxy: current.proxy,
         fingerprint: current.fingerprint
@@ -653,6 +675,59 @@ export class ProfileStore {
     return profile
   }
 
+  private assertAccountProxyAvailable(id: string | undefined, proxy: ProxyConfig, exitIp?: string): void {
+    if (proxy.protocol === 'direct') return
+    const conflict = this.list().find((profile) =>
+      profile.id !== id
+      && (profile.environmentType ?? 'account') === 'account'
+      && profile.proxy.protocol !== 'direct'
+      && (sameProxyIdentity(profile.proxy, proxy)
+        || Boolean(exitIp && profile.proxyCheck?.ok && profile.proxyCheck.ip === exitIp))
+    )
+    if (conflict) {
+      const reason = exitIp && conflict.proxyCheck?.ip === exitIp ? `实际出口 IP ${exitIp}` : '同一代理配置'
+      throw new Error(`${reason} 已绑定账号环境 #${conflict.serialNumber} · ${conflict.name}；账号环境必须一号一代理`)
+    }
+  }
+
+  async assignProxy(id: string, input: ProxyConfig, check: ProxyCheckSummary, proxyPoolEntryId?: string): Promise<BrowserProfile> {
+    const current = this.get(id)
+    if (current.status !== 'closed' && current.status !== 'error') throw new Error('请先关闭浏览器环境再更换代理')
+    const proxy = validateProxyConfig(input)
+    if (proxy.protocol === 'direct') throw new Error('代理池不能分配直连配置')
+    const nextCheck = safeProxyCheck({ ...check, exitChanged: false, previousIp: undefined })
+    if (!nextCheck?.ok) throw new Error('代理尚未通过检测，不能分配到环境')
+    const checkedAt = Date.parse(nextCheck.checkedAt)
+    if (!Number.isFinite(checkedAt) || Date.now() - checkedAt > 24 * 60 * 60 * 1000) {
+      throw new Error('代理检测结果已超过 24 小时，请重新检测后再分配')
+    }
+    if ((current.environmentType ?? 'account') === 'account') {
+      this.assertAccountProxyAvailable(id, proxy, nextCheck.ip)
+    }
+    const fingerprint = applyRecommendedProxyNetworkIdentity(current.fingerprint, nextCheck)
+    if (!fingerprint) {
+      throw new Error(nextCheck.geoConflict
+        ? `代理 GeoIP 存在冲突：${nextCheck.geoConflict}`
+        : '代理检测缺少可信的国家、时区或坐标，不能自动匹配网络身份')
+    }
+    const profile: BrowserProfile = {
+      ...current,
+      proxy: privateProxyConfig(proxy),
+      proxyPoolEntryId,
+      proxyCheck: nextCheck,
+      fingerprint,
+      updatedAt: new Date().toISOString()
+    }
+    this.profiles.set(id, profile)
+    try {
+      await this.persist()
+      return profile
+    } catch (error) {
+      this.profiles.set(id, current)
+      throw error
+    }
+  }
+
   async setProxyCheck(id: string, check: ProxyCheckSummary, baselineIp?: string): Promise<BrowserProfile> {
     const current = this.get(id)
     const nextCheck = safeProxyCheck(check)
@@ -664,6 +739,9 @@ export class ProfileStore {
     } else {
       nextCheck.exitChanged = false
       nextCheck.previousIp = undefined
+    }
+    if ((current.environmentType ?? 'account') === 'account' && nextCheck.ok && nextCheck.ip) {
+      this.assertAccountProxyAvailable(id, current.proxy, nextCheck.ip)
     }
     const profile: BrowserProfile = { ...current, proxyCheck: nextCheck }
     this.profiles.set(id, profile)

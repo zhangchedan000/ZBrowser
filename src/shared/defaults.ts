@@ -60,6 +60,7 @@ export function defaultProfileDraft(index = 1): ProfileDraft {
     color: PROFILE_COLORS[(index - 1) % PROFILE_COLORS.length],
     startUrls: [],
     kernelVersion: '',
+    environmentType: 'account',
     window: defaultProfileWindow(),
     proxy: {
       protocol: 'direct',

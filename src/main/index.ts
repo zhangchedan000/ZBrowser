@@ -18,6 +18,7 @@ import { migrateMacLegacyKernelSelection } from './browser-locator'
 import { WorkspaceMigrationManager } from './workspace-migration'
 import { EnvironmentCheckHistoryStore } from './environment-check-history'
 import { LocalApiServer, localApiPortFromEnvironment } from './local-api-server'
+import { ProxyPoolStore } from './proxy-pool-store'
 
 let mainWindow: BrowserWindow | null = null
 let launcher: BrowserLauncher | null = null
@@ -76,7 +77,9 @@ app.whenReady().then(async () => {
   const vaultPath = join(app.getPath('userData'), 'vault')
   logger = new AppLogger(vaultPath)
   appSession = new AppSessionTracker(vaultPath)
-  const profiles = new ProfileStore(vaultPath, new ElectronSecretCodec())
+  const secrets = new ElectronSecretCodec()
+  const profiles = new ProfileStore(vaultPath, secrets)
+  const proxyPool = new ProxyPoolStore(vaultPath, secrets)
   const settings = new SettingsStore(vaultPath)
   const extensions = new ExtensionStore(vaultPath, logger)
   const kernelRegistry = new KernelRegistry(join(vaultPath, 'kernels'))
@@ -84,7 +87,7 @@ app.whenReady().then(async () => {
   await kernelRegistry.list()
   const appSessionSnapshot = await appSession.begin(app.getVersion())
   if (appSessionSnapshot.previousUnclean) logger.error('检测到上次 ZBrowser 未正常退出', appSessionSnapshot.previousUnclean)
-  await Promise.all([profiles.initialize(), settings.initialize(), extensions.initialize()])
+  await Promise.all([profiles.initialize(), proxyPool.initialize(), settings.initialize(), extensions.initialize()])
   const kernelMigration = await migrateMacLegacyKernelSelection(settings, vaultPath)
   if (kernelMigration.migrated) logger.info('已迁移旧版内核选择', kernelMigration)
   const purgedTrashCount = await profiles.purgeTrashOlderThan(settings.get().recycleRetentionDays)
@@ -118,7 +121,7 @@ app.whenReady().then(async () => {
   localApi = automationApi
   registerIpc({
     profiles, settings, launcher, kernels, extensions, cookies, logger, backups,
-    workspaceMigration, appSession, updater, environmentChecks, localApi: automationApi
+    workspaceMigration, appSession, updater, environmentChecks, localApi: automationApi, proxyPool
   })
   try {
     const api = await automationApi.start()

@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer } from 'electron'
-import type { BrowserApi, BrowserProfileView, ProfileBatchClassification, ProfileDraft, ProfileLaunchOptions } from '../shared/types'
+import type { BrowserApi, BrowserProfileView, ProfileBatchClassification, ProfileDraft, ProfileLaunchOptions, ProxyPoolEntryInput } from '../shared/types'
 
 const api: BrowserApi = {
   profiles: {
@@ -84,6 +84,16 @@ const api: BrowserApi = {
       ipcRenderer.on('updates:changed', handler)
       return () => ipcRenderer.removeListener('updates:changed', handler)
     }
+  },
+  proxyPool: {
+    list: () => ipcRenderer.invoke('proxy-pool:list'),
+    create: (input: ProxyPoolEntryInput) => ipcRenderer.invoke('proxy-pool:create', input),
+    update: (id: string, input: ProxyPoolEntryInput) => ipcRenderer.invoke('proxy-pool:update', id, input),
+    remove: (id: string) => ipcRenderer.invoke('proxy-pool:remove', id),
+    test: (id: string) => ipcRenderer.invoke('proxy-pool:test', id),
+    testMany: (ids?: string[]) => ipcRenderer.invoke('proxy-pool:test-many', ids),
+    assign: (proxyId: string, profileId: string) => ipcRenderer.invoke('proxy-pool:assign', proxyId, profileId),
+    assignBest: (profileId: string) => ipcRenderer.invoke('proxy-pool:assign-best', profileId)
   },
   proxy: {
     test: (config, profileId) => ipcRenderer.invoke('proxy:test', config, profileId)
