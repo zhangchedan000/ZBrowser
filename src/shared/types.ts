@@ -349,6 +349,25 @@ export interface RuntimeFingerprintSnapshot {
     platformVersion?: string
     fullVersionList: Array<{ brand: string; version: string }>
   }
+  webgl?: {
+    available: boolean
+    vendor?: string
+    renderer?: string
+    unmaskedVendor?: string
+    unmaskedRenderer?: string
+  }
+  webgpu?: {
+    available: boolean
+    vendor?: string
+    architecture?: string
+    device?: string
+    description?: string
+  }
+  fonts?: {
+    method: 'canvas-metric-v1' | 'unavailable'
+    checked: string[]
+    detected: string[]
+  }
 }
 
 export interface FingerprintRuntimeDiagnosticReport {

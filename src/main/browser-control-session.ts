@@ -277,6 +277,58 @@ export class BrowserControlSession {
         const highEntropy = uaData?.getHighEntropyValues
           ? await uaData.getHighEntropyValues(['architecture', 'bitness', 'platformVersion', 'fullVersionList'])
           : {}
+        const glCanvas = document.createElement('canvas')
+        const gl = glCanvas.getContext('webgl') || glCanvas.getContext('experimental-webgl')
+        let webgl = { available: Boolean(gl) }
+        if (gl) {
+          const debugInfo = gl.getExtension('WEBGL_debug_renderer_info')
+          webgl = {
+            available: true,
+            vendor: String(gl.getParameter(gl.VENDOR) || ''),
+            renderer: String(gl.getParameter(gl.RENDERER) || ''),
+            unmaskedVendor: debugInfo ? String(gl.getParameter(debugInfo.UNMASKED_VENDOR_WEBGL) || '') : undefined,
+            unmaskedRenderer: debugInfo ? String(gl.getParameter(debugInfo.UNMASKED_RENDERER_WEBGL) || '') : undefined
+          }
+        }
+
+        let webgpu = { available: Boolean(navigator.gpu) }
+        try {
+          const adapter = navigator.gpu?.requestAdapter ? await navigator.gpu.requestAdapter() : null
+          if (adapter) {
+            const info = adapter.info || {}
+            webgpu = {
+              available: true,
+              vendor: typeof info.vendor === 'string' ? info.vendor : undefined,
+              architecture: typeof info.architecture === 'string' ? info.architecture : undefined,
+              device: typeof info.device === 'string' ? info.device : undefined,
+              description: typeof info.description === 'string' ? info.description : undefined
+            }
+          }
+        } catch {
+          // WebGPU can be policy-disabled even when navigator.gpu exists.
+        }
+
+        const fontCandidates = [
+          'Segoe UI', 'Consolas', 'Segoe UI Emoji',
+          'Helvetica Neue', 'Menlo', 'Apple Color Emoji'
+        ]
+        const fontCanvas = document.createElement('canvas')
+        const fontContext = fontCanvas.getContext('2d')
+        let fonts = { method: 'unavailable', checked: fontCandidates, detected: [] }
+        if (fontContext) {
+          const sample = 'mmmmmmmmmmlliWW@@##0123456789'
+          const bases = ['monospace', 'sans-serif', 'serif']
+          const measure = (family) => {
+            fontContext.font = '72px ' + family
+            return fontContext.measureText(sample).width
+          }
+          const baseline = Object.fromEntries(bases.map((base) => [base, measure(base)]))
+          const detected = fontCandidates.filter((font) =>
+            bases.some((base) => Math.abs(measure('"' + font + '",' + base) - baseline[base]) > 0.01)
+          )
+          fonts = { method: 'canvas-metric-v1', checked: fontCandidates, detected }
+        }
+
         return {
           userAgent: navigator.userAgent,
           platform: navigator.platform,
@@ -303,7 +355,10 @@ export class BrowserControlSession {
             bitness: highEntropy.bitness,
             platformVersion: highEntropy.platformVersion,
             fullVersionList: Array.isArray(highEntropy.fullVersionList) ? highEntropy.fullVersionList : []
-          }
+          },
+          webgl,
+          webgpu,
+          fonts
         }
       })()`,
       awaitPromise: true,

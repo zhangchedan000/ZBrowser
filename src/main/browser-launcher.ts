@@ -790,10 +790,14 @@ export class BrowserLauncher {
     }
 
     const hardware = hardwareProfile(profile.fingerprint.hardwareProfileId)
+    const hostPlatform = hostHardwareSnapshot().platform
     if (!hardware) {
       add('hardware', '硬件一致性', 'warning', '旧版自定义组合保持不变；新账号建议改用成套硬件模板')
-    } else if (hardware.hostMatched && hardware.platform !== hostHardwareSnapshot().platform) {
+    } else if (hardware.hostMatched && hardware.platform !== hostPlatform) {
       add('hardware', '硬件一致性', 'error', `${hardware.label} 不能在当前系统上使用`)
+    } else if (hardware.platform !== hostPlatform) {
+      add('hardware', '硬件一致性', 'warning', `${hardware.label} 与当前 ${hostPlatform === 'windows' ? 'Windows' : 'macOS'} 宿主跨系统；为保护旧环境不会自动改写，但不建议继续用于重要账号`)
+      add('rendering', '渲染策略', 'warning', '跨系统 Persona 可能在字体、Emoji、Canvas/WebGL 和系统 UI 细节暴露宿主系统；请运行实际指纹检测确认')
     } else {
       add('hardware', '硬件一致性', 'pass', `${hardware.label} · ${hardwareProfileSummary(hardware.id)}`)
       add('rendering', '渲染策略', 'pass', hardware.hostMatched

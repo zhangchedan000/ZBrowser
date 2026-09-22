@@ -173,7 +173,7 @@ export function ProfileEditor({ open, profile, suggestedIndex, saving, extension
   )
   const recommendedPersona = fingerprintConfig
     ? recommendFingerprintHardwarePersona({
-        platform: fingerprintConfig.platform,
+        platform: profile ? fingerprintConfig.platform : hostPlatform,
         seed: fingerprintConfig.seed,
         region: personaRegion
       })
@@ -572,8 +572,8 @@ export function ProfileEditor({ open, profile, suggestedIndex, saving, extension
           options={[
             ...HARDWARE_PROFILES.map((item) => ({
               value: item.id,
-              label: item.label,
-              disabled: item.hostMatched && item.platform !== hostPlatform
+              label: item.platform !== hostPlatform ? `${item.label} · 跨系统高风险` : item.label,
+              disabled: item.platform !== hostPlatform
             })),
             ...(hardwareProfileId === 'legacy-custom' ? [{ value: 'legacy-custom', label: '旧版自定义配置（保持原指纹）' }] : [])
           ]}
@@ -583,7 +583,15 @@ export function ProfileEditor({ open, profile, suggestedIndex, saving, extension
           }}
         />
       </Form.Item>
-      {selectedHardware?.hostMatched && (
+      {selectedHardware && selectedHardware.platform !== hostPlatform && (
+        <Alert
+          type="error"
+          showIcon
+          message="跨系统 Persona 高风险"
+          description={`当前宿主是 ${hostPlatform === 'windows' ? 'Windows' : 'macOS'}，这个环境模拟 ${selectedHardware.platform === 'windows' ? 'Windows' : 'macOS'}。旧环境不会被自动重写，但字体、Emoji、Canvas/WebGL 和系统 UI 细节仍可能暴露宿主系统；新环境请选择与宿主相同的 Persona。`}
+        />
+      )}
+      {selectedHardware?.hostMatched && selectedHardware.platform === hostPlatform && (
         <Alert
           type="success"
           showIcon
@@ -591,7 +599,7 @@ export function ProfileEditor({ open, profile, suggestedIndex, saving, extension
           description="不同环境可能显示相同的硬件信息。"
         />
       )}
-      {selectedHardware && !selectedHardware.hostMatched && (
+      {selectedHardware && !selectedHardware.hostMatched && selectedHardware.platform === hostPlatform && (
         <Alert
           type="info"
           showIcon

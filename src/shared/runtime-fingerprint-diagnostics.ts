@@ -44,6 +44,154 @@ function exact(
   )
 }
 
+const WINDOWS_FONT_ANCHORS = ['Segoe UI', 'Consolas', 'Segoe UI Emoji'] as const
+const MACOS_FONT_ANCHORS = ['Helvetica Neue', 'Menlo', 'Apple Color Emoji'] as const
+
+function normalizeSurface(value: string | undefined): string {
+  return (value ?? '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim()
+}
+
+function expectedGpuVendor(gpuModel: string | undefined): 'nvidia' | 'amd' | 'intel' | 'apple' | undefined {
+  const normalized = normalizeSurface(gpuModel)
+  if (normalized.includes('nvidia')) return 'nvidia'
+  if (normalized.includes('amd') || normalized.includes('radeon')) return 'amd'
+  if (normalized.includes('intel')) return 'intel'
+  if (normalized.includes('apple')) return 'apple'
+  return undefined
+}
+
+function expectedWebGpuArchitecture(gpuModel: string | undefined): string | undefined {
+  const normalized = normalizeSurface(gpuModel)
+  if (/rtx 30\d{2}/.test(normalized)) return 'ampere'
+  if (/rtx 40\d{2}/.test(normalized)) return 'ada'
+  if (/rtx 50\d{2}/.test(normalized)) return 'blackwell'
+  return undefined
+}
+
+function rendererMatchesGpu(gpuModel: string | undefined, renderer: string): boolean {
+  if (!gpuModel || !renderer) return false
+  const expected = normalizeSurface(gpuModel)
+  const actual = normalizeSurface(renderer)
+  const vendor = expectedGpuVendor(gpuModel)
+  if (vendor && !actual.includes(vendor)) return false
+
+  const rtx = expected.match(/rtx (\d{4})(?: (ti|super))?/)
+  if (rtx) {
+    if (!actual.includes(`rtx ${rtx[1]}`)) return false
+    if (rtx[2] && !actual.includes(rtx[2])) return false
+    return true
+  }
+  const apple = expected.match(/apple (m\d(?: pro|max|ultra)?)/)
+  if (apple) return actual.includes(apple[1])
+  return expected.split(' ').filter((token) => token.length >= 3).every((token) => actual.includes(token))
+}
+
+function addRenderingSurfaceChecks(
+  checks: LaunchDiagnosticCheck[],
+  runtime: RuntimeFingerprintSnapshot,
+  gpuModel: string | undefined,
+  hostNative: boolean
+): void {
+  const webgl = runtime.webgl
+  if (!webgl?.available) {
+    add(checks, 'runtime-webgl-renderer', 'WebGL GPU', 'error', '运行时无法创建 WebGL 上下文')
+  } else {
+    const renderer = webgl.unmaskedRenderer || webgl.renderer || ''
+    const vendor = webgl.unmaskedVendor || webgl.vendor || ''
+    if (/swiftshader/i.test(renderer)) {
+      add(checks, 'runtime-webgl-renderer', 'WebGL GPU', 'error', `检测到 SwiftShader：${renderer}`)
+    } else if (hostNative || !gpuModel || gpuModel === '本机 GPU') {
+      add(checks, 'runtime-webgl-renderer', 'WebGL GPU', 'pass', renderer || '使用本机 WebGL 渲染器')
+    } else {
+      const matches = rendererMatchesGpu(gpuModel, renderer)
+      add(
+        checks,
+        'runtime-webgl-renderer',
+        'WebGL GPU',
+        matches ? 'pass' : 'error',
+        matches ? `${renderer} · 与 Persona ${gpuModel} 一致` : `实际 ${renderer || '未知'} / Persona ${gpuModel}`
+      )
+      const expectedVendor = expectedGpuVendor(gpuModel)
+      if (expectedVendor) {
+        const vendorMatches = normalizeSurface(vendor).includes(expectedVendor)
+        add(
+          checks,
+          'runtime-webgl-vendor',
+          'WebGL vendor',
+          vendorMatches ? 'pass' : 'error',
+          vendorMatches ? vendor : `实际 ${vendor || '未知'} / 预期 ${expectedVendor}`
+        )
+      }
+    }
+  }
+
+  const webgpu = runtime.webgpu
+  if (!webgpu?.available) {
+    add(checks, 'runtime-webgpu', 'WebGPU GPU', 'warning', '当前运行时未提供 WebGPU Adapter，跳过一致性核验')
+    return
+  }
+  if (hostNative || !gpuModel || gpuModel === '本机 GPU') {
+    add(checks, 'runtime-webgpu', 'WebGPU GPU', 'pass', [webgpu.vendor, webgpu.architecture].filter(Boolean).join(' · ') || '使用本机 WebGPU Adapter')
+    return
+  }
+  const vendor = expectedGpuVendor(gpuModel)
+  if (vendor && webgpu.vendor) {
+    const matches = normalizeSurface(webgpu.vendor).includes(vendor)
+    add(checks, 'runtime-webgpu-vendor', 'WebGPU vendor', matches ? 'pass' : 'error',
+      matches ? webgpu.vendor : `实际 ${webgpu.vendor} / 预期 ${vendor}`)
+  } else {
+    add(checks, 'runtime-webgpu-vendor', 'WebGPU vendor', 'warning', 'WebGPU Adapter 未返回可核验 vendor')
+  }
+  const architecture = expectedWebGpuArchitecture(gpuModel)
+  if (architecture) {
+    if (webgpu.architecture) {
+      const matches = normalizeSurface(webgpu.architecture) === architecture
+      add(checks, 'runtime-webgpu-architecture', 'WebGPU architecture', matches ? 'pass' : 'error',
+        matches ? webgpu.architecture : `实际 ${webgpu.architecture} / 预期 ${architecture}`)
+    } else {
+      add(checks, 'runtime-webgpu-architecture', 'WebGPU architecture', 'warning', `Adapter 未返回 architecture，Persona 预期 ${architecture}`)
+    }
+  }
+}
+
+function addFontSurfaceCheck(
+  checks: LaunchDiagnosticCheck[],
+  runtime: RuntimeFingerprintSnapshot,
+  platform: FingerprintConfig['platform']
+): void {
+  const fonts = runtime.fonts
+  if (!fonts || fonts.method === 'unavailable') {
+    add(checks, 'runtime-font-inventory', '系统字体锚点', 'warning', '当前运行时无法执行字体库存探测')
+    return
+  }
+  const detected = new Set(fonts.detected)
+  const expected = platform === 'windows' ? WINDOWS_FONT_ANCHORS : MACOS_FONT_ANCHORS
+  const opposite = platform === 'windows' ? MACOS_FONT_ANCHORS : WINDOWS_FONT_ANCHORS
+  const expectedHits = expected.filter((font) => detected.has(font))
+  const oppositeHits = opposite.filter((font) => detected.has(font))
+
+  if (expectedHits.length === 0) {
+    add(
+      checks,
+      'runtime-font-inventory',
+      '系统字体锚点',
+      'error',
+      `未检测到 ${platform === 'windows' ? 'Windows' : 'macOS'} 核心字体锚点；实际检测到：${fonts.detected.join('、') || '无'}`
+    )
+    return
+  }
+  const status: LaunchDiagnosticCheck['status'] = expectedHits.length >= 2
+    ? (oppositeHits.length >= 2 ? 'warning' : 'pass')
+    : 'warning'
+  add(
+    checks,
+    'runtime-font-inventory',
+    '系统字体锚点',
+    status,
+    `匹配 ${expectedHits.length}/${expected.length}：${expectedHits.join('、')}${oppositeHits.length >= 2 ? `；同时检测到另一系统字体：${oppositeHits.join('、')}` : ''}`
+  )
+}
+
 export function buildRuntimeFingerprintChecks(
   profile: RuntimeFingerprintProfileLike,
   runtime: RuntimeFingerprintSnapshot,
@@ -111,6 +259,9 @@ export function buildRuntimeFingerprintChecks(
   } else {
     add(checks, 'runtime-languages-primary', 'navigator.languages[0]', 'warning', '运行时未返回 languages 列表')
   }
+
+  addRenderingSurfaceChecks(checks, runtime, persona.gpuModel, persona.source === 'host-native')
+  addFontSurfaceCheck(checks, runtime, fp.platform)
 
   if (!engine?.fingerprintKernel || !engine.version) {
     add(checks, 'runtime-user-agent-version', 'User-Agent 版本', 'warning', '当前不是可核验版本的 Fingerprint Chromium 内核')

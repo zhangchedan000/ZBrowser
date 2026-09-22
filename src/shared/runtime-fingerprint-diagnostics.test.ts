@@ -52,6 +52,23 @@ function runtime(): RuntimeFingerprintSnapshot {
       bitness: '64',
       platformVersion: '10.0.0',
       fullVersionList: [{ brand: 'Chromium', version: '144.0.7559.132' }]
+    },
+    webgl: {
+      available: true,
+      vendor: 'WebKit',
+      renderer: 'WebKit WebGL',
+      unmaskedVendor: 'NVIDIA Corporation',
+      unmaskedRenderer: 'ANGLE (NVIDIA, NVIDIA GeForce RTX 4070 Direct3D11 vs_5_0 ps_5_0, D3D11)'
+    },
+    webgpu: {
+      available: true,
+      vendor: 'nvidia',
+      architecture: 'ada'
+    },
+    fonts: {
+      method: 'canvas-metric-v1',
+      checked: ['Segoe UI', 'Consolas', 'Segoe UI Emoji', 'Helvetica Neue', 'Menlo', 'Apple Color Emoji'],
+      detected: ['Segoe UI', 'Consolas', 'Segoe UI Emoji']
     }
   }
 }
@@ -81,5 +98,30 @@ describe('runtime fingerprint diagnostics', () => {
 
     expect(checks.find((check) => check.key === 'runtime-ua-ch-version')?.status).toBe('pass')
     expect(checks.some((check) => check.key === 'runtime-ua-ch-architecture')).toBe(false)
+  })
+
+  it('flags WebGL and WebGPU identities that drift from the selected GPU Persona', () => {
+    const observed = runtime()
+    observed.webgl!.unmaskedVendor = 'Intel Inc.'
+    observed.webgl!.unmaskedRenderer = 'ANGLE (Intel, Intel UHD Graphics 770, D3D11)'
+    observed.webgpu = { available: true, vendor: 'intel', architecture: 'gen-12' }
+    const checks = buildRuntimeFingerprintChecks(fixture(), observed, engine)
+
+    expect(checks.find((check) => check.key === 'runtime-webgl-renderer')?.status).toBe('error')
+    expect(checks.find((check) => check.key === 'runtime-webgl-vendor')?.status).toBe('error')
+    expect(checks.find((check) => check.key === 'runtime-webgpu-vendor')?.status).toBe('error')
+    expect(checks.find((check) => check.key === 'runtime-webgpu-architecture')?.status).toBe('error')
+  })
+
+  it('flags a Windows Persona when Windows font anchors disappear', () => {
+    const observed = runtime()
+    observed.fonts = {
+      method: 'canvas-metric-v1',
+      checked: ['Segoe UI', 'Consolas', 'Segoe UI Emoji', 'Helvetica Neue', 'Menlo', 'Apple Color Emoji'],
+      detected: ['Helvetica Neue', 'Menlo', 'Apple Color Emoji']
+    }
+    const checks = buildRuntimeFingerprintChecks(fixture(), observed, engine)
+
+    expect(checks.find((check) => check.key === 'runtime-font-inventory')?.status).toBe('error')
   })
 })
