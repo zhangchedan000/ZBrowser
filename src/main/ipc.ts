@@ -43,6 +43,7 @@ export function registerIpc({ profiles, settings, launcher, kernels, extensions,
   async function pinKernelFamily(draft: ProfileDraft): Promise<ProfileDraft> {
     const version = draft.kernelVersion.trim()
     if (!version) return { ...draft, kernelFamily: undefined }
+    if (draft.kernelFamily !== undefined) return draft
     const [managed, bundled] = await Promise.all([kernels.installed(), listBundledBrowsers()])
     const installed = managed.find((kernel) => kernel.version === version)
     if (installed) {
