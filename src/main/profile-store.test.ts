@@ -225,9 +225,7 @@ describe('ProfileStore', () => {
   })
 
   it('advances the automatic kernel floor only within the same family and major', async () => {
-    const vault = await makeVault()
-    const repository = new ProfileStore(vault)
-    await repository.initialize()
+    const repository = await store()
     const draft = defaultProfileDraft()
     draft.name = '补丁升级环境'
     draft.kernelVersion = '144.0.7559.132'
