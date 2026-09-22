@@ -3,13 +3,53 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 import { defaultProfileDraft } from '../shared/defaults'
-import { ProfileBackupManager } from './profile-backup'
+import { ProfileBackupManager, renameWithTransientRetry } from './profile-backup'
 import { ProfileStore } from './profile-store'
 
 const temporaryPaths: string[] = []
 
 afterEach(async () => {
   await Promise.all(temporaryPaths.splice(0).map((path) => rm(path, { recursive: true, force: true })))
+})
+
+describe('transient profile directory locks', () => {
+  it('retries Windows-style rename locks with bounded backoff', async () => {
+    let attempts = 0
+    const waits: number[] = []
+    await renameWithTransientRetry(
+      'source',
+      'target',
+      async () => {
+        attempts += 1
+        if (attempts < 3) {
+          const error = new Error('profile directory still locked') as NodeJS.ErrnoException
+          error.code = 'EPERM'
+          throw error
+        }
+      },
+      async (milliseconds) => { waits.push(milliseconds) },
+      4
+    )
+    expect(attempts).toBe(3)
+    expect(waits).toEqual([100, 200])
+  })
+
+  it('does not retry non-transient rename failures', async () => {
+    let attempts = 0
+    await expect(renameWithTransientRetry(
+      'source',
+      'target',
+      async () => {
+        attempts += 1
+        const error = new Error('target exists') as NodeJS.ErrnoException
+        error.code = 'EEXIST'
+        throw error
+      },
+      async () => undefined,
+      8
+    )).rejects.toMatchObject({ code: 'EEXIST' })
+    expect(attempts).toBe(1)
+  })
 })
 
 describe('ProfileBackupManager', () => {

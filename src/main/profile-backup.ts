@@ -35,6 +35,7 @@ interface KernelUpgradeCheckpointRecord extends KernelUpgradeCheckpointSummary {
 const MAX_BACKUP_FILES = 1_000_000
 const MAX_BACKUP_BYTES = 500 * 1024 * 1024 * 1024
 const KERNEL_UPGRADE_BACKUP_GRACE_MS = 7 * 24 * 60 * 60 * 1000
+const TRANSIENT_RENAME_ERRORS = new Set(['EPERM', 'EBUSY', 'EACCES'])
 const DISPOSABLE_CACHE_DIRECTORIES = new Set([
   'cache',
   'code cache',
@@ -45,6 +46,38 @@ const DISPOSABLE_CACHE_DIRECTORIES = new Set([
   'graphitedawncache',
   'media cache'
 ])
+
+type RenameOperation = (source: string, target: string) => Promise<void>
+type WaitOperation = (milliseconds: number) => Promise<void>
+
+function wait(milliseconds: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, milliseconds))
+}
+
+/**
+ * Chromium helper processes and antivirus scanners can briefly keep a closed
+ * Windows profile directory locked after the browser process exits. Retrying
+ * only known transient lock errors keeps rollback atomic without hiding real
+ * path, permission or collision bugs.
+ */
+export async function renameWithTransientRetry(
+  source: string,
+  target: string,
+  operation: RenameOperation = rename,
+  waitOperation: WaitOperation = wait,
+  maxAttempts = 8
+): Promise<void> {
+  for (let attempt = 1; ; attempt += 1) {
+    try {
+      await operation(source, target)
+      return
+    } catch (error) {
+      const code = (error as NodeJS.ErrnoException).code
+      if (!code || !TRANSIENT_RENAME_ERRORS.has(code) || attempt >= maxAttempts) throw error
+      await waitOperation(Math.min(100 * (2 ** (attempt - 1)), 1000))
+    }
+  }
+}
 
 function safeDirectoryName(name: string): string {
   const safe = name.trim().replace(/[<>:"/\\|?*\u0000-\u001f]/g, '_').replace(/[. ]+$/g, '').slice(0, 50)
@@ -397,12 +430,12 @@ export class ProfileBackupManager {
         throw new Error('内核升级备份 SHA-256 校验失败')
       }
       await this.profiles.assertProfileDataIdentity(profileId)
-      await rename(target, previous)
+      await renameWithTransientRetry(target, previous)
       try {
-        await rename(staging, target)
+        await renameWithTransientRetry(staging, target)
         swapped = true
       } catch (error) {
-        await rename(previous, target).catch(() => undefined)
+        await renameWithTransientRetry(previous, target).catch(() => undefined)
         throw error
       }
 
@@ -411,7 +444,7 @@ export class ProfileBackupManager {
         restored = await this.profiles.restoreKernelBinding(profileId, record.fromVersion, record.fromFamily)
       } catch (error) {
         await rm(target, { recursive: true, force: true }).catch(() => undefined)
-        await rename(previous, target).catch(() => undefined)
+        await renameWithTransientRetry(previous, target).catch(() => undefined)
         swapped = false
         throw error
       }
