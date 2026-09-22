@@ -217,13 +217,21 @@ async function probeMcpStdio(options, userDataPath, expectedProfileId) {
   let transcript = ''
 
   const receive = async () => {
-    const result = await Promise.race([
-      iterator.next(),
-      delay(15_000).then(() => { throw new Error('MCP stdio response timed out') })
-    ])
-    if (result.done) throw new Error('MCP stdio closed before sending a response')
-    transcript += result.value + '\n'
-    return JSON.parse(result.value)
+    for (;;) {
+      const result = await Promise.race([
+        iterator.next(),
+        delay(15_000).then(() => { throw new Error('MCP stdio response timed out') })
+      ])
+      if (result.done) throw new Error('MCP stdio closed before sending a response')
+      const line = result.value.trim()
+      if (!line) continue
+      transcript += line + '\n'
+      try {
+        return JSON.parse(line)
+      } catch {
+        throw new Error('MCP stdio emitted non-JSON stdout: ' + JSON.stringify(line.slice(0, 500)))
+      }
+    }
   }
   const send = (message) => {
     child.stdin.write(JSON.stringify(message) + '\n')
