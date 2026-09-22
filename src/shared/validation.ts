@@ -43,6 +43,10 @@ export function validateProfileDraft(draft: ProfileDraft): ProfileDraft {
   if (kernelVersion && !/^\d+(?:\.\d+){3}$/.test(kernelVersion)) {
     throw new Error('绑定内核版本必须是四段数字，例如 144.0.7559.132')
   }
+  const kernelFamily = draft.kernelFamily
+  if (kernelFamily !== undefined && kernelFamily !== 'fingerprint-chromium' && kernelFamily !== 'custom') {
+    throw new Error('绑定内核系列无效')
+  }
 
   const urls = draft.startUrls.map(normalizeUrl).filter(Boolean)
   if (urls.length > 50) throw new Error('启动页不能超过 50 个')
@@ -144,6 +148,7 @@ export function validateProfileDraft(draft: ProfileDraft): ProfileDraft {
     color: draft.color.trim(),
     startUrls: urls,
     kernelVersion,
+    kernelFamily: kernelVersion ? kernelFamily : undefined,
     window: {
       mode: rawWindow.mode,
       x: rawWindow.x,
