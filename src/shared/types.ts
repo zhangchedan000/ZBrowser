@@ -363,6 +363,17 @@ export interface RuntimeFingerprintSnapshot {
     device?: string
     description?: string
   }
+  systemGpu?: {
+    devices: Array<{
+      vendorString?: string
+      deviceString?: string
+      driverVendor?: string
+      driverVersion?: string
+    }>
+    glVendor?: string
+    glRenderer?: string
+    featureStatus?: Record<string, string>
+  }
   fonts?: {
     method: 'canvas-metric-v1' | 'unavailable'
     checked: string[]

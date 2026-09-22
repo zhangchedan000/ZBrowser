@@ -65,6 +65,17 @@ function runtime(): RuntimeFingerprintSnapshot {
       vendor: 'nvidia',
       architecture: 'ada'
     },
+    systemGpu: {
+      devices: [{
+        vendorString: 'NVIDIA Corporation',
+        deviceString: 'NVIDIA GeForce RTX 3060',
+        driverVendor: 'NVIDIA',
+        driverVersion: '555.99'
+      }],
+      glVendor: 'Google Inc. (NVIDIA)',
+      glRenderer: 'ANGLE (NVIDIA, NVIDIA GeForce RTX 3060 Direct3D11, D3D11)',
+      featureStatus: { webgl: 'enabled' }
+    },
     fonts: {
       method: 'canvas-metric-v1',
       checked: ['Segoe UI', 'Consolas', 'Segoe UI Emoji', 'Helvetica Neue', 'Menlo', 'Apple Color Emoji'],
@@ -140,23 +151,41 @@ describe('runtime fingerprint diagnostics', () => {
       renderSurfacesRepresentative: false
     })
 
-    expect(checks.find((check) => check.key === 'runtime-webgl-renderer')?.status).toBe('warning')
-    expect(checks.find((check) => check.key === 'runtime-webgpu-vendor')?.status).toBe('warning')
-    expect(checks.find((check) => check.key === 'runtime-font-inventory')?.status).toBe('warning')
-    expect(checks.find((check) => check.key === 'runtime-user-agent-version')?.status).toBe('pass')
-    expect(checks.filter((check) => check.status === 'error')).toEqual([])
+    observed.systemGpu = {
+      devices: [{ vendorString: 'Google', deviceString: 'SwiftShader Device', driverVendor: 'Google' }],
+      glRenderer: 'ANGLE (Google, Vulkan SwiftShader Device)'
+    }
+    const headlessChecks = buildRuntimeFingerprintChecks(fixture(), observed, engine, {
+      renderSurfacesRepresentative: false
+    })
+
+    expect(headlessChecks.find((check) => check.key === 'runtime-system-gpu')?.status).toBe('warning')
+    expect(headlessChecks.find((check) => check.key === 'runtime-webgl-renderer')?.status).toBe('warning')
+    expect(headlessChecks.find((check) => check.key === 'runtime-webgpu-vendor')?.status).toBe('warning')
+    expect(headlessChecks.find((check) => check.key === 'runtime-font-inventory')?.status).toBe('warning')
+    expect(headlessChecks.find((check) => check.key === 'runtime-user-agent-version')?.status).toBe('pass')
+    expect(headlessChecks.filter((check) => check.status === 'error')).toEqual([])
   })
 
   it('blocks software rendering even for a host-native Persona in representative headed mode', () => {
     const profile = fixture()
     profile.fingerprint = applyHardwareProfile(profile.fingerprint, 'windows-host')
     const observed = runtime()
-    observed.webgl!.unmaskedVendor = 'Microsoft'
-    observed.webgl!.unmaskedRenderer = 'ANGLE (Microsoft, Microsoft Basic Render Driver, D3D11)'
+    observed.webgl!.unmaskedVendor = 'NVIDIA Corporation'
+    observed.webgl!.unmaskedRenderer = 'ANGLE (NVIDIA, NVIDIA GeForce RTX 4070, D3D11)'
+    observed.systemGpu = {
+      devices: [{
+        vendorString: 'Microsoft',
+        deviceString: 'Microsoft Basic Render Driver',
+        driverVendor: 'Microsoft'
+      }],
+      glRenderer: 'ANGLE (Microsoft, Microsoft Basic Render Driver, D3D11)'
+    }
 
     const checks = buildRuntimeFingerprintChecks(profile, observed, engine)
 
-    expect(checks.find((check) => check.key === 'runtime-webgl-renderer')?.status).toBe('error')
-    expect(checks.find((check) => check.key === 'runtime-webgl-renderer')?.message).toContain('软件渲染器')
+    expect(checks.find((check) => check.key === 'runtime-webgl-renderer')?.status).toBe('pass')
+    expect(checks.find((check) => check.key === 'runtime-system-gpu')?.status).toBe('error')
+    expect(checks.find((check) => check.key === 'runtime-system-gpu')?.message).toContain('阻止级冲突')
   })
 })

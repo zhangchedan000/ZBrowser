@@ -560,6 +560,11 @@ async function main() {
               || runtimeFingerprintDiagnostic.snapshot?.webgl?.vendor
             )
             && runtimeFingerprintDiagnostic.checks.some(check => check.key === 'runtime-webgl-renderer')
+            && Boolean(
+              runtimeFingerprintDiagnostic.snapshot?.systemGpu?.glRenderer
+              || runtimeFingerprintDiagnostic.snapshot?.systemGpu?.devices?.length
+            )
+            && runtimeFingerprintDiagnostic.checks.some(check => check.key === 'runtime-system-gpu')
             && runtimeFingerprintDiagnostic.checks.some(check => check.key === 'runtime-language' && check.status === 'pass')
             && runtimeFingerprintDiagnostic.checks.some(check => check.key === 'runtime-timezone' && check.status === 'pass')
             && runtimeFingerprintDiagnostic.checks.some(check => check.key === 'runtime-user-agent-version' && check.status === 'pass'),

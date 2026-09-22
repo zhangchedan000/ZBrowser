@@ -365,7 +365,39 @@ export class BrowserControlSession {
       returnByValue: true
     }, this.sessionId)
     if (result.exceptionDetails || !result.result?.value) throw new Error('无法读取浏览器实际指纹运行值')
-    return result.result.value
+    const snapshot = result.result.value
+    const systemInfo = await this.cdp.send<{
+      gpu?: {
+        devices?: Array<{
+          vendorString?: string
+          deviceString?: string
+          driverVendor?: string
+          driverVersion?: string
+        }>
+        auxAttributes?: Record<string, unknown>
+        featureStatus?: Record<string, string>
+      }
+    }>('SystemInfo.getInfo').catch(() => undefined)
+    if (systemInfo?.gpu) {
+      const glVendor = boundedText(systemInfo.gpu.auxAttributes?.glVendor, 500)
+      const glRenderer = boundedText(systemInfo.gpu.auxAttributes?.glRenderer, 1_000)
+      snapshot.systemGpu = {
+        devices: (systemInfo.gpu.devices ?? []).slice(0, 4).map((device) => ({
+          vendorString: boundedText(device.vendorString, 300) || undefined,
+          deviceString: boundedText(device.deviceString, 500) || undefined,
+          driverVendor: boundedText(device.driverVendor, 300) || undefined,
+          driverVersion: boundedText(device.driverVersion, 200) || undefined
+        })),
+        glVendor: glVendor || undefined,
+        glRenderer: glRenderer || undefined,
+        featureStatus: Object.fromEntries(
+          Object.entries(systemInfo.gpu.featureStatus ?? {})
+            .filter(([key, value]) => typeof key === 'string' && typeof value === 'string')
+            .slice(0, 40)
+        )
+      }
+    }
+    return snapshot
   }
 
   async runtimeVersionSnapshot(): Promise<{

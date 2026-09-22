@@ -105,6 +105,49 @@ function rendererMatchesGpu(gpuModel: string | undefined, renderer: string): boo
   return expected.split(' ').filter((token) => token.length >= 3).every((token) => actual.includes(token))
 }
 
+function addSystemGpuCheck(
+  checks: LaunchDiagnosticCheck[],
+  runtime: RuntimeFingerprintSnapshot,
+  representative: boolean
+): void {
+  const systemGpu = runtime.systemGpu
+  if (!systemGpu) {
+    add(checks, 'runtime-system-gpu', '底层 GPU 运行状态', 'warning', 'CDP SystemInfo 未返回 GPU 状态，网页 WebGL 核验仍会继续')
+    return
+  }
+  const surfaces = [
+    systemGpu.glRenderer,
+    systemGpu.glVendor,
+    ...systemGpu.devices.flatMap((device) => [
+      device.deviceString,
+      device.vendorString,
+      device.driverVendor
+    ])
+  ].filter((value): value is string => Boolean(value))
+  const software = surfaces.map(softwareRendererReason).find(Boolean)
+  if (software) {
+    add(
+      checks,
+      'runtime-system-gpu',
+      '底层 GPU 运行状态',
+      representative ? 'error' : 'warning',
+      representative
+        ? `Chromium 底层 GPU 已回退到 ${software}；即使网页层 renderer 被 Persona 覆盖，也按阻止级冲突处理。`
+        : `Headless/CI 底层 GPU 使用 ${software}，链路已成功读取；该结果不代表正常窗口模式。`
+    )
+    return
+  }
+  add(
+    checks,
+    'runtime-system-gpu',
+    '底层 GPU 运行状态',
+    'pass',
+    systemGpu.glRenderer
+      || systemGpu.devices.map((device) => device.deviceString).filter(Boolean).join(' · ')
+      || 'SystemInfo GPU 状态可读取，未发现软件渲染回退'
+  )
+}
+
 function addRenderingSurfaceChecks(
   checks: LaunchDiagnosticCheck[],
   runtime: RuntimeFingerprintSnapshot,
@@ -306,6 +349,7 @@ export function buildRuntimeFingerprintChecks(
   }
 
   const representativeRenderSurfaces = options.renderSurfacesRepresentative !== false
+  addSystemGpuCheck(checks, runtime, representativeRenderSurfaces)
   addRenderingSurfaceChecks(checks, runtime, persona.gpuModel, persona.source === 'host-native', representativeRenderSurfaces)
   addFontSurfaceCheck(checks, runtime, fp.platform, representativeRenderSurfaces)
 
