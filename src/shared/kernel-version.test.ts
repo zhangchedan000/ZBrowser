@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { compareKernelVersions, isKernelDowngrade, validKernelVersion } from './kernel-version'
+import { compareKernelVersions, isKernelDowngrade, latestKernelVersion, newerKernelVersion, validKernelVersion } from './kernel-version'
 
 describe('kernel version ordering', () => {
   it('compares all four Chromium version segments numerically', () => {
@@ -13,6 +13,14 @@ describe('kernel version ordering', () => {
     expect(isKernelDowngrade('148.0.7778.215', '144.0.7559.132')).toBe(true)
     expect(isKernelDowngrade('', '144.0.7559.132')).toBe(false)
     expect(isKernelDowngrade('148.0.7778.215', '')).toBe(false)
+  })
+
+  it('selects the newest valid upgrade without ever returning a downgrade', () => {
+    expect(latestKernelVersion(['144.0.7559.132', '148.0.7778.215', '146.0.1.9'])).toBe('148.0.7778.215')
+    expect(latestKernelVersion(['bad', ''])).toBeUndefined()
+    expect(newerKernelVersion('144.0.7559.132', ['144.0.7559.99', '148.0.7778.215'])).toBe('148.0.7778.215')
+    expect(newerKernelVersion('148.0.7778.215', ['144.0.7559.132', '148.0.7778.215'])).toBeUndefined()
+    expect(newerKernelVersion('', ['148.0.7778.215'])).toBeUndefined()
   })
 
   it('rejects malformed versions', () => {
