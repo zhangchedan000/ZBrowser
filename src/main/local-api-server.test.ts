@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 import { defaultProfileDraft } from '../shared/defaults'
-import type { BrowserProfile } from '../shared/types'
+import type { BrowserProfile, FingerprintRuntimeDiagnosticReport, LaunchDiagnosticReport } from '../shared/types'
 import { LocalApiServer, localApiPortFromEnvironment } from './local-api-server'
 import type { LocalApiProfileRuntime } from './browser-launcher'
 
@@ -119,7 +119,7 @@ describe('Local API server', () => {
         }
         return current
       },
-      async diagnose(id: string) {
+      async diagnose(id: string): Promise<LaunchDiagnosticReport> {
         expect(id).toBe(current.id)
         return {
           profileId: id,
@@ -128,7 +128,7 @@ describe('Local API server', () => {
           checks: [{ key: 'launch', label: 'launch', status: 'pass', message: 'ok' }]
         }
       },
-      async diagnoseKernelRuntime(id: string) {
+      async diagnoseKernelRuntime(id: string): Promise<LaunchDiagnosticReport> {
         expect(id).toBe(current.id)
         return {
           profileId: id,
@@ -137,7 +137,7 @@ describe('Local API server', () => {
           checks: [{ key: 'kernel', label: 'kernel', status: 'pass', message: 'ok' }]
         }
       },
-      async diagnoseFingerprintRuntime(id: string) {
+      async diagnoseFingerprintRuntime(id: string): Promise<FingerprintRuntimeDiagnosticReport> {
         expect(id).toBe(current.id)
         return {
           profileId: id,
