@@ -224,6 +224,27 @@ describe('ProfileStore', () => {
     expect(await repository.kernelUsers(draft.kernelVersion, 'custom')).toEqual(['旧版固定环境'])
   })
 
+  it('advances the automatic kernel floor only within the same family and major', async () => {
+    const vault = await makeVault()
+    const repository = new ProfileStore(vault)
+    await repository.initialize()
+    const draft = defaultProfileDraft()
+    draft.name = '补丁升级环境'
+    draft.kernelVersion = '144.0.7559.132'
+    draft.kernelFamily = 'fingerprint-chromium'
+    const profile = await repository.create(draft)
+
+    await expect(repository.advanceKernelFloor(profile.id, '144.0.7559.150', 'fingerprint-chromium'))
+      .resolves.toMatchObject({ kernelVersion: '144.0.7559.150' })
+    await expect(repository.advanceKernelFloor(profile.id, '144.0.7559.149', 'fingerprint-chromium'))
+      .rejects.toThrow('低于环境版本下限')
+    await expect(repository.advanceKernelFloor(profile.id, '145.0.1.1', 'fingerprint-chromium'))
+      .rejects.toThrow('不能跨主版本')
+    await expect(repository.advanceKernelFloor(profile.id, '144.0.7559.160', 'custom'))
+      .rejects.toThrow('与环境固定系列')
+    expect(repository.get(profile.id).kernelVersion).toBe('144.0.7559.150')
+  })
+
   it('allows pinned kernel upgrades but blocks downgrades for an existing profile', async () => {
     const repository = await store()
     const original = defaultProfileDraft()
