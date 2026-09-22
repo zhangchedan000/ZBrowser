@@ -59,6 +59,7 @@ import { UpdateModal } from './UpdateModal'
 import { WorkspaceMigrationModal } from './WorkspaceMigrationModal'
 import { EnvironmentCheckModal } from './EnvironmentCheckModal'
 import { effectiveNetworkIdentity, geoConflictConfirmationMessage } from '../../shared/network-identity'
+import { kernelReleaseMatchesPin } from '../../shared/kernel-version'
 import { orderBatchLaunchProfiles, waitForBatchLaunchGap } from './batch-launch-order'
 import { profileTableSorters } from './profile-table-sort'
 
@@ -228,7 +229,7 @@ export default function App() {
 
   function canLaunchProfile(profile: BrowserProfileView): boolean {
     if (!profile.kernelVersion) return Boolean(engine?.executable)
-    return selectableKernels.some((kernel) => kernel.version === profile.kernelVersion && kernel.executable)
+    return selectableKernels.some((kernel) => kernelReleaseMatchesPin(kernel, profile.kernelVersion, profile.kernelFamily))
   }
 
   const selectableKernels = useMemo(() => {
@@ -757,7 +758,9 @@ export default function App() {
           <span>{profile.fingerprint.platform === 'windows' ? 'Windows' : 'macOS'}</span>
           <span>{profile.fingerprint.screenWidth}×{profile.fingerprint.screenHeight}</span>
           <span>{effectiveNetworkIdentity(profile.fingerprint, profile.proxyCheck).timezone}</span>
-          <span>{profile.kernelVersion ? <>内核 {profile.kernelVersion}</> : '内核自动'}</span>
+          <span>{profile.kernelVersion
+            ? <>内核 {profile.kernelVersion}{profile.kernelFamily === 'custom' ? ' · 自定义' : profile.kernelFamily === 'fingerprint-chromium' ? ' · 官方' : ''}</>
+            : '内核自动'}</span>
           <span className={`webrtc-badge ${profile.fingerprint.webrtcPolicy}`}>
             {profile.fingerprint.webrtcPolicy === 'proxy_only' ? 'WebRTC 防泄漏' : profile.fingerprint.webrtcPolicy === 'public_only' ? 'WebRTC 公网' : 'WebRTC 默认'}
           </span>
