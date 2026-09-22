@@ -76,8 +76,11 @@ describe('ProfileBackupManager', () => {
     draft.kernelFamily = 'fingerprint-chromium'
     const source = await profiles.create(draft)
     const marker = join(profiles.profileDataPath(source.id), 'Default', 'upgrade-marker.txt')
+    const disposableCache = join(profiles.profileDataPath(source.id), 'Default', 'Cache', 'cache-entry')
     await mkdir(join(marker, '..'), { recursive: true })
+    await mkdir(join(disposableCache, '..'), { recursive: true })
     await writeFile(marker, 'before-upgrade')
+    await writeFile(disposableCache, 'throw-away-cache')
 
     const manager = new ProfileBackupManager(profiles, '0.1.0')
     const checkpoint = await manager.createKernelUpgradeCheckpoint(source.id, '148.0.7778.215', 'fingerprint-chromium')
@@ -99,6 +102,49 @@ describe('ProfileBackupManager', () => {
     expect(restored.kernelVersion).toBe('144.0.7559.132')
     expect(restored.kernelFamily).toBe('fingerprint-chromium')
     await expect(readFile(marker, 'utf8')).resolves.toBe('before-upgrade')
+    await expect(readFile(disposableCache, 'utf8')).rejects.toMatchObject({ code: 'ENOENT' })
+    await expect(manager.kernelUpgradeCheckpoint(source.id)).resolves.toBeNull()
+  })
+
+  it('keeps only the latest upgrade checkpoint and removes it after seven days of healthy use', async () => {
+    const vault = await mkdtemp(join(tmpdir(), 'zbrowser-upgrade-retention-vault-'))
+    temporaryPaths.push(vault)
+    const profiles = new ProfileStore(vault)
+    await profiles.initialize()
+    const draft = defaultProfileDraft()
+    draft.name = '升级备份保留环境'
+    draft.kernelVersion = '144.0.7559.132'
+    draft.kernelFamily = 'fingerprint-chromium'
+    const source = await profiles.create(draft)
+    const manager = new ProfileBackupManager(profiles, '0.1.0')
+
+    await manager.createKernelUpgradeCheckpoint(source.id, '148.0.7778.215', 'fingerprint-chromium')
+    await profiles.update(source.id, {
+      ...draft,
+      name: source.name,
+      kernelVersion: '148.0.7778.215',
+      kernelFamily: 'fingerprint-chromium'
+    })
+    await manager.createKernelUpgradeCheckpoint(source.id, '149.0.0.1', 'fingerprint-chromium')
+
+    const root = join(vault, 'kernel-upgrade-backups', source.id)
+    const directories = (await readdir(root, { withFileTypes: true })).filter((entry) => entry.isDirectory())
+    expect(directories).toHaveLength(1)
+
+    await profiles.update(source.id, {
+      ...draft,
+      name: source.name,
+      kernelVersion: '149.0.0.1',
+      kernelFamily: 'fingerprint-chromium'
+    })
+    await expect(manager.noteKernelUpgradeHealthyLaunch(source.id)).resolves.toBe('marked')
+
+    const recordPath = join(root, 'latest.json')
+    const record = JSON.parse(await readFile(recordPath, 'utf8'))
+    record.healthySince = new Date(Date.now() - 8 * 24 * 60 * 60 * 1000).toISOString()
+    await writeFile(recordPath, JSON.stringify(record, null, 2))
+
+    await expect(manager.noteKernelUpgradeHealthyLaunch(source.id)).resolves.toBe('cleaned')
     await expect(manager.kernelUpgradeCheckpoint(source.id)).resolves.toBeNull()
   })
 
