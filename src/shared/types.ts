@@ -354,6 +354,7 @@ export interface BrowserApi {
     list: () => Promise<BrowserProfileView[]>
     create: (draft: ProfileDraft) => Promise<BrowserProfileView>
     update: (id: string, draft: ProfileDraft) => Promise<BrowserProfileView>
+    upgradeKernel: (id: string, version: string, family: KernelFamily) => Promise<BrowserProfileView>
     duplicate: (id: string) => Promise<BrowserProfileView>
     exportConfig: (id: string) => Promise<string | null>
     importConfig: () => Promise<BrowserProfileView | null>
