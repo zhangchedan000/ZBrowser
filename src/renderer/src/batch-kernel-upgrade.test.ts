@@ -57,7 +57,8 @@ describe('batch kernel upgrades', () => {
       profile('p1', '144.0.0.1'),
       profile('p2', '148.0.0.1'),
       profile('p3', '144.0.0.1', 'custom'),
-      profile('p4', '144.0.0.1', 'fingerprint-chromium', 'running')
+      profile('p4', '144.0.0.1', 'fingerprint-chromium', 'running'),
+      profile('p5', '150.0.0.1')
     ], [
       kernel('144.0.0.1'),
       kernel('148.0.0.1'),
@@ -68,6 +69,7 @@ describe('batch kernel upgrades', () => {
     expect(plans[1].skipReason).toContain('系列不同')
     expect(plans[2]).toMatchObject({ targetVersion: '149.0.0.1', targetFamily: 'custom' })
     expect(plans[3].skipReason).toContain('运行中')
+    expect(plans[4].skipReason).toContain('已是')
   })
 
   it('executes sequentially and pauses remaining candidates after the first upgrade failure', async () => {
