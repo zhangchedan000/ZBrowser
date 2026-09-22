@@ -76,6 +76,17 @@ function expectedWebGpuArchitecture(gpuModel: string | undefined): string | unde
   return undefined
 }
 
+function softwareRendererReason(renderer: string): string | undefined {
+  const normalized = renderer.toLowerCase()
+  if (normalized.includes('swiftshader')) return 'SwiftShader'
+  if (normalized.includes('microsoft basic render driver') || normalized.includes('microsoft basic display')) return 'Microsoft Basic Render Driver'
+  if (normalized.includes('llvmpipe')) return 'llvmpipe'
+  if (normalized.includes('softpipe')) return 'softpipe'
+  if (normalized.includes('software rasterizer')) return 'software rasterizer'
+  if (/\bwarp(?: device)?\b/.test(normalized)) return 'WARP software renderer'
+  return undefined
+}
+
 function rendererMatchesGpu(gpuModel: string | undefined, renderer: string): boolean {
   if (!gpuModel || !renderer) return false
   const expected = normalizeSurface(gpuModel)
@@ -108,9 +119,12 @@ function addRenderingSurfaceChecks(
   } else {
     const renderer = webgl.unmaskedRenderer || webgl.renderer || ''
     const vendor = webgl.unmaskedVendor || webgl.vendor || ''
-    if (/swiftshader/i.test(renderer)) {
+    const softwareRenderer = softwareRendererReason(renderer)
+    if (softwareRenderer) {
       add(checks, 'runtime-webgl-renderer', 'WebGL GPU', representative ? 'error' : 'warning',
-        representative ? `检测到 SwiftShader：${renderer}` : `Headless/CI 使用 SwiftShader，不代表正常窗口模式：${renderer}`)
+        representative
+          ? `检测到软件渲染器 ${softwareRenderer}：${renderer}。正常窗口模式下这与真实硬件 Persona 不一致，已按阻止级冲突处理。`
+          : `Headless/CI 使用 ${softwareRenderer}，不代表正常窗口模式：${renderer}`)
     } else if (hostNative || !gpuModel || gpuModel === '本机 GPU') {
       add(checks, 'runtime-webgl-renderer', 'WebGL GPU', 'pass', renderer || '使用本机 WebGL 渲染器')
     } else {

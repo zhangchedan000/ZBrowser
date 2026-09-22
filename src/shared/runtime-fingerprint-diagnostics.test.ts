@@ -146,4 +146,17 @@ describe('runtime fingerprint diagnostics', () => {
     expect(checks.find((check) => check.key === 'runtime-user-agent-version')?.status).toBe('pass')
     expect(checks.filter((check) => check.status === 'error')).toEqual([])
   })
+
+  it('blocks software rendering even for a host-native Persona in representative headed mode', () => {
+    const profile = fixture()
+    profile.fingerprint = applyHardwareProfile(profile.fingerprint, 'windows-host')
+    const observed = runtime()
+    observed.webgl!.unmaskedVendor = 'Microsoft'
+    observed.webgl!.unmaskedRenderer = 'ANGLE (Microsoft, Microsoft Basic Render Driver, D3D11)'
+
+    const checks = buildRuntimeFingerprintChecks(profile, observed, engine)
+
+    expect(checks.find((check) => check.key === 'runtime-webgl-renderer')?.status).toBe('error')
+    expect(checks.find((check) => check.key === 'runtime-webgl-renderer')?.message).toContain('软件渲染器')
+  })
 })

@@ -151,7 +151,7 @@ export function EnvironmentCheckModal({ open, profile, engine, busy, onClose, on
               启动并读取实际指纹
             </Button>
             <Typography.Text type="secondary">
-              临时无界面启动当前 Profile，通过本地安全控制管道读取真实 navigator、screen、UA-CH、语言和时区，完成后自动关闭。
+              临时以正常窗口模式启动当前 Profile，通过本地安全控制管道读取真实 navigator、screen、UA-CH、WebGL/WebGPU、字体、语言和时区，完成后自动关闭。
             </Typography.Text>
           </Space>
 

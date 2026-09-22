@@ -550,6 +550,16 @@ async function main() {
             && runtimeDiagnostic.checks.some(check => check.key === 'runtime-ua-ch-version' && check.status === 'pass'),
           runtimeFingerprintDiagnosed: runtimeFingerprintDiagnostic.ready
             && Boolean(runtimeFingerprintDiagnostic.snapshot)
+            && runtimeFingerprintDiagnostic.snapshot?.webgl?.available === true
+            && Boolean(
+              runtimeFingerprintDiagnostic.snapshot?.webgl?.unmaskedRenderer
+              || runtimeFingerprintDiagnostic.snapshot?.webgl?.renderer
+            )
+            && Boolean(
+              runtimeFingerprintDiagnostic.snapshot?.webgl?.unmaskedVendor
+              || runtimeFingerprintDiagnostic.snapshot?.webgl?.vendor
+            )
+            && runtimeFingerprintDiagnostic.checks.some(check => check.key === 'runtime-webgl-renderer')
             && runtimeFingerprintDiagnostic.checks.some(check => check.key === 'runtime-language' && check.status === 'pass')
             && runtimeFingerprintDiagnostic.checks.some(check => check.key === 'runtime-timezone' && check.status === 'pass')
             && runtimeFingerprintDiagnostic.checks.some(check => check.key === 'runtime-user-agent-version' && check.status === 'pass'),
