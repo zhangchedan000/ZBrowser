@@ -2,7 +2,7 @@ import { spawn, type ChildProcess } from 'node:child_process'
 import { access, mkdir, readFile, rename, rm, statfs, writeFile } from 'node:fs/promises'
 import { constants } from 'node:fs'
 import { join } from 'node:path'
-import type { BrowserCrashRecord, BrowserProfile, LaunchDiagnosticCheck, LaunchDiagnosticReport, ProfileLaunchOptions, ProxyConfig, ProxyTestResult } from '../shared/types'
+import type { BrowserCrashRecord, BrowserProfile, FingerprintRuntimeDiagnosticReport, LaunchDiagnosticCheck, LaunchDiagnosticReport, ProfileLaunchOptions, ProxyConfig, ProxyTestResult } from '../shared/types'
 import { locateBrowserForProfile } from './browser-locator'
 import { buildLaunchArgs } from './launch-args'
 import type { ProfileStore } from './profile-store'
@@ -19,12 +19,13 @@ import { classifyProxyFailure, testProxy } from './proxy-tester'
 import { GEOIP_CONFLICT_CONFIRMATION_PREFIX, hasCompleteProxyIdentity, proxyLaunchError } from '../shared/network-identity'
 import { sameProxyIdentity } from './profile-secrets'
 import { BrowserControlSession, PipeCdpTransport } from './browser-control-session'
+import { buildRuntimeFingerprintChecks } from '../shared/runtime-fingerprint-diagnostics'
 import type { Readable, Writable } from 'node:stream'
 
 type ProxyTester = (config: ProxyConfig) => Promise<ProxyTestResult>
 
 interface InternalProfileLaunchOptions extends ProfileLaunchOptions {
-  /** Internal-only: starts Chromium headlessly with a secure CDP pipe for runtime UA checks. */
+  /** Internal-only: starts Chromium headlessly with a secure CDP pipe for runtime fingerprint checks. */
   runtimeVersionProbe?: boolean
 }
 
@@ -804,6 +805,89 @@ export class BrowserLauncher {
       checkedAt: new Date().toISOString(),
       ready: !checks.some((check) => check.status === 'error'),
       checks
+    }
+  }
+
+  async diagnoseFingerprintRuntime(id: string): Promise<FingerprintRuntimeDiagnosticReport> {
+    const profile = this.profiles.get(id)
+    if (profile.status !== 'closed' && profile.status !== 'error') {
+      return {
+        profileId: id,
+        checkedAt: new Date().toISOString(),
+        ready: false,
+        checks: [{
+          key: 'runtime-fingerprint-probe',
+          label: '浏览器实际指纹',
+          status: 'error',
+          message: '请先关闭当前环境再运行实际指纹检测'
+        }]
+      }
+    }
+
+    const base = await this.diagnose(id)
+    if (!base.ready) {
+      const blocking = base.checks.filter((check) => check.status === 'error')
+      return {
+        profileId: id,
+        checkedAt: new Date().toISOString(),
+        ready: false,
+        checks: blocking.length ? blocking : [{
+          key: 'runtime-fingerprint-probe',
+          label: '浏览器实际指纹',
+          status: 'error',
+          message: '基础启动诊断未通过，未继续启动浏览器读取实际指纹'
+        }]
+      }
+    }
+
+    const engine = await locateBrowserForProfile(this.settings, this.profiles.vaultPath, profile.kernelVersion, profile.kernelFamily)
+    if (!engine.fingerprintKernel || !engine.version) {
+      return {
+        profileId: id,
+        checkedAt: new Date().toISOString(),
+        ready: false,
+        checks: [{
+          key: 'runtime-fingerprint-probe',
+          label: '浏览器实际指纹',
+          status: 'error',
+          message: '当前环境没有可核验实际指纹的 Fingerprint Chromium 内核'
+        }]
+      }
+    }
+
+    try {
+      await this.launch(id, { startUrls: [], runtimeVersionProbe: true })
+      const snapshot = await this.controlSession(id).runtimeFingerprintSnapshot()
+      const current = this.profiles.get(id)
+      const checks = buildRuntimeFingerprintChecks(current, snapshot, engine)
+      return {
+        profileId: id,
+        checkedAt: new Date().toISOString(),
+        ready: !checks.some((check) => check.status === 'error'),
+        snapshot,
+        checks
+      }
+    } catch (error) {
+      return {
+        profileId: id,
+        checkedAt: new Date().toISOString(),
+        ready: false,
+        checks: [{
+          key: 'runtime-fingerprint-probe',
+          label: '浏览器实际指纹',
+          status: 'error',
+          message: error instanceof Error ? error.message : String(error)
+        }]
+      }
+    } finally {
+      if (this.isRunning(id)) {
+        await this.close(id).catch((error) => {
+          this.logger?.error('实际指纹诊断后关闭浏览器失败', {
+            profileId: id,
+            error: error instanceof Error ? error.message : String(error)
+          })
+        })
+      }
     }
   }
 

@@ -340,6 +340,7 @@ export function registerIpc({ profiles, settings, launcher, kernels, extensions,
   })
   ipcMain.handle('profiles:diagnose', (_event, id: string) => launcher.diagnose(id))
   ipcMain.handle('profiles:diagnose-kernel-runtime', (_event, id: string) => launcher.diagnoseKernelRuntime(id))
+  ipcMain.handle('profiles:diagnose-fingerprint-runtime', (_event, id: string) => launcher.diagnoseFingerprintRuntime(id))
   ipcMain.handle('profiles:crash-history', (_event, id: string) => launcher.crashHistory(id))
   ipcMain.handle('profiles:environment-check-history', (_event, id: string) => {
     profiles.get(id)

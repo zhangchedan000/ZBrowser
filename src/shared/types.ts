@@ -322,6 +322,43 @@ export interface LaunchDiagnosticReport {
   checks: LaunchDiagnosticCheck[]
 }
 
+export interface RuntimeFingerprintSnapshot {
+  userAgent: string
+  platform: string
+  hardwareConcurrency: number
+  deviceMemory?: number
+  devicePixelRatio: number
+  screen: {
+    width: number
+    height: number
+    availWidth: number
+    availHeight: number
+    colorDepth: number
+    pixelDepth: number
+  }
+  language: string
+  languages: string[]
+  timezone: string
+  uaCh: {
+    exposed: boolean
+    platform?: string
+    mobile?: boolean
+    brands: Array<{ brand: string; version: string }>
+    architecture?: string
+    bitness?: string
+    platformVersion?: string
+    fullVersionList: Array<{ brand: string; version: string }>
+  }
+}
+
+export interface FingerprintRuntimeDiagnosticReport {
+  profileId: string
+  checkedAt: string
+  ready: boolean
+  snapshot?: RuntimeFingerprintSnapshot
+  checks: LaunchDiagnosticCheck[]
+}
+
 export interface AppRecoveryStatus {
   previousUnclean: boolean
   previousStartedAt?: string
@@ -396,6 +433,7 @@ export interface BrowserApi {
     testProxy: (id: string) => Promise<BrowserProfileView>
     diagnose: (id: string) => Promise<LaunchDiagnosticReport>
     diagnoseKernelRuntime: (id: string) => Promise<LaunchDiagnosticReport>
+    diagnoseFingerprintRuntime: (id: string) => Promise<FingerprintRuntimeDiagnosticReport>
     crashHistory: (id: string) => Promise<BrowserCrashRecord[]>
     environmentCheckHistory: (id: string) => Promise<EnvironmentCheckRecord[]>
     recordEnvironmentCheck: (id: string, urls: string[]) => Promise<EnvironmentCheckRecord[]>

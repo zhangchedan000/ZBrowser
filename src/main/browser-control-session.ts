@@ -1,4 +1,5 @@
 import type { Readable, Writable } from 'node:stream'
+import type { RuntimeFingerprintSnapshot } from '../shared/types'
 
 const MAX_PAGE_NODES = 300
 const MAX_PAGE_TEXT = 24_000
@@ -155,44 +156,63 @@ export class BrowserControlSession {
     return this.pageState()
   }
 
-  async runtimeVersionSnapshot(): Promise<{
-    userAgent: string
-    uaChExposed: boolean
-    fullVersionList: Array<{ brand: string; version: string }>
-  }> {
+  async runtimeFingerprintSnapshot(): Promise<RuntimeFingerprintSnapshot> {
     await this.ensurePage()
     const result = await this.cdp.send<{
-      result?: { value?: {
-        userAgent?: string
-        uaChExposed?: boolean
-        fullVersionList?: Array<{ brand?: string; version?: string }>
-      } }
+      result?: { value?: RuntimeFingerprintSnapshot }
       exceptionDetails?: unknown
     }>('Runtime.evaluate', {
       expression: `(async () => {
         const uaData = navigator.userAgentData
         const highEntropy = uaData?.getHighEntropyValues
-          ? await uaData.getHighEntropyValues(['fullVersionList'])
+          ? await uaData.getHighEntropyValues(['architecture', 'bitness', 'platformVersion', 'fullVersionList'])
           : {}
         return {
           userAgent: navigator.userAgent,
-          uaChExposed: Boolean(uaData),
-          fullVersionList: Array.isArray(highEntropy.fullVersionList) ? highEntropy.fullVersionList : []
+          platform: navigator.platform,
+          hardwareConcurrency: navigator.hardwareConcurrency,
+          deviceMemory: navigator.deviceMemory,
+          devicePixelRatio: window.devicePixelRatio,
+          screen: {
+            width: screen.width,
+            height: screen.height,
+            availWidth: screen.availWidth,
+            availHeight: screen.availHeight,
+            colorDepth: screen.colorDepth,
+            pixelDepth: screen.pixelDepth
+          },
+          language: navigator.language,
+          languages: Array.from(navigator.languages || []),
+          timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+          uaCh: {
+            exposed: Boolean(uaData),
+            platform: uaData?.platform,
+            mobile: uaData?.mobile,
+            brands: Array.isArray(uaData?.brands) ? uaData.brands : [],
+            architecture: highEntropy.architecture,
+            bitness: highEntropy.bitness,
+            platformVersion: highEntropy.platformVersion,
+            fullVersionList: Array.isArray(highEntropy.fullVersionList) ? highEntropy.fullVersionList : []
+          }
         }
       })()`,
       awaitPromise: true,
       returnByValue: true
     }, this.sessionId)
-    if (result.exceptionDetails) throw new Error('无法读取浏览器 UA / UA-CH 运行时版本')
-    const value = result.result?.value
+    if (result.exceptionDetails || !result.result?.value) throw new Error('无法读取浏览器实际指纹运行值')
+    return result.result.value
+  }
+
+  async runtimeVersionSnapshot(): Promise<{
+    userAgent: string
+    uaChExposed: boolean
+    fullVersionList: Array<{ brand: string; version: string }>
+  }> {
+    const runtime = await this.runtimeFingerprintSnapshot()
     return {
-      userAgent: typeof value?.userAgent === 'string' ? value.userAgent : '',
-      uaChExposed: value?.uaChExposed === true,
-      fullVersionList: Array.isArray(value?.fullVersionList)
-        ? value.fullVersionList
-            .filter((item) => item && typeof item.brand === 'string' && typeof item.version === 'string')
-            .map((item) => ({ brand: item.brand!, version: item.version! }))
-        : []
+      userAgent: runtime.userAgent,
+      uaChExposed: runtime.uaCh.exposed,
+      fullVersionList: runtime.uaCh.fullVersionList
     }
   }
 
