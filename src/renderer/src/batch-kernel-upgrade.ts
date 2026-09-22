@@ -138,9 +138,15 @@ export async function executeBatchKernelUpgrades(
       dependencies.onProfileChanged?.(upgraded.profile)
 
       if (!testCompleted) {
-        const diagnostic = await dependencies.diagnose(plan.profile.id)
-        if (!diagnostic.ready) {
-          const failure = diagnosticFailure(diagnostic)
+        let testFailure: string | undefined
+        try {
+          const diagnostic = await dependencies.diagnose(plan.profile.id)
+          if (!diagnostic.ready) testFailure = diagnosticFailure(diagnostic)
+        } catch (diagnosticError) {
+          testFailure = `启动诊断执行失败：${diagnosticError instanceof Error ? diagnosticError.message : String(diagnosticError)}`
+        }
+
+        if (testFailure) {
           let rollbackNote = '已自动回滚升级前状态'
           try {
             const rolledBack = await dependencies.rollback(plan.profile.id)
@@ -148,7 +154,7 @@ export async function executeBatchKernelUpgrades(
           } catch (rollbackError) {
             rollbackNote = `自动回滚失败：${rollbackError instanceof Error ? rollbackError.message : String(rollbackError)}`
           }
-          const reason = `首个测试环境诊断未通过：${failure}；${rollbackNote}`
+          const reason = `首个测试环境未通过：${testFailure}；${rollbackNote}`
           items.push({
             profileId: plan.profile.id,
             name: plan.profile.name,
