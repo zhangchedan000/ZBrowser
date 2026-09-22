@@ -56,6 +56,10 @@ export class WebSocketCdpTransport implements CdpTransport {
         clearTimeout(timer)
         reject(new Error('无法连接浏览器 CDP WebSocket'))
       }, { once: true })
+      socket.addEventListener('close', () => {
+        clearTimeout(timer)
+        reject(new Error('浏览器 CDP WebSocket 在连接完成前关闭'))
+      }, { once: true })
     })
     socket.addEventListener('message', (event) => this.onMessage(event.data))
     socket.addEventListener('close', () => this.rejectAll(new Error('浏览器 CDP WebSocket 已关闭')))
@@ -65,8 +69,13 @@ export class WebSocketCdpTransport implements CdpTransport {
   static async connect(urlValue: string): Promise<WebSocketCdpTransport> {
     const url = validateLoopbackCdpWebSocketUrl(urlValue)
     const transport = new WebSocketCdpTransport(new WebSocket(url))
-    await transport.ready
-    return transport
+    try {
+      await transport.ready
+      return transport
+    } catch (error) {
+      transport.close()
+      throw error
+    }
   }
 
   async send<T>(method: string, params: Record<string, unknown> = {}, sessionId?: string): Promise<T> {
@@ -92,9 +101,9 @@ export class WebSocketCdpTransport implements CdpTransport {
   }
 
   close(): void {
-    if (this.closed) return
-    this.closed = true
-    try { this.socket.close() } catch { /* already closing */ }
+    try {
+      if (this.socket.readyState !== WebSocket.CLOSED) this.socket.close()
+    } catch { /* already closing */ }
     this.rejectAll(new Error('浏览器 CDP WebSocket 已关闭'))
   }
 
