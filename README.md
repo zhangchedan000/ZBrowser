@@ -31,6 +31,36 @@ ZBrowser 是一个本地优先、开源的多环境指纹浏览器项目，当�
 4. 保存环境后点击“环境检测”，先查看本地一致性结果，再用同一 Profile 打开 BrowserLeaks、Pixelscan、IPhey、CreepJS。
 5. 后续复测会保留本地检测历史，可查看 IP、时区、语言、内核、硬件模板和 Seed 是否发生漂移。
 
+## Local API（V1）
+
+ZBrowser 启动后会同时启动仅绑定本机回环地址的 Local API：
+
+- 默认地址：`http://127.0.0.1:17653`，不会监听局域网或公网地址。
+- 首次启动会生成随机 Bearer Token，保存在 `<userData>/vault/local-api.token`；Token 不写入日志、不放在 URL 中。
+- 当前监听地址、实际端口和 Token 文件位置写入 `<userData>/vault/local-api.json`，自动化程序可从这里发现 API。
+- 可通过 `ZBROWSER_LOCAL_API_PORT` 修改端口；测试或托管场景可设为 `0` 使用系统分配端口。
+- 可通过 `ZBROWSER_LOCAL_API_TOKEN` 提供已有 Token；至少 32 个非空白字符。
+- Profile 列表只返回必要的运行摘要，不返回代理主机、用户名、密码、Cookie 或其他凭据。
+
+V1 路由：
+
+```text
+GET  /api/v1/health
+GET  /api/v1/profiles
+GET  /api/v1/profiles/:id/status
+POST /api/v1/profiles/:id/start
+POST /api/v1/profiles/:id/stop
+GET  /api/v1/profiles/:id/cdp
+```
+
+同时保留 `/api/profile/list`、`/api/profile/start`、`/api/profile/stop`、`/api/profile/status` 和 `/api/cdp/connect` 兼容入口。所有请求都必须发送：
+
+```text
+Authorization: Bearer <local-api.token 中的 Token>
+```
+
+Windows 环境启动后，Local API 可返回仅绑定 `127.0.0.1` 的临时 CDP 地址，可直接交给 Playwright / Puppeteer 的 CDP 连接能力。CDP 不绑定 `0.0.0.0`，也不会通过 Local API 返回代理或账号凭据。
+
 ## Windows 构建
 
 GitHub Actions 会在 `dev` 分支提交后自动执行：
