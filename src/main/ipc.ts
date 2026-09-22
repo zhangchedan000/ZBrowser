@@ -2,6 +2,7 @@ import { app, BrowserWindow, dialog, ipcMain, shell } from 'electron'
 import { lstat, readFile, stat, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import type { ProfileDraft } from '../shared/types'
+import { kernelFamilyForRelease } from '../shared/kernel-version'
 import type { KernelManager } from './kernel-manager'
 import { listBundledBrowsers, locateBrowser, locateBrowserForProfile, locateBundledBrowser, normalizeBrowserSelection } from './browser-locator'
 import { mergeKernelCatalog } from './kernel-catalog'
@@ -43,13 +44,17 @@ export function registerIpc({ profiles, settings, launcher, kernels, extensions,
   async function pinKernelFamily(draft: ProfileDraft): Promise<ProfileDraft> {
     const version = draft.kernelVersion.trim()
     if (!version) return { ...draft, kernelFamily: undefined }
-    if (draft.kernelFamily !== undefined) return draft
     const [managed, bundled] = await Promise.all([kernels.installed(), listBundledBrowsers()])
     const installed = managed.find((kernel) => kernel.version === version)
     if (installed) {
-      return { ...draft, kernelFamily: installed.origin === 'local-build' ? 'custom' : 'fingerprint-chromium' }
+      const installedFamily = kernelFamilyForRelease(installed)
+      if (draft.kernelFamily && draft.kernelFamily !== installedFamily) {
+        throw new Error(`固定内核 ${version} 的系列不匹配：当前安装的是 ${installedFamily}，环境要求 ${draft.kernelFamily}`)
+      }
+      return { ...draft, kernelFamily: installedFamily }
     }
     if (bundled.some((kernel) => kernel.version === version)) {
+      if (draft.kernelFamily === 'custom') return draft
       return { ...draft, kernelFamily: 'fingerprint-chromium' }
     }
     return draft
