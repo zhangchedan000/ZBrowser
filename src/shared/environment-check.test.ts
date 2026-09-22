@@ -70,6 +70,7 @@ describe('environment consistency checks', () => {
     expect(checks.find((item) => item.key === 'webrtc')?.level).toBe('ok')
     expect(checks.find((item) => item.key === 'timezone')?.level).toBe('ok')
     expect(checks.find((item) => item.key === 'language')?.level).toBe('ok')
+    expect(checks.find((item) => item.key === 'hardware-persona')?.level).toBe('ok')
   })
 
   it('warns when manual locale and WebRTC conflict with a US proxy', () => {
@@ -86,5 +87,19 @@ describe('environment consistency checks', () => {
     expect(checks.find((item) => item.key === 'timezone')?.level).toBe('warning')
     expect(checks.find((item) => item.key === 'language')?.level).toBe('warning')
     expect(checks.find((item) => item.key === 'webrtc')?.level).toBe('warning')
+  })
+
+  it('surfaces persona contract drift without rewriting the profile', () => {
+    const input = profile()
+    input.fingerprint = {
+      ...input.fingerprint,
+      hardwareConcurrency: 4,
+      screenWidth: 1366
+    }
+    const checks = buildEnvironmentChecks(input, engine)
+    const persona = checks.find((item) => item.key === 'hardware-persona')
+    expect(persona?.level).toBe('warning')
+    expect(persona?.detail).toContain('CPU 核心数')
+    expect(persona?.detail).toContain('屏幕宽度')
   })
 })

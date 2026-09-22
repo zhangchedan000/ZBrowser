@@ -1,5 +1,6 @@
 import type { BrowserProfileView, EngineStatus } from './types'
 import { fingerprintVersionWarning } from './fingerprint-consistency'
+import { resolveFingerprintPersona } from './fingerprint-persona-engine'
 import { hardwareIdentityWarnings, hardwareProfile } from './hardware-profiles'
 import { effectiveNetworkIdentity, localeForCountry } from './network-identity'
 
@@ -133,6 +134,28 @@ export function buildEnvironmentChecks(
       detail: matches ? undefined : '硬件模板与操作系统平台不一致。'
     })
   }
+
+  const persona = resolveFingerprintPersona(fp)
+  const personaLevel: EnvironmentCheckLevel = persona.consistency === 'conflict' || persona.consistency === 'unresolved'
+    ? 'warning'
+    : persona.consistency === 'legacy'
+      ? 'info'
+      : 'ok'
+  items.push({
+    key: 'hardware-persona',
+    label: 'Hardware Persona',
+    level: personaLevel,
+    summary: persona.personaId ? `${persona.label} · ${persona.personaId}` : persona.label,
+    detail: persona.warnings.length
+      ? persona.warnings.join('；')
+      : persona.source === 'catalog'
+        ? `CPU、内存、GPU、屏幕与浏览器可见硬件字段符合 Persona 合同；来源记录 ${persona.sourceIds.length} 项。`
+        : persona.source === 'seeded-profile'
+          ? '由现有硬件模板、Seed 和已固定 GPU bucket 解析；不会修改已保存的环境身份。'
+          : persona.source === 'host-native'
+            ? '运行时继续使用当前设备的原生硬件身份，不生成新的模拟 Persona。'
+            : '当前固定硬件模板解析正常。'
+  })
 
   const hardwareWarnings = hardwareIdentityWarnings(fp)
   items.push({
