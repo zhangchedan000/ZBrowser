@@ -93,8 +93,15 @@ describe('MCP stdio message handler', () => {
     }])
     expect(response).toMatchObject({
       id: 3,
-      result: { isError: undefined }
+      result: {
+        content: [{ type: 'text' }],
+        structuredContent: {
+          ok: true,
+          path: '/api/v1/profiles/11111111-1111-1111-1111-111111111111/page/open'
+        }
+      }
     })
+    expect((response?.result as { isError?: boolean }).isError).toBeUndefined()
   })
 
   it('returns tool errors as tool results and never turns arguments into arbitrary API paths', async () => {
