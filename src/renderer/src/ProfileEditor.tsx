@@ -18,7 +18,7 @@ import {
   Tabs,
   Typography
 } from 'antd'
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { defaultPlatform, defaultProfileDraft, randomSeed } from '../../shared/defaults'
 import { fingerprintVersionWarning } from '../../shared/fingerprint-consistency'
 import {
@@ -30,7 +30,7 @@ import {
   refreshSeededGpuIdentity
 } from '../../shared/hardware-profiles'
 import { effectiveNetworkIdentity, localeForCountry } from '../../shared/network-identity'
-import { isKernelDowngrade } from '../../shared/kernel-version'
+import { isKernelDowngrade, kernelFamilyForRelease, kernelReleaseMatchesPin, newerCompatibleKernelVersion } from '../../shared/kernel-version'
 import type { BrowserExtension, BrowserProfileView, EngineStatus, HardwareProfileId, KernelRelease, ProfileDraft, ProxyTestResult } from '../../shared/types'
 
 interface EditorValues extends Omit<ProfileDraft, 'startUrls' | 'color'> {
@@ -95,10 +95,21 @@ export function ProfileEditor({ open, profile, suggestedIndex, saving, extension
   const fingerprintSeed = Form.useWatch(['fingerprint', 'seed'], form) ?? 0
   const fingerprintGpuBucket = Form.useWatch(['fingerprint', 'gpuBucket'], form)
   const kernelVersion = Form.useWatch('kernelVersion', form) ?? ''
+  const kernelFamily = Form.useWatch('kernelFamily', form)
   const windowMode = Form.useWatch(['window', 'mode'], form) ?? 'auto'
   const [testingProxy, setTestingProxy] = useState(false)
   const [proxyResult, setProxyResult] = useState<ProxyTestResult | null>(null)
-  const pinnedKernel = kernels.find((kernel) => kernel.version === kernelVersion)
+  const pinnedKernel = kernels.find((kernel) => kernelReleaseMatchesPin(kernel, kernelVersion, kernelFamily))
+  const effectiveKernelFamily = kernelFamily ?? (pinnedKernel ? kernelFamilyForRelease(pinnedKernel) : profile?.kernelFamily)
+  const upgradeVersion = useMemo(
+    () => profile?.kernelVersion
+      ? newerCompatibleKernelVersion(profile.kernelVersion, effectiveKernelFamily, kernels)
+      : undefined,
+    [effectiveKernelFamily, kernels, profile?.kernelVersion]
+  )
+  const upgradeKernel = upgradeVersion
+    ? kernels.find((kernel) => kernelReleaseMatchesPin(kernel, upgradeVersion, effectiveKernelFamily))
+    : undefined
   const selectedEngine: EngineStatus | null = kernelVersion
     ? {
         executable: pinnedKernel?.executable ?? null,
@@ -196,6 +207,7 @@ export function ProfileEditor({ open, profile, suggestedIndex, saving, extension
       <Form.Item name="color" label="标记颜色">
         <ColorPicker showText />
       </Form.Item>
+      <Form.Item name="kernelFamily" hidden><Input /></Form.Item>
       <Form.Item
         name="kernelVersion"
         label="浏览器内核"
@@ -225,7 +237,33 @@ export function ProfileEditor({ open, profile, suggestedIndex, saving, extension
         />
       </Form.Item>
       {kernelVersion && !pinnedKernel && (
-        <Alert type="error" showIcon message={`固定内核 ${kernelVersion} 当前不可用`} description="安装该版本后才能启动此环境，或者改回自动跟随。" />
+        <Alert
+          type="error"
+          showIcon
+          message={`固定内核 ${kernelVersion} 当前不可用`}
+          description={kernelFamily
+            ? `需要 ${kernelFamily} 系列的该版本；请安装匹配内核，或者修改环境配置。`
+            : '安装该版本后才能启动此环境，或者改回自动跟随。'}
+        />
+      )}
+      {profile?.kernelVersion && upgradeVersion && upgradeKernel && (
+        <Alert
+          type="info"
+          showIcon
+          message={`该环境可升级到内核 ${upgradeVersion}`}
+          description="升级只修改这个环境的固定内核版本，不会自动影响其他环境，也不会允许降级。"
+          action={
+            <Button
+              size="small"
+              onClick={() => {
+                form.setFieldValue('kernelVersion', upgradeVersion)
+                form.setFieldValue('kernelFamily', kernelFamilyForRelease(upgradeKernel))
+              }}
+            >
+              选择升级
+            </Button>
+          }
+        />
       )}
       <Row gutter={12}>
         <Col span={12}>
