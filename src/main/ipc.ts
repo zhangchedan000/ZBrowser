@@ -68,12 +68,10 @@ export function registerIpc({ profiles, settings, launcher, kernels, extensions,
     if (typeof version !== 'string' || !/^\d+(?:\.\d+){3}$/.test(version.trim())) throw new Error('目标内核版本号无效')
     if (family !== 'fingerprint-chromium' && family !== 'custom') throw new Error('目标内核系列无效')
     const targetVersion = version.trim()
-    const [managed, bundled] = await Promise.all([kernels.installed(), listBundledBrowsers()])
-    const managedMatch = managed.some((kernel) => kernel.version === targetVersion && kernelFamilyForRelease(kernel) === family)
-    const bundledMatch = family === 'fingerprint-chromium' && bundled.some((kernel) => kernel.version === targetVersion)
-    if (!managedMatch && !bundledMatch) throw new Error(`目标内核 ${targetVersion}（${family}）尚未安装`)
-
     const current = profiles.get(id)
+    if (current.status !== 'closed' && current.status !== 'error') {
+      throw new Error('请先关闭浏览器环境再升级内核')
+    }
     if (!current.kernelVersion || !current.kernelFamily) {
       throw new Error('当前环境尚未固定内核系列，请先在环境编辑器中选择固定内核')
     }
@@ -84,6 +82,12 @@ export function registerIpc({ profiles, settings, launcher, kernels, extensions,
       throw new Error(`目标内核 ${targetVersion} 不是高于当前 ${current.kernelVersion} 的升级版本`)
     }
 
+    const [managed, bundled] = await Promise.all([kernels.installed(), listBundledBrowsers()])
+    const managedMatch = managed.some((kernel) => kernel.version === targetVersion && kernelFamilyForRelease(kernel) === family)
+    const bundledMatch = family === 'fingerprint-chromium' && bundled.some((kernel) => kernel.version === targetVersion)
+    if (!managedMatch && !bundledMatch) throw new Error(`目标内核 ${targetVersion}（${family}）尚未安装`)
+
+    const checkpoint = await backups.createKernelUpgradeCheckpoint(id, targetVersion, family)
     const draft: ProfileDraft = {
       name: current.name,
       note: current.note,
@@ -98,8 +102,11 @@ export function registerIpc({ profiles, settings, launcher, kernels, extensions,
       proxy: { ...current.proxy },
       fingerprint: { ...current.fingerprint, disabledSpoofing: [...current.fingerprint.disabledSpoofing] }
     }
-    return publicProfile(await profiles.update(id, await pinKernelFamily(draft)))
+    const profile = await profiles.update(id, await pinKernelFamily(draft))
+    return { profile: publicProfile(profile), checkpoint }
   })
+  ipcMain.handle('profiles:kernel-upgrade-checkpoint', (_event, id: string) => backups.kernelUpgradeCheckpoint(id))
+  ipcMain.handle('profiles:rollback-kernel-upgrade', async (_event, id: string) => publicProfile(await backups.rollbackKernelUpgrade(id)))
   ipcMain.handle('profiles:duplicate', async (_event, id: string) => publicProfile(await profiles.duplicate(id)))
   ipcMain.handle('profiles:export-config', async (_event, id: string) => {
     const profile = profiles.get(id)
