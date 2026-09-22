@@ -54,11 +54,14 @@ export function diagnosticProfileSummary(profile: BrowserProfile): Record<string
   }
 }
 
-export function redactDiagnosticText(value: string, privatePaths: string[] = []): string {
+export function redactDiagnosticText(value: string, privateValues: string[] = []): string {
   let redacted = redactSensitiveText(value)
     .replace(/("(?:password|passwd|secret|token|authorization)"\s*:\s*)"(?:\\.|[^"])*"/gi, '$1"[REDACTED]"')
-  for (const privatePath of privatePaths.filter(Boolean).sort((a, b) => b.length - a.length)) {
-    redacted = redacted.split(privatePath).join('[LOCAL_PATH]')
+  const unique = [...new Set(privateValues.filter((item) => item.length >= 3))].sort((a, b) => b.length - a.length)
+  for (const privateValue of unique) {
+    for (const variant of [privateValue, privateValue.replace(/\\/g, '\\\\')]) {
+      redacted = redacted.split(variant).join('[REDACTED_LOCAL]')
+    }
   }
   return redacted
 }

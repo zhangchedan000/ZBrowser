@@ -547,11 +547,19 @@ export function registerIpc({
       profiles: profileReports
     }
 
-    const privatePaths = [app.getPath('home'), app.getPath('userData')]
+    const privateValues = [
+      app.getPath('home'),
+      app.getPath('userData'),
+      ...profiles.list().flatMap((profile) => [
+        profile.proxy.host,
+        profile.proxy.username,
+        profile.proxy.password
+      ])
+    ]
     const entries: Array<{ name: string; data: string | Buffer }> = [
       {
         name: 'diagnostics.json',
-        data: redactDiagnosticText(JSON.stringify(payload, null, 2), privatePaths)
+        data: redactDiagnosticText(JSON.stringify(payload, null, 2), privateValues)
       },
       {
         name: 'README.txt',
@@ -570,7 +578,7 @@ export function registerIpc({
     })
     if (currentLog) entries.push({
       name: 'logs/current.log',
-      data: redactDiagnosticText(currentLog, privatePaths)
+      data: redactDiagnosticText(currentLog, privateValues)
     })
     const previousLog = await readFile(join(logger.directory, 'prism.previous.log'), 'utf8').catch((error) => {
       if ((error as NodeJS.ErrnoException).code === 'ENOENT') return ''
@@ -578,7 +586,7 @@ export function registerIpc({
     })
     if (previousLog) entries.push({
       name: 'logs/previous.log',
-      data: redactDiagnosticText(previousLog, privatePaths)
+      data: redactDiagnosticText(previousLog, privateValues)
     })
 
     await writeFile(result.filePath, createStoredZip(entries), { mode: 0o600 })

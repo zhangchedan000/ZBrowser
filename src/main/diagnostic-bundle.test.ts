@@ -69,7 +69,7 @@ describe('diagnostic bundle', () => {
     )
     expect(redacted).not.toContain('abc123')
     expect(redacted).not.toContain('C:\\Users\\Alice')
-    expect(redacted).toContain('[LOCAL_PATH]')
+    expect(redacted).toContain('[REDACTED_LOCAL]')
   })
 
   it('creates a stored ZIP containing named diagnostic entries', () => {
