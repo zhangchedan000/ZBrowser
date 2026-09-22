@@ -1,4 +1,4 @@
-import { discoverRunningLocalApi, McpLocalApiError, type ZBrowserLocalApiClient } from './mcp-local-api-client'
+import { discoverRunningLocalApi, McpLocalApiError } from './mcp-local-api-client'
 
 const MODERN_PROTOCOL_VERSION = '2026-07-28'
 const LEGACY_PROTOCOL_VERSIONS = ['2025-11-25', '2025-06-18', '2025-03-26', '2024-11-05'] as const
@@ -359,7 +359,12 @@ export async function handleMcpMessage(
 }
 
 export async function runMcpStdio(vaultPath: string, serverVersion: string): Promise<void> {
-  const client: ZBrowserLocalApiClient = await discoverRunningLocalApi(vaultPath)
+  // Resolve the Local API lazily for each tool request. This keeps discovery/listing usable
+  // before the desktop app starts and automatically follows an app restart or ephemeral port.
+  // The bearer token lives only inside the short-lived Local API client and is never returned.
+  const client: McpApiClient = {
+    request: async (path, options) => (await discoverRunningLocalApi(vaultPath)).request(path, options)
+  }
   process.stdin.setEncoding('utf8')
   let buffer = ''
 
