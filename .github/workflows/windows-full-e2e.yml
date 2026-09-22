@@ -217,7 +217,8 @@ jobs:
           $existingTarget = gh release view $tag --repo "${{ github.repository }}" --json targetCommitish --jq '.targetCommitish' 2>$null
           if ($LASTEXITCODE -eq 0) {
             if ($existingTarget -ne $sha) {
-              throw "Release $tag already exists for $existingTarget, but this build is $sha. Bump package.json before publishing a new build."
+              Write-Host "Release $tag is immutable and already points to $existingTarget. This dev build is $sha, so publishing is skipped until package.json is bumped to a new version."
+              exit 0
             }
             Write-Host "Release $tag already points to this commit. Existing assets are immutable; skipping publish."
             exit 0
