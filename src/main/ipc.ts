@@ -316,7 +316,15 @@ export function registerIpc({ profiles, settings, launcher, kernels, extensions,
     return launcher.launch(id, {
       allowGeoConflict: options?.allowGeoConflict === true,
       startUrls
-    }).then(publicProfile)
+    }).then(async (profile) => {
+      await backups.noteKernelUpgradeHealthyLaunch(id).catch((error) => {
+        logger?.error('更新内核升级备份保留状态失败', {
+          profileId: id,
+          error: error instanceof Error ? error.message : String(error)
+        })
+      })
+      return publicProfile(profile)
+    })
   })
   ipcMain.handle('profiles:close', (_event, id: string) => launcher.close(id).then(publicProfile))
   ipcMain.handle('profiles:close-all', () => launcher.closeAll())
