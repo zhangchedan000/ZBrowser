@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto'
 import { copyFile, lstat, mkdir, readFile, readdir, rename, rm, writeFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
-import type { BrowserProfile, DeletedProfileSummary, ProfileBatchClassification, ProfileDraft, ProfileStoreHealth, ProxyCheckSummary, WebRtcPolicy } from '../shared/types'
+import type { BrowserProfile, DeletedProfileSummary, KernelFamily, ProfileBatchClassification, ProfileDraft, ProfileStoreHealth, ProxyCheckSummary, WebRtcPolicy } from '../shared/types'
 import { defaultProfileWindow, seedFromId } from '../shared/defaults'
 import { refreshSeededGpuIdentity } from '../shared/hardware-profiles'
 import { isKernelDowngrade } from '../shared/kernel-version'
@@ -470,15 +470,17 @@ export class ProfileStore {
     return false
   }
 
-  async kernelUsers(version: string): Promise<string[]> {
-    const names = this.list().filter((profile) => profile.kernelVersion === version).map((profile) => profile.name)
+  async kernelUsers(version: string, family?: KernelFamily): Promise<string[]> {
+    const matches = (profile: Pick<BrowserProfile, 'kernelVersion' | 'kernelFamily'>): boolean =>
+      profile.kernelVersion === version && (!family || !profile.kernelFamily || profile.kernelFamily === family)
+    const names = this.list().filter(matches).map((profile) => profile.name)
     const root = join(this.vaultPath, 'recycle-bin', 'profiles')
     await mkdir(root, { recursive: true })
     for (const entry of await readdir(root, { withFileTypes: true })) {
       if (!entry.isDirectory()) continue
       try {
         const record = JSON.parse(await readFile(join(root, entry.name, 'deleted-profile.json'), 'utf8')) as DeletedProfileRecord
-        if (record.profile?.kernelVersion === version && typeof record.profile.name === 'string') names.push(record.profile.name)
+        if (record.profile && matches(record.profile) && typeof record.profile.name === 'string') names.push(record.profile.name)
       } catch {
         // Ignore legacy recycle entries without restorable metadata.
       }
