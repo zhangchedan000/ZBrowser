@@ -117,6 +117,28 @@ describe('batch kernel upgrades', () => {
     expect(result.items[1]).toMatchObject({ status: 'skipped' })
   })
 
+  it('rolls back the first test profile when diagnostics throw an error', async () => {
+    const plans = planBatchKernelUpgrades([
+      profile('p1', '144.0.0.1'),
+      profile('p2', '144.0.0.1')
+    ], [kernel('144.0.0.1'), kernel('148.0.0.1')])
+
+    const rollback = vi.fn().mockResolvedValue(plans[0].profile)
+    const result = await executeBatchKernelUpgrades(plans, {
+      upgrade: vi.fn().mockResolvedValue({
+        profile: { ...plans[0].profile, kernelVersion: '148.0.0.1' }
+      }),
+      diagnose: vi.fn().mockRejectedValue(new Error('诊断服务不可用')),
+      rollback
+    }, { testFirst: true })
+
+    expect(rollback).toHaveBeenCalledWith('p1')
+    expect(result.items[0].status).toBe('failed')
+    expect(result.items[0].reason).toContain('启动诊断执行失败')
+    expect(result.items[0].reason).toContain('已自动回滚升级前状态')
+    expect(result.items[1].status).toBe('skipped')
+  })
+
   it('continues after the first test profile passes diagnostics', async () => {
     const plans = planBatchKernelUpgrades([
       profile('p1', '144.0.0.1'),
