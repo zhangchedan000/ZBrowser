@@ -59,6 +59,7 @@ import { BatchResultModal, type BatchOperationResult } from './BatchResultModal'
 import { UpdateModal } from './UpdateModal'
 import { WorkspaceMigrationModal } from './WorkspaceMigrationModal'
 import { EnvironmentCheckModal } from './EnvironmentCheckModal'
+import { AutomationApiModal } from './AutomationApiModal'
 import { effectiveNetworkIdentity, geoConflictConfirmationMessage } from '../../shared/network-identity'
 import { kernelFamilyForRelease, kernelMajorVersion, kernelReleaseMatchesPin, latestSameMajorCompatibleKernelVersion, newerCompatibleKernelVersion } from '../../shared/kernel-version'
 import { orderBatchLaunchProfiles, waitForBatchLaunchGap } from './batch-launch-order'
@@ -134,6 +135,7 @@ export default function App() {
   const [recycleBinOpen, setRecycleBinOpen] = useState(false)
   const [extensions, setExtensions] = useState<BrowserExtension[]>([])
   const [extensionManagerOpen, setExtensionManagerOpen] = useState(false)
+  const [automationApiOpen, setAutomationApiOpen] = useState(false)
   const [profileStorageHealth, setProfileStorageHealth] = useState<ProfileStoreHealth | null>(null)
   const [appRecoveryStatus, setAppRecoveryStatus] = useState<AppRecoveryStatus | null>(null)
   const [diagnosticProfile, setDiagnosticProfile] = useState<BrowserProfileView>()
@@ -949,9 +951,9 @@ export default function App() {
         <button className="nav-item sidebar-action" onClick={() => setUpdateModalOpen(true)}>
           <DownloadOutlined /><span>应用更新</span>
         </button>
-        <div className="nav-item disabled-tool">
-          <ApiOutlined /><span>自动化 API</span><b>开发中</b>
-        </div>
+        <button className="nav-item sidebar-action" onClick={() => setAutomationApiOpen(true)}>
+          <ApiOutlined /><span>自动化 API</span><b>本机</b>
+        </button>
         <div className="nav-item disabled-tool">
           <RobotOutlined /><span>本地 AI · MCP</span><b>开发中</b>
         </div>
@@ -1173,6 +1175,10 @@ export default function App() {
           </section>
         </Content>
       </Layout>
+      <AutomationApiModal
+        open={automationApiOpen}
+        onClose={() => setAutomationApiOpen(false)}
+      />
       <UpdateModal
         open={updateModalOpen}
         appStatus={updateStatus}

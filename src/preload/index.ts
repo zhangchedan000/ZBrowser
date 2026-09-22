@@ -88,6 +88,9 @@ const api: BrowserApi = {
   proxy: {
     test: (config, profileId) => ipcRenderer.invoke('proxy:test', config, profileId)
   },
+  automation: {
+    status: () => ipcRenderer.invoke('automation-api:status')
+  },
   diagnostics: {
     sessionHealth: () => ipcRenderer.invoke('diagnostics:session-health'),
     e2eQuit: () => ipcRenderer.invoke('diagnostics:e2e-quit')

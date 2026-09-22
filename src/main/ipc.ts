@@ -24,6 +24,7 @@ import type { AppSessionTracker } from './app-session'
 import type { UpdateManager } from './update-manager'
 import type { WorkspaceMigrationManager } from './workspace-migration'
 import type { EnvironmentCheckHistoryStore } from './environment-check-history'
+import type { LocalApiServer } from './local-api-server'
 
 interface IpcDependencies {
   profiles: ProfileStore
@@ -38,9 +39,13 @@ interface IpcDependencies {
   appSession: AppSessionTracker
   updater: UpdateManager
   environmentChecks: EnvironmentCheckHistoryStore
+  localApi: LocalApiServer
 }
 
-export function registerIpc({ profiles, settings, launcher, kernels, extensions, cookies, logger, backups, workspaceMigration, appSession, updater, environmentChecks }: IpcDependencies): void {
+export function registerIpc({
+  profiles, settings, launcher, kernels, extensions, cookies, logger, backups,
+  workspaceMigration, appSession, updater, environmentChecks, localApi
+}: IpcDependencies): void {
   async function pinKernelFamily(draft: ProfileDraft): Promise<ProfileDraft> {
     const version = draft.kernelVersion.trim()
     if (!version) return { ...draft, kernelFamily: undefined }
@@ -449,6 +454,7 @@ export function registerIpc({ profiles, settings, launcher, kernels, extensions,
     const profile = profileId ? profiles.get(profileId) : undefined
     return testProxy(proxyForTest(validated, profile))
   })
+  ipcMain.handle('automation-api:status', () => localApi.publicStatus())
   ipcMain.handle('diagnostics:session-health', () => appSession.recoveryStatus())
   if (process.env.ZBROWSER_E2E === '1' || process.env.PRISM_E2E === '1') {
     ipcMain.handle('diagnostics:e2e-quit', () => app.quit())

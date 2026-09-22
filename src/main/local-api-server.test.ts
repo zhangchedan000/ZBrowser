@@ -152,6 +152,17 @@ describe('Local API server', () => {
     const status = await server.start()
     const authorization = { Authorization: 'Bearer ' + token }
 
+    expect(server.publicStatus()).toMatchObject({
+      running: true,
+      apiVersion: 1,
+      host: '127.0.0.1',
+      port: status.port,
+      url: status.url,
+      tokenPath: status.tokenPath,
+      capabilities: ['profile-control', 'cdp', 'page-control', 'proxy-test', 'diagnostics']
+    })
+    expect(JSON.stringify(server.publicStatus())).not.toContain(token)
+
     try {
       const unauthorized = await fetch(status.url + '/api/v1/profiles')
       expect(unauthorized.status).toBe(401)

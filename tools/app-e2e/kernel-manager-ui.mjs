@@ -121,10 +121,31 @@ async function main() {
       const modal = document.querySelector('.ant-modal')
       const text = modal?.textContent ?? ''
       modal?.querySelector('button.ant-modal-close')?.click()
+
+      const automationEntry = [...document.querySelectorAll('button.sidebar-action')]
+        .find((button) => button.textContent?.includes('自动化 API'))
+      automationEntry?.click()
+      let automationText = ''
+      for (let attempt = 0; attempt < 100; attempt += 1) {
+        automationText = [...document.querySelectorAll('.ant-modal')]
+          .map((item) => item.textContent ?? '')
+          .find((value) => value.includes('本机自动化 API')) ?? ''
+        if (automationText.includes('127.0.0.1') && automationText.includes('Token 文件')) break
+        await new Promise(resolve => setTimeout(resolve, 100))
+      }
+      const automationModal = [...document.querySelectorAll('.ant-modal')]
+        .find((item) => (item.textContent ?? '').includes('本机自动化 API'))
+      automationModal?.querySelector('button.ant-modal-close')?.click()
+
       return {
         entryVisible: true,
         modalVisible: text.includes('浏览器内核') && text.includes('Fingerprint Chromium'),
-        controlsVisible: text.includes('刷新版本') && text.includes('导入本地构建')
+        controlsVisible: text.includes('刷新版本') && text.includes('导入本地构建'),
+        automationEntryVisible: Boolean(automationEntry),
+        automationModalVisible: automationText.includes('本机自动化 API 正在运行'),
+        automationLoopbackVisible: automationText.includes('127.0.0.1'),
+        automationTokenPathVisible: automationText.includes('local-api.token'),
+        automationTokenNotExposed: !automationText.includes('Authorization: Bearer ey')
       }
     })()`)
     const passed = Object.values(checks).every(Boolean)

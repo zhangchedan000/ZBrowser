@@ -2,7 +2,7 @@ import { randomBytes, timingSafeEqual } from 'node:crypto'
 import { mkdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http'
 import { join } from 'node:path'
-import type { BrowserProfile, FingerprintRuntimeDiagnosticReport, LaunchDiagnosticReport } from '../shared/types'
+import type { AutomationApiStatus, BrowserProfile, FingerprintRuntimeDiagnosticReport, LaunchDiagnosticReport } from '../shared/types'
 import type { Logger } from './app-logger'
 import type { LocalApiProfileRuntime } from './browser-launcher'
 import type { BrowserControlSession } from './browser-control-session'
@@ -11,6 +11,7 @@ import { safeErrorText } from './redaction'
 export const DEFAULT_LOCAL_API_PORT = 17653
 const LOCAL_API_HOST = '127.0.0.1'
 const MAX_REQUEST_BODY_BYTES = 16 * 1024
+const LOCAL_API_CAPABILITIES = ['profile-control', 'cdp', 'page-control', 'proxy-test', 'diagnostics']
 
 interface LocalApiProfileStore {
   list(): BrowserProfile[]
@@ -202,14 +203,29 @@ export class LocalApiServer {
     await new Promise<void>((resolve) => server.close(() => resolve()))
   }
 
-  private status(): LocalApiServerStatus {
-    if (this.port === undefined) throw new Error('Local API is not running')
+  publicStatus(): AutomationApiStatus {
+    const running = Boolean(this.server && this.port !== undefined)
     return {
+      running,
+      apiVersion: 1,
       host: LOCAL_API_HOST,
       port: this.port,
-      url: 'http://' + LOCAL_API_HOST + ':' + this.port,
+      url: this.port !== undefined ? 'http://' + LOCAL_API_HOST + ':' + this.port : undefined,
       tokenPath: this.tokenPath,
-      metadataPath: this.metadataPath
+      metadataPath: this.metadataPath,
+      capabilities: [...LOCAL_API_CAPABILITIES]
+    }
+  }
+
+  private status(): LocalApiServerStatus {
+    const status = this.publicStatus()
+    if (!status.running || status.port === undefined || !status.url) throw new Error('Local API is not running')
+    return {
+      host: status.host,
+      port: status.port,
+      url: status.url,
+      tokenPath: status.tokenPath,
+      metadataPath: status.metadataPath
     }
   }
 

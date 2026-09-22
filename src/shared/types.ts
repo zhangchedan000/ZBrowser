@@ -396,6 +396,17 @@ export interface EnvironmentCheckRecord {
   externalUrls: string[]
 }
 
+export interface AutomationApiStatus {
+  running: boolean
+  apiVersion: 1
+  host: '127.0.0.1'
+  port?: number
+  url?: string
+  tokenPath: string
+  metadataPath: string
+  capabilities: string[]
+}
+
 export interface BrowserApi {
   profiles: {
     list: () => Promise<BrowserProfileView[]>
@@ -470,6 +481,9 @@ export interface BrowserApi {
   }
   proxy: {
     test: (config: ProxyConfig, profileId?: string) => Promise<ProxyTestResult>
+  }
+  automation: {
+    status: () => Promise<AutomationApiStatus>
   }
   diagnostics: {
     sessionHealth: () => Promise<AppRecoveryStatus>

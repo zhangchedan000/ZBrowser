@@ -111,13 +111,17 @@ app.whenReady().then(async () => {
     mainWindow?.webContents.send('updates:changed', status)
   }, logger)
   const environmentChecks = new EnvironmentCheckHistoryStore(vaultPath)
-  registerIpc({ profiles, settings, launcher, kernels, extensions, cookies, logger, backups, workspaceMigration, appSession, updater, environmentChecks })
-  localApi = new LocalApiServer(vaultPath, profiles, launcher, logger, {
+  const automationApi = new LocalApiServer(vaultPath, profiles, launcher, logger, {
     port: localApiPortFromEnvironment(process.env.ZBROWSER_LOCAL_API_PORT),
     token: process.env.ZBROWSER_LOCAL_API_TOKEN
   })
+  localApi = automationApi
+  registerIpc({
+    profiles, settings, launcher, kernels, extensions, cookies, logger, backups,
+    workspaceMigration, appSession, updater, environmentChecks, localApi: automationApi
+  })
   try {
-    const api = await localApi.start()
+    const api = await automationApi.start()
     logger.info('Local API 已启动', { url: api.url, tokenPath: api.tokenPath, metadataPath: api.metadataPath })
   } catch (error) {
     logger.error('Local API 启动失败；桌面功能继续可用', error)
