@@ -41,6 +41,7 @@ ZBrowser 启动后会同时启动仅绑定本机回环地址的 Local API：
 - 可通过 `ZBROWSER_LOCAL_API_PORT` 修改端口；测试或托管场景可设为 `0` 使用系统分配端口。
 - 可通过 `ZBROWSER_LOCAL_API_TOKEN` 提供已有 Token；至少 32 个非空白字符。
 - Profile 列表只返回必要的运行摘要，不返回代理主机、用户名、密码、Cookie 或其他凭据。
+- 桌面端左侧“自动化 API”可查看当前本机地址、Token 文件位置和已开放能力；页面不会读取或显示 Token 明文。
 
 V1 路由：
 
