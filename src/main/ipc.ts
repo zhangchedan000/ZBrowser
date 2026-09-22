@@ -275,7 +275,7 @@ export function registerIpc({ profiles, settings, launcher, kernels, extensions,
   })
   ipcMain.handle('profiles:record-environment-check', async (_event, id: string, urls: string[]) => {
     const profile = profiles.get(id)
-    const engine = await locateBrowserForProfile(settings, profiles.vaultPath, profile.kernelVersion)
+    const engine = await locateBrowserForProfile(settings, profiles.vaultPath, profile.kernelVersion, profile.kernelFamily)
     return environmentChecks.record(publicProfile(profile), engine, urls)
   })
   ipcMain.handle('profiles:clear-environment-check-history', async (_event, id: string) => {
