@@ -3,12 +3,13 @@
 import { spawn } from 'node:child_process'
 import { access, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { createServer } from 'node:http'
+import { createInterface } from 'node:readline'
 import { tmpdir } from 'node:os'
 import { basename, dirname, join, resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
 
 const delay = (milliseconds) => new Promise((resolveDelay) => setTimeout(resolveDelay, milliseconds))
-const APP_E2E_TOOL_VERSION = 4
+const APP_E2E_TOOL_VERSION = 5
 const RETRYABLE_CLEANUP_CODES = new Set(['EBUSY', 'EPERM', 'ENOTEMPTY'])
 
 function cleanupRetryDelay(attempt) {
@@ -196,6 +197,82 @@ async function waitForExit(child, milliseconds) {
   if (child.exitCode !== null || child.signalCode !== null) return true
   await Promise.race([new Promise((resolveExit) => child.once('exit', resolveExit)), delay(milliseconds)])
   return child.exitCode !== null || child.signalCode !== null
+}
+
+async function probeMcpStdio(options, userDataPath, expectedProfileId) {
+  const args = options.packaged ? ['--mcp-stdio'] : [resolve('.'), '--mcp-stdio']
+  const child = spawn(options.app, args, {
+    stdio: ['pipe', 'pipe', 'pipe'],
+    windowsHide: true,
+    env: {
+      ...process.env,
+      PRISM_E2E: '1',
+      PRISM_E2E_USER_DATA: userDataPath
+    }
+  })
+  let stderr = ''
+  child.stderr.on('data', (chunk) => { stderr = `${stderr}${chunk}`.slice(-32_768) })
+  const lines = createInterface({ input: child.stdout, crlfDelay: Infinity })
+  const iterator = lines[Symbol.asyncIterator]()
+  let transcript = ''
+
+  const receive = async () => {
+    const result = await Promise.race([
+      iterator.next(),
+      delay(15_000).then(() => { throw new Error('MCP stdio response timed out') })
+    ])
+    if (result.done) throw new Error('MCP stdio closed before sending a response')
+    transcript += result.value + '\n'
+    return JSON.parse(result.value)
+  }
+  const send = (message) => {
+    child.stdin.write(JSON.stringify(message) + '\n')
+  }
+  const meta = {
+    'io.modelcontextprotocol/protocolVersion': '2026-07-28',
+    'io.modelcontextprotocol/clientInfo': { name: 'zbrowser-e2e', version: '1' },
+    'io.modelcontextprotocol/clientCapabilities': {}
+  }
+
+  try {
+    send({ jsonrpc: '2.0', id: 1, method: 'server/discover', params: { _meta: meta } })
+    const discover = await receive()
+    send({ jsonrpc: '2.0', id: 2, method: 'tools/list', params: { _meta: meta } })
+    const tools = await receive()
+    send({
+      jsonrpc: '2.0',
+      id: 3,
+      method: 'tools/call',
+      params: { name: 'profiles_list', arguments: {}, _meta: meta }
+    })
+    const profiles = await receive()
+
+    const token = (await readFile(join(userDataPath, 'vault', 'local-api.token'), 'utf8')).trim()
+    const toolNames = Array.isArray(tools?.result?.tools) ? tools.result.tools.map((tool) => tool?.name).filter(Boolean) : []
+    const profileIds = Array.isArray(profiles?.result?.structuredContent?.profiles)
+      ? profiles.result.structuredContent.profiles.map((profile) => profile?.id).filter(Boolean)
+      : []
+
+    child.stdin.end()
+    const cleanExit = await waitForExit(child, 10_000)
+    if (!cleanExit) child.kill('SIGKILL')
+    return {
+      modernDiscovery: Array.isArray(discover?.result?.supportedVersions)
+        && discover.result.supportedVersions.includes('2026-07-28'),
+      toolNames,
+      profileIds,
+      expectedProfileVisible: profileIds.includes(expectedProfileId),
+      tokenExposed: Boolean(token && transcript.includes(token)),
+      localTokenPathExposed: transcript.includes('local-api.token'),
+      cleanExit: cleanExit && child.exitCode === 0
+    }
+  } catch (error) {
+    child.stdin.end()
+    if (!await waitForExit(child, 2_000)) child.kill('SIGKILL')
+    throw new Error(`${error instanceof Error ? error.message : String(error)}${stderr ? `\nMCP stderr:\n${stderr}` : ''}`)
+  } finally {
+    lines.close()
+  }
 }
 
 async function launchAppOnce(options, userDataPath) {
@@ -632,6 +709,7 @@ async function main() {
     })()`, 120_000)
 
     const localApiProbe = await probeLocalApi(appData, firstRun.editedA.id, site.url)
+    const mcpProbe = await probeMcpStdio(options, appData, firstRun.editedA.id)
     const runtimeFingerprint = await probeRuntimeFingerprint(appData, firstRun.editedA.id)
     const cleanupRun = await evaluate(first.client, `(async () => {
       await window.browserApi.profiles.closeAll()
@@ -735,6 +813,14 @@ async function main() {
       localApiLaunchDiagnostic: localApiProbe.launchDiagnosticStatus === 200
         && localApiProbe.launchDiagnosticProfileId === firstRun.editedA.id
         && localApiProbe.launchDiagnosticChecks > 0,
+      mcpStdioModernDiscovery: mcpProbe.modernDiscovery === true,
+      mcpStdioToolsAvailable: mcpProbe.toolNames.includes('profiles_list')
+        && mcpProbe.toolNames.includes('profile_status')
+        && mcpProbe.toolNames.includes('page_snapshot')
+        && mcpProbe.toolNames.includes('page_click'),
+      mcpStdioLocalApiBridge: mcpProbe.expectedProfileVisible === true,
+      mcpStdioSecretsHidden: mcpProbe.tokenExposed === false && mcpProbe.localTokenPathExposed === false,
+      mcpStdioCleanExit: mcpProbe.cleanExit === true,
       runningKernelUpgradeBlocked: firstRun.runningKernelUpgradeBlocked === true,
       kernelUpgradeAutoBackupAndRollback: !options.installKernelVersion || (firstRun.upgradeFlow?.exercised === true
         && firstRun.upgradeFlow.backupCreated === true
@@ -786,6 +872,7 @@ async function main() {
         uaChStatus: runtimeUaChExposed ? 'exposed-and-checked' : 'not-exposed-by-runtime'
       },
       localApiDiagnostics: localApiProbe,
+      mcpDiagnostics: mcpProbe,
       kernelUpgradeDiagnostics: firstRun.upgradeFlow,
       checks,
       passed: Object.values(checks).every(Boolean),
