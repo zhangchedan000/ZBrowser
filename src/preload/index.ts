@@ -93,6 +93,7 @@ const api: BrowserApi = {
   },
   diagnostics: {
     sessionHealth: () => ipcRenderer.invoke('diagnostics:session-health'),
+    exportBundle: () => ipcRenderer.invoke('diagnostics:export-bundle'),
     e2eQuit: () => ipcRenderer.invoke('diagnostics:e2e-quit')
   },
   extensions: {

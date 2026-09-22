@@ -25,6 +25,7 @@ import type { UpdateManager } from './update-manager'
 import type { WorkspaceMigrationManager } from './workspace-migration'
 import type { EnvironmentCheckHistoryStore } from './environment-check-history'
 import type { LocalApiServer } from './local-api-server'
+import { createStoredZip, diagnosticProfileSummary, redactDiagnosticText } from './diagnostic-bundle'
 
 interface IpcDependencies {
   profiles: ProfileStore
@@ -456,6 +457,137 @@ export function registerIpc({
   })
   ipcMain.handle('automation-api:status', () => localApi.publicStatus())
   ipcMain.handle('diagnostics:session-health', () => appSession.recoveryStatus())
+  ipcMain.handle('diagnostics:export-bundle', async () => {
+    const owner = BrowserWindow.getFocusedWindow()
+    const stamp = new Date().toISOString().slice(0, 10)
+    const options: Electron.SaveDialogOptions = {
+      title: '导出 ZBrowser 诊断包',
+      defaultPath: `ZBrowser-diagnostics-${stamp}.zip`,
+      filters: [{ name: 'ZIP 诊断包', extensions: ['zip'] }]
+    }
+    const result = owner ? await dialog.showSaveDialog(owner, options) : await dialog.showSaveDialog(options)
+    if (result.canceled || !result.filePath) return null
+
+    await logger.flush()
+    const [engine, installedKernels, storage] = await Promise.all([
+      locateBrowser(settings),
+      kernels.installed(),
+      storageOverview(profiles.vaultPath)
+    ])
+    const automation = localApi.publicStatus()
+    const profileReports = await Promise.all(profiles.list().map(async (profile) => {
+      const [launchDiagnostic, crashHistory, environmentHistory] = await Promise.all([
+        launcher.diagnose(profile.id).catch((error) => ({
+          error: error instanceof Error ? error.message : String(error)
+        })),
+        launcher.crashHistory(profile.id).catch((error) => [{
+          error: error instanceof Error ? error.message : String(error)
+        }]),
+        environmentChecks.list(profile.id).catch((error) => [{
+          error: error instanceof Error ? error.message : String(error)
+        }])
+      ])
+      return {
+        profile: diagnosticProfileSummary(profile),
+        launchDiagnostic,
+        crashHistory,
+        environmentHistory
+      }
+    }))
+
+    const health = profiles.storageHealth()
+    const update = updater.status()
+    const payload = {
+      schemaVersion: 1,
+      exportedAt: new Date().toISOString(),
+      app: {
+        version: app.getVersion(),
+        packaged: app.isPackaged,
+        platform: process.platform,
+        arch: process.arch,
+        electron: process.versions.electron,
+        chromium: process.versions.chrome,
+        node: process.versions.node
+      },
+      engine: {
+        source: engine.source,
+        fingerprintKernel: engine.fingerprintKernel,
+        label: engine.label,
+        version: engine.version
+      },
+      installedKernels: installedKernels.map((kernel) => ({
+        version: kernel.version,
+        installed: kernel.installed,
+        origin: kernel.origin,
+        assetName: kernel.assetName
+      })),
+      automation: {
+        running: automation.running,
+        apiVersion: automation.apiVersion,
+        host: automation.host,
+        port: automation.port,
+        capabilities: automation.capabilities
+      },
+      update: {
+        stage: update.stage,
+        currentVersion: update.currentVersion,
+        latestVersion: update.latestVersion,
+        channel: update.channel,
+        distributionMode: update.distributionMode,
+        message: update.message
+      },
+      recovery: appSession.recoveryStatus(),
+      profileStoreHealth: {
+        recoveredFromBackup: health.recoveredFromBackup,
+        recoveryMessage: health.recoveryMessage,
+        backupHealthy: health.backupHealthy,
+        backupError: health.backupError
+      },
+      storage,
+      profiles: profileReports
+    }
+
+    const privatePaths = [app.getPath('home'), app.getPath('userData')]
+    const entries: Array<{ name: string; data: string | Buffer }> = [
+      {
+        name: 'diagnostics.json',
+        data: redactDiagnosticText(JSON.stringify(payload, null, 2), privatePaths)
+      },
+      {
+        name: 'README.txt',
+        data: [
+          'ZBrowser diagnostic bundle',
+          '',
+          'Contains application/runtime metadata, sanitized profile diagnostics, crash history, environment-check history and redacted application logs.',
+          'Does NOT intentionally include cookies, Local API tokens, proxy usernames/passwords, proxy hostnames, profile notes or saved start URLs.'
+        ].join('\n')
+      }
+    ]
+
+    const currentLog = await readFile(logger.path, 'utf8').catch((error) => {
+      if ((error as NodeJS.ErrnoException).code === 'ENOENT') return ''
+      throw error
+    })
+    if (currentLog) entries.push({
+      name: 'logs/current.log',
+      data: redactDiagnosticText(currentLog, privatePaths)
+    })
+    const previousLog = await readFile(join(logger.directory, 'prism.previous.log'), 'utf8').catch((error) => {
+      if ((error as NodeJS.ErrnoException).code === 'ENOENT') return ''
+      throw error
+    })
+    if (previousLog) entries.push({
+      name: 'logs/previous.log',
+      data: redactDiagnosticText(previousLog, privatePaths)
+    })
+
+    await writeFile(result.filePath, createStoredZip(entries), { mode: 0o600 })
+    logger.info('诊断包已导出', {
+      fileName: result.filePath.split(/[\\/]/).pop(),
+      profileCount: profileReports.length
+    })
+    return result.filePath
+  })
   if (process.env.ZBROWSER_E2E === '1' || process.env.PRISM_E2E === '1') {
     ipcMain.handle('diagnostics:e2e-quit', () => app.quit())
   }

@@ -506,6 +506,7 @@ export interface BrowserApi {
   }
   diagnostics: {
     sessionHealth: () => Promise<AppRecoveryStatus>
+    exportBundle: () => Promise<string | null>
     e2eQuit: () => Promise<void>
   }
   extensions: {

@@ -1,6 +1,7 @@
 import {
   ApiOutlined,
   AppstoreOutlined,
+  BugOutlined,
   AppstoreAddOutlined,
   CheckCircleFilled,
   CopyOutlined,
@@ -153,6 +154,7 @@ export default function App() {
   const [updateModalOpen, setUpdateModalOpen] = useState(false)
   const [migrationMode, setMigrationMode] = useState<'export' | 'import' | null>(null)
   const [migrationBusy, setMigrationBusy] = useState(false)
+  const [exportingDiagnostics, setExportingDiagnostics] = useState(false)
   const [messageApi, contextHolder] = message.useMessage()
 
   useEffect(() => {
@@ -280,6 +282,18 @@ export default function App() {
       messageApi.error(humanError(error))
     } finally {
       setStorageLoading(false)
+    }
+  }
+
+  async function exportDiagnosticBundle(): Promise<void> {
+    setExportingDiagnostics(true)
+    try {
+      const path = await window.browserApi.diagnostics.exportBundle()
+      if (path) messageApi.success('诊断包已安全导出')
+    } catch (error) {
+      messageApi.error(humanError(error))
+    } finally {
+      setExportingDiagnostics(false)
     }
   }
 
@@ -953,6 +967,9 @@ export default function App() {
         </button>
         <button className="nav-item sidebar-action" onClick={() => setAutomationApiOpen(true)}>
           <ApiOutlined /><span>自动化 API</span><b>本机</b>
+        </button>
+        <button className="nav-item sidebar-action" disabled={exportingDiagnostics} onClick={() => void exportDiagnosticBundle()}>
+          <BugOutlined /><span>{exportingDiagnostics ? '正在导出诊断包' : '导出诊断包'}</span>
         </button>
         <div className="nav-item disabled-tool">
           <RobotOutlined /><span>本地 AI · MCP</span><b>开发中</b>
