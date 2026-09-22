@@ -4,7 +4,7 @@ import { dirname, join } from 'node:path'
 import type { BrowserProfile, DeletedProfileSummary, KernelFamily, ProfileBatchClassification, ProfileDraft, ProfileStoreHealth, ProxyCheckSummary, WebRtcPolicy } from '../shared/types'
 import { defaultProfileWindow, seedFromId } from '../shared/defaults'
 import { refreshSeededGpuIdentity } from '../shared/hardware-profiles'
-import { isKernelDowngrade, validKernelVersion } from '../shared/kernel-version'
+import { compareKernelVersions, isKernelDowngrade, sameKernelMajor, validKernelVersion } from '../shared/kernel-version'
 import { validateProfileDraft } from '../shared/validation'
 import { identitySecretCodec, type SecretCodec } from './secret-codec'
 import { privateProxyConfig, sameProxyIdentity } from './profile-secrets'
@@ -332,6 +332,40 @@ export class ProfileStore {
     this.profiles.set(id, profile)
     await this.persist()
     return profile
+  }
+
+  async advanceKernelFloor(id: string, runtimeVersionInput: string, kernelFamily: KernelFamily): Promise<BrowserProfile> {
+    const current = this.get(id)
+    const runtimeVersion = runtimeVersionInput.trim()
+    if (!current.kernelVersion || !current.kernelFamily) {
+      throw new Error('环境尚未固定内核版本和系列，不能自动推进版本下限')
+    }
+    if (!validKernelVersion(runtimeVersion)) throw new Error('运行内核版本号无效')
+    if (current.kernelFamily !== kernelFamily) {
+      throw new Error(`运行内核系列 ${kernelFamily} 与环境固定系列 ${current.kernelFamily} 不一致`)
+    }
+    if (!sameKernelMajor(current.kernelVersion, runtimeVersion)) {
+      throw new Error(`自动补丁升级不能跨主版本：${current.kernelVersion} → ${runtimeVersion}`)
+    }
+    const ordering = compareKernelVersions(runtimeVersion, current.kernelVersion)
+    if (ordering < 0) {
+      throw new Error(`运行内核 ${runtimeVersion} 低于环境版本下限 ${current.kernelVersion}`)
+    }
+    if (ordering === 0) return current
+
+    const profile: BrowserProfile = {
+      ...current,
+      kernelVersion: runtimeVersion,
+      updatedAt: new Date().toISOString()
+    }
+    this.profiles.set(id, profile)
+    try {
+      await this.persist()
+      return profile
+    } catch (error) {
+      this.profiles.set(id, current)
+      throw error
+    }
   }
 
   async restoreKernelBinding(id: string, kernelVersionInput: string, kernelFamily?: KernelFamily): Promise<BrowserProfile> {
