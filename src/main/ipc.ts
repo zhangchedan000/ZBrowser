@@ -40,10 +40,24 @@ interface IpcDependencies {
 }
 
 export function registerIpc({ profiles, settings, launcher, kernels, extensions, cookies, logger, backups, workspaceMigration, appSession, updater, environmentChecks }: IpcDependencies): void {
+  async function pinKernelFamily(draft: ProfileDraft): Promise<ProfileDraft> {
+    const version = draft.kernelVersion.trim()
+    if (!version) return { ...draft, kernelFamily: undefined }
+    const [managed, bundled] = await Promise.all([kernels.installed(), listBundledBrowsers()])
+    const installed = managed.find((kernel) => kernel.version === version)
+    if (installed) {
+      return { ...draft, kernelFamily: installed.origin === 'local-build' ? 'custom' : 'fingerprint-chromium' }
+    }
+    if (bundled.some((kernel) => kernel.version === version)) {
+      return { ...draft, kernelFamily: 'fingerprint-chromium' }
+    }
+    return draft
+  }
+
   ipcMain.handle('profiles:list', () => profiles.list().map(publicProfile))
   ipcMain.handle('profiles:storage-health', () => profiles.storageHealth())
-  ipcMain.handle('profiles:create', async (_event, draft: ProfileDraft) => publicProfile(await profiles.create(draft)))
-  ipcMain.handle('profiles:update', async (_event, id: string, draft: ProfileDraft) => publicProfile(await profiles.update(id, draft)))
+  ipcMain.handle('profiles:create', async (_event, draft: ProfileDraft) => publicProfile(await profiles.create(await pinKernelFamily(draft))))
+  ipcMain.handle('profiles:update', async (_event, id: string, draft: ProfileDraft) => publicProfile(await profiles.update(id, await pinKernelFamily(draft))))
   ipcMain.handle('profiles:duplicate', async (_event, id: string) => publicProfile(await profiles.duplicate(id)))
   ipcMain.handle('profiles:export-config', async (_event, id: string) => {
     const profile = profiles.get(id)
@@ -71,7 +85,7 @@ export function registerIpc({ profiles, settings, launcher, kernels, extensions,
     if (result.canceled || !result.filePaths[0]) return null
     const path = result.filePaths[0]
     if ((await stat(path)).size > 1024 * 1024) throw new Error('环境配置文件不能超过 1 MB')
-    const profile = await profiles.create(parseProfileConfig(await readFile(path, 'utf8')))
+    const profile = await profiles.create(await pinKernelFamily(parseProfileConfig(await readFile(path, 'utf8'))))
     logger.info('环境配置已导入', { profileId: profile.id })
     return publicProfile(profile)
   })
@@ -87,7 +101,7 @@ export function registerIpc({ profiles, settings, launcher, kernels, extensions,
     const path = result.filePaths[0]
     if ((await stat(path)).size > 2 * 1024 * 1024) throw new Error('批量导入 CSV 不能超过 2 MB')
     const drafts = parseBatchProfileCsv(await readFile(path, 'utf8'), profiles.list().length + 1)
-    const created = await profiles.createMany(drafts)
+    const created = await profiles.createMany(await Promise.all(drafts.map(pinKernelFamily)))
     logger.info('已通过 CSV 批量导入浏览器环境', { count: created.length })
     return created.map(publicProfile)
   })
