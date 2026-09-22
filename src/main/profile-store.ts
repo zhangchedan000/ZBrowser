@@ -4,7 +4,7 @@ import { dirname, join } from 'node:path'
 import type { BrowserProfile, DeletedProfileSummary, KernelFamily, ProfileBatchClassification, ProfileDraft, ProfileStoreHealth, ProxyCheckSummary, WebRtcPolicy } from '../shared/types'
 import { defaultProfileWindow, seedFromId } from '../shared/defaults'
 import { refreshSeededGpuIdentity } from '../shared/hardware-profiles'
-import { isKernelDowngrade } from '../shared/kernel-version'
+import { isKernelDowngrade, validKernelVersion } from '../shared/kernel-version'
 import { validateProfileDraft } from '../shared/validation'
 import { identitySecretCodec, type SecretCodec } from './secret-codec'
 import { privateProxyConfig, sameProxyIdentity } from './profile-secrets'
@@ -332,6 +332,33 @@ export class ProfileStore {
     this.profiles.set(id, profile)
     await this.persist()
     return profile
+  }
+
+  async restoreKernelBinding(id: string, kernelVersionInput: string, kernelFamily?: KernelFamily): Promise<BrowserProfile> {
+    const current = this.get(id)
+    if (current.status !== 'closed' && current.status !== 'error') {
+      throw new Error('请先关闭浏览器环境再回滚内核')
+    }
+    const kernelVersion = kernelVersionInput.trim()
+    if (kernelVersion && !validKernelVersion(kernelVersion)) throw new Error('回滚内核版本号无效')
+    if (kernelFamily !== undefined && kernelFamily !== 'fingerprint-chromium' && kernelFamily !== 'custom') {
+      throw new Error('回滚内核系列无效')
+    }
+    if (!kernelVersion && kernelFamily) throw new Error('自动内核模式不能单独绑定内核系列')
+    const profile: BrowserProfile = {
+      ...current,
+      kernelVersion,
+      kernelFamily: kernelVersion ? kernelFamily : undefined,
+      updatedAt: new Date().toISOString()
+    }
+    this.profiles.set(id, profile)
+    try {
+      await this.persist()
+      return profile
+    } catch (error) {
+      this.profiles.set(id, current)
+      throw error
+    }
   }
 
   async duplicate(id: string): Promise<BrowserProfile> {
