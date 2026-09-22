@@ -3,6 +3,7 @@ import { createReadStream } from 'node:fs'
 import { copyFile, lstat, mkdir, mkdtemp, readFile, readdir, rename, rm, stat, writeFile } from 'node:fs/promises'
 import { basename, dirname, join, resolve, sep } from 'node:path'
 import type { BrowserProfile, KernelFamily, KernelUpgradeCheckpointSummary, ProfileBackupResult, ProfileDraft } from '../shared/types'
+import { compareKernelVersions, sameKernelMajor } from '../shared/kernel-version'
 import { validateProfileDraft } from '../shared/validation'
 import type { Logger } from './app-logger'
 import type { ProfileStore } from './profile-store'
@@ -283,7 +284,10 @@ export class ProfileBackupManager {
     const current = this.profiles.get(profileId)
     const record = await this.readKernelUpgradeCheckpoint(profileId)
     if (!record) return 'none'
-    if (current.kernelVersion !== record.toVersion || current.kernelFamily !== record.toFamily) return 'none'
+    const compatibleCurrent = current.kernelFamily === record.toFamily
+      && sameKernelMajor(current.kernelVersion, record.toVersion)
+      && compareKernelVersions(current.kernelVersion, record.toVersion) >= 0
+    if (!compatibleCurrent) return 'none'
 
     const now = Date.now()
     if (!record.healthySince) {
@@ -357,7 +361,10 @@ export class ProfileBackupManager {
     if (current.status !== 'closed' && current.status !== 'error') throw new Error('请先关闭浏览器环境再回滚内核')
     const record = await this.readKernelUpgradeCheckpoint(profileId)
     if (!record) throw new Error('没有可用的内核升级前备份')
-    if (current.kernelVersion !== record.toVersion || current.kernelFamily !== record.toFamily) {
+    const compatibleCurrent = current.kernelFamily === record.toFamily
+      && sameKernelMajor(current.kernelVersion, record.toVersion)
+      && compareKernelVersions(current.kernelVersion, record.toVersion) >= 0
+    if (!compatibleCurrent) {
       throw new Error('当前环境内核与最近升级记录不一致，为保护数据已取消回滚')
     }
     const root = this.checkpointRoot(profileId)
