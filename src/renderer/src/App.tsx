@@ -63,6 +63,7 @@ import { effectiveNetworkIdentity, geoConflictConfirmationMessage } from '../../
 import { kernelFamilyForRelease, kernelReleaseMatchesPin, newerCompatibleKernelVersion } from '../../shared/kernel-version'
 import { orderBatchLaunchProfiles, waitForBatchLaunchGap } from './batch-launch-order'
 import { profileTableSorters } from './profile-table-sort'
+import { executeBatchKernelUpgrades, planBatchKernelUpgrades } from './batch-kernel-upgrade'
 
 const { Sider, Content } = Layout
 
@@ -126,6 +127,8 @@ export default function App() {
   const [selectedIds, setSelectedIds] = useState<string[]>([])
   const [batchBusy, setBatchBusy] = useState(false)
   const [batchResult, setBatchResult] = useState<BatchOperationResult>()
+  const [batchKernelUpgradeOpen, setBatchKernelUpgradeOpen] = useState(false)
+  const [batchKernelTestFirst, setBatchKernelTestFirst] = useState(true)
   const [dataProfile, setDataProfile] = useState<BrowserProfileView | undefined>()
   const [environmentCheckProfile, setEnvironmentCheckProfile] = useState<BrowserProfileView | undefined>()
   const [recycleBinOpen, setRecycleBinOpen] = useState(false)
@@ -466,6 +469,60 @@ export default function App() {
       if (path) messageApi.success('CSV 批量导入模板已保存')
     } catch (error) {
       messageApi.error(humanError(error))
+    }
+  }
+
+  async function runBatchKernelUpgrade(): Promise<void> {
+    const selectedProfiles = selectedIds
+      .map((id) => profiles.find((profile) => profile.id === id))
+      .filter((profile): profile is BrowserProfileView => Boolean(profile))
+    const plans = planBatchKernelUpgrades(selectedProfiles, selectableKernels)
+    if (!plans.length) {
+      messageApi.info('没有选择可处理的环境')
+      return
+    }
+
+    const candidateIds = new Set(plans.filter((plan) => !plan.skipReason).map((plan) => plan.profile.id))
+    setBatchBusy(true)
+    setBusyIds((current) => new Set([...current, ...candidateIds]))
+    try {
+      const result = await executeBatchKernelUpgrades(plans, {
+        upgrade: (id, version, family) => window.browserApi.profiles.upgradeKernel(id, version, family),
+        diagnose: (id) => window.browserApi.profiles.diagnose(id),
+        rollback: (id) => window.browserApi.profiles.rollbackKernelUpgrade(id),
+        onProfileChanged: upsert
+      }, { testFirst: batchKernelTestFirst })
+
+      const succeeded = result.items.filter((item) => item.status === 'success').length
+      const failedItems = result.items.filter((item) => item.status === 'failed')
+      const skipped = result.items.filter((item) => item.status === 'skipped').length
+      setBatchResult({
+        operation: '内核升级',
+        total: result.items.length,
+        succeeded,
+        skipped,
+        paused: result.paused,
+        errors: failedItems.map((item) => `${item.name}：${item.reason}`),
+        details: result.items.map((item) => ({
+          label: item.name,
+          status: item.status,
+          message: item.toVersion
+            ? `${item.fromVersion ?? '未固定'} → ${item.toVersion} · ${item.reason}`
+            : item.reason
+        }))
+      })
+      setSelectedIds([])
+      setBatchKernelUpgradeOpen(false)
+      if (failedItems.length) {
+        messageApi.warning(`批量升级已暂停：成功 ${succeeded}，失败 ${failedItems.length}，跳过 ${skipped}`)
+      } else {
+        messageApi.success(`批量升级完成：成功 ${succeeded}，跳过 ${skipped}`)
+      }
+    } catch (error) {
+      messageApi.error(humanError(error))
+    } finally {
+      setBusyIds((current) => new Set([...current].filter((id) => !candidateIds.has(id))))
+      setBatchBusy(false)
     }
   }
 
@@ -1034,6 +1091,12 @@ export default function App() {
                     >批量打开</Button>
                     <Button size="small" icon={<PoweroffOutlined />} loading={batchBusy} onClick={() => void runBatch('close')}>批量关闭</Button>
                     <Button size="small" icon={<ApiOutlined />} loading={batchBusy} onClick={() => void runProxyChecks(selectedIds)}>检测代理</Button>
+                    <Button
+                      size="small"
+                      icon={<ReloadOutlined />}
+                      disabled={batchBusy}
+                      onClick={() => { setBatchKernelTestFirst(true); setBatchKernelUpgradeOpen(true) }}
+                    >批量升级内核</Button>
                     <Button size="small" icon={<TagsOutlined />} disabled={batchBusy} onClick={() => setBatchClassificationOpen(true)}>分组/标签</Button>
                     <Button size="small" danger icon={<DeleteOutlined />} disabled={batchBusy} onClick={confirmBatchRemove}>移入回收站</Button>
                   </Space>
@@ -1183,6 +1246,32 @@ export default function App() {
         }}
       />
       <BatchResultModal result={batchResult} onClose={() => setBatchResult(undefined)} />
+      <Modal
+        open={batchKernelUpgradeOpen}
+        title={`批量升级 ${selectedIds.length} 个环境的内核`}
+        okText={batchKernelTestFirst ? '先升级 1 个测试' : '开始逐个升级'}
+        cancelText="取消"
+        confirmLoading={batchBusy}
+        closable={!batchBusy}
+        maskClosable={!batchBusy}
+        onOk={() => void runBatchKernelUpgrade()}
+        onCancel={() => { if (!batchBusy) setBatchKernelUpgradeOpen(false) }}
+      >
+        <Alert
+          type="info"
+          showIcon
+          title="安全升级规则"
+          description="按所选顺序逐个升级；每个环境升级前都会自动完整备份。任意一个升级失败就立即暂停，后续环境不会继续。运行中、系列不匹配或已是最新版本的环境会跳过并写入结果清单。"
+        />
+        <Space direction="vertical" style={{ width: '100%', marginTop: 12 }}>
+          <Checkbox checked={batchKernelTestFirst} disabled={batchBusy} onChange={(event) => setBatchKernelTestFirst(event.target.checked)}>
+            先升级 1 个环境并执行启动诊断；诊断通过后再继续剩余环境
+          </Checkbox>
+          <Typography.Text type="secondary">
+            如果首个测试环境诊断失败，会自动恢复升级前备份并暂停整批任务。
+          </Typography.Text>
+        </Space>
+      </Modal>
       <Modal
         open={batchClassificationOpen}
         title={`批量修改 ${selectedIds.length} 个环境`}
