@@ -89,6 +89,9 @@ export async function locateBrowserForProfile(
   const floor = kernelVersion.trim()
   if (!floor) return locateBrowser(settingsStore)
   if (!validKernelVersion(floor)) throw new Error('环境绑定的内核版本号无效')
+  // Legacy version-only pins stay exact until their family is explicitly known.
+  // This prevents a same-version custom/release collision from changing identity.
+  if (!kernelFamily) return locateExactBrowserForProfile(settingsStore, vaultPath, floor, undefined, runtime)
 
   const major = kernelMajorVersion(floor)
   const [managedVersions, bundled] = await Promise.all([
