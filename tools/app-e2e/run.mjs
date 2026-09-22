@@ -200,7 +200,7 @@ async function waitForExit(child, milliseconds) {
 }
 
 async function probeMcpStdio(options, userDataPath, expectedProfileId) {
-  const args = options.packaged ? ['--mcp-stdio'] : [resolve('.'), '--mcp-stdio']
+  const args = options.packaged ? ['--mcp-stdio'] : ['--mcp-stdio', resolve('.')]
   const child = spawn(options.app, args, {
     stdio: ['pipe', 'pipe', 'pipe'],
     windowsHide: true,
