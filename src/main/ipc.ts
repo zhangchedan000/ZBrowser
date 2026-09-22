@@ -27,6 +27,7 @@ import type { EnvironmentCheckHistoryStore } from './environment-check-history'
 import type { LocalApiServer } from './local-api-server'
 import type { ProxyPoolStore } from './proxy-pool-store'
 import { createStoredZip, diagnosticProfileSummary, redactDiagnosticText } from './diagnostic-bundle'
+import { selectBestProxyPoolEntry } from './proxy-pool-selection'
 
 interface IpcDependencies {
   profiles: ProfileStore
@@ -485,13 +486,7 @@ export function registerIpc({
     if ((profile.environmentType ?? 'account') !== 'temporary') {
       throw new Error('账号环境禁止自动选择或切换代理；请手动指定代理')
     }
-    const now = Date.now()
-    const candidate = proxyPool.list()
-      .filter((entry) => (entry.health === 'healthy' || entry.health === 'degraded')
-        && entry.check?.ok
-        && Number.isFinite(Date.parse(entry.check.checkedAt))
-        && now - Date.parse(entry.check.checkedAt) <= 24 * 60 * 60 * 1000)
-      .sort((a, b) => b.score - a.score || (a.stats.averageLatencyMs ?? Number.MAX_SAFE_INTEGER) - (b.stats.averageLatencyMs ?? Number.MAX_SAFE_INTEGER))[0]
+    const candidate = selectBestProxyPoolEntry(proxyPool.list())
     if (!candidate) throw new Error('代理池中没有 24 小时内检测通过的可用代理')
     const check = proxyPool.check(candidate.id)
     if (!check) throw new Error('最佳代理缺少检测结果')
