@@ -63,3 +63,34 @@ export function newerCompatibleKernelVersion(
       .map((release) => release.version)
   )
 }
+
+
+export function kernelMajorVersion(version: string): number | undefined {
+  const normalized = version.trim()
+  if (!validKernelVersion(normalized)) return undefined
+  return Number(normalized.split('.')[0])
+}
+
+export function sameKernelMajor(first: string, second: string): boolean {
+  const left = kernelMajorVersion(first)
+  const right = kernelMajorVersion(second)
+  return left !== undefined && right !== undefined && left === right
+}
+
+export function latestSameMajorCompatibleKernelVersion(
+  floorVersion: string,
+  family: KernelFamily | undefined,
+  releases: Array<Pick<KernelRelease, 'version' | 'origin' | 'executable'>>
+): string | undefined {
+  const floor = floorVersion.trim()
+  const major = kernelMajorVersion(floor)
+  if (major === undefined) return undefined
+  return latestKernelVersion(
+    releases
+      .filter((release) => Boolean(release.executable)
+        && kernelMajorVersion(release.version) === major
+        && compareKernelVersions(release.version, floor) >= 0
+        && (!family || kernelFamilyForRelease(release) === family))
+      .map((release) => release.version)
+  )
+}
