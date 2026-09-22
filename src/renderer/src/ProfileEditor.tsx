@@ -63,6 +63,7 @@ function editorValues(profile: BrowserProfileView | undefined, index: number): E
     color: draft.color,
     startUrlsText: draft.startUrls.join('\n'),
     kernelVersion: draft.kernelVersion,
+    kernelFamily: draft.kernelFamily,
     window: { ...draft.window },
     proxy: { ...draft.proxy },
     fingerprint: {
@@ -179,6 +180,7 @@ export function ProfileEditor({ open, profile, suggestedIndex, saving, extension
       color,
       startUrls: values.startUrlsText.split(/\r?\n/).map((line) => line.trim()).filter(Boolean),
       kernelVersion: values.kernelVersion,
+      kernelFamily: values.kernelFamily,
       window: values.window,
       proxy: values.proxy,
       extensionIds: values.extensionIds,
@@ -197,9 +199,17 @@ export function ProfileEditor({ open, profile, suggestedIndex, saving, extension
       <Form.Item
         name="kernelVersion"
         label="浏览器内核"
-        extra="长期使用的账号建议固定版本；自动模式会跟随应用当前选择的内核。"
+        extra="长期使用的账号建议固定版本；自动模式会跟随应用当前选择的内核。固定版本会同时绑定内核系列，避免同版本被另一种构建替换。"
       >
         <Select
+          onChange={(value: string) => {
+            if (!value) {
+              form.setFieldValue('kernelFamily', undefined)
+              return
+            }
+            const selected = kernels.find((kernel) => kernel.version === value)
+            form.setFieldValue('kernelFamily', selected?.origin === 'local-build' ? 'custom' : 'fingerprint-chromium')
+          }}
           options={[
             { value: '', label: `自动跟随当前内核${engine?.version ? ` · ${engine.version}` : ''}` },
             ...kernels.map((kernel) => {
