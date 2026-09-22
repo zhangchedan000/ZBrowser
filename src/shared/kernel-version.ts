@@ -1,3 +1,5 @@
+import type { KernelFamily, KernelRelease } from './types'
+
 const KERNEL_VERSION_PATTERN = /^\d+(?:\.\d+){3}$/
 
 export function validKernelVersion(version: string): boolean {
@@ -34,4 +36,30 @@ export function newerKernelVersion(currentVersion: string, candidates: string[])
   if (!validKernelVersion(current)) return undefined
   const latest = latestKernelVersion(candidates)
   return latest && compareKernelVersions(latest, current) > 0 ? latest : undefined
+}
+
+export function kernelFamilyForRelease(release: Pick<KernelRelease, 'origin'>): KernelFamily {
+  return release.origin === 'local-build' ? 'custom' : 'fingerprint-chromium'
+}
+
+export function kernelReleaseMatchesPin(
+  release: Pick<KernelRelease, 'version' | 'origin' | 'executable'>,
+  version: string,
+  family?: KernelFamily
+): boolean {
+  if (release.version !== version || !release.executable) return false
+  return !family || kernelFamilyForRelease(release) === family
+}
+
+export function newerCompatibleKernelVersion(
+  currentVersion: string,
+  family: KernelFamily | undefined,
+  releases: Array<Pick<KernelRelease, 'version' | 'origin' | 'executable'>>
+): string | undefined {
+  return newerKernelVersion(
+    currentVersion,
+    releases
+      .filter((release) => Boolean(release.executable) && (!family || kernelFamilyForRelease(release) === family))
+      .map((release) => release.version)
+  )
 }
