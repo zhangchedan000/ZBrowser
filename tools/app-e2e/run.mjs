@@ -303,6 +303,32 @@ async function readLastLaunch(userDataPath, id) {
   return JSON.parse(await readFile(join(userDataPath, 'vault', 'profiles', id, 'runtime', 'last-launch.json'), 'utf8'))
 }
 
+async function probeLocalApi(userDataPath) {
+  const vault = join(userDataPath, 'vault')
+  const metadata = JSON.parse(await readFile(join(vault, 'local-api.json'), 'utf8'))
+  const token = (await readFile(join(vault, 'local-api.token'), 'utf8')).trim()
+  if (!metadata?.url || !/^http:\/\/127\.0\.0\.1:\d+$/.test(metadata.url)) {
+    throw new Error('Local API metadata did not expose a loopback URL')
+  }
+  if (token.length < 32) throw new Error('Local API token file is missing or invalid')
+
+  const unauthorized = await fetch(metadata.url + '/api/v1/health', {
+    signal: AbortSignal.timeout(5_000)
+  })
+  const authorized = await fetch(metadata.url + '/api/v1/profiles', {
+    headers: { Authorization: 'Bearer ' + token },
+    signal: AbortSignal.timeout(5_000)
+  })
+  const payload = authorized.ok ? await authorized.json() : {}
+  const profiles = Array.isArray(payload.profiles) ? payload.profiles : []
+  return {
+    unauthorizedStatus: unauthorized.status,
+    authorizedStatus: authorized.status,
+    profileIds: profiles.map((profile) => profile.id).filter((id) => typeof id === 'string'),
+    profileCount: profiles.length
+  }
+}
+
 async function connectProfilePage(userDataPath, profileId) {
   const profileData = join(userDataPath, 'vault', 'profiles', profileId, 'user-data')
   const activePortPath = join(profileData, 'DevToolsActivePort')
@@ -522,6 +548,7 @@ async function main() {
       }
     })()`, 120_000)
 
+    const localApiProbe = await probeLocalApi(appData)
     const runtimeFingerprint = await probeRuntimeFingerprint(appData, firstRun.editedA.id)
     const cleanupRun = await evaluate(first.client, `(async () => {
       await window.browserApi.profiles.closeAll()
@@ -612,6 +639,10 @@ async function main() {
         && (!runtimeKernelVersion || editedLaunch.args.includes(`--fingerprint-brand-version=${runtimeKernelVersion}`)),
       runtimeUserAgentKernelVersionSynced,
       runtimeUaChFullVersionSynced,
+      localApiRequiresBearerAuth: localApiProbe.unauthorizedStatus === 401,
+      localApiProfileListAvailable: localApiProbe.authorizedStatus === 200
+        && localApiProbe.profileIds.includes(firstRun.editedA.id)
+        && localApiProbe.profileIds.includes(firstRun.updated.id),
       runningKernelUpgradeBlocked: firstRun.runningKernelUpgradeBlocked === true,
       kernelUpgradeAutoBackupAndRollback: !options.installKernelVersion || (firstRun.upgradeFlow?.exercised === true
         && firstRun.upgradeFlow.backupCreated === true
@@ -662,6 +693,7 @@ async function main() {
         uaChFullVersionSynced: runtimeUaChFullVersionSynced,
         uaChStatus: runtimeUaChExposed ? 'exposed-and-checked' : 'not-exposed-by-runtime'
       },
+      localApiDiagnostics: localApiProbe,
       checks,
       passed: Object.values(checks).every(Boolean),
       retainedDataPath: options.keepData ? root : undefined
