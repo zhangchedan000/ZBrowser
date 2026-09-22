@@ -155,6 +155,47 @@ export class BrowserControlSession {
     return this.pageState()
   }
 
+  async runtimeVersionSnapshot(): Promise<{
+    userAgent: string
+    uaChExposed: boolean
+    fullVersionList: Array<{ brand: string; version: string }>
+  }> {
+    await this.ensurePage()
+    const result = await this.cdp.send<{
+      result?: { value?: {
+        userAgent?: string
+        uaChExposed?: boolean
+        fullVersionList?: Array<{ brand?: string; version?: string }>
+      } }
+      exceptionDetails?: unknown
+    }>('Runtime.evaluate', {
+      expression: `(async () => {
+        const uaData = navigator.userAgentData
+        const highEntropy = uaData?.getHighEntropyValues
+          ? await uaData.getHighEntropyValues(['fullVersionList'])
+          : {}
+        return {
+          userAgent: navigator.userAgent,
+          uaChExposed: Boolean(uaData),
+          fullVersionList: Array.isArray(highEntropy.fullVersionList) ? highEntropy.fullVersionList : []
+        }
+      })()`,
+      awaitPromise: true,
+      returnByValue: true
+    }, this.sessionId)
+    if (result.exceptionDetails) throw new Error('无法读取浏览器 UA / UA-CH 运行时版本')
+    const value = result.result?.value
+    return {
+      userAgent: typeof value?.userAgent === 'string' ? value.userAgent : '',
+      uaChExposed: value?.uaChExposed === true,
+      fullVersionList: Array.isArray(value?.fullVersionList)
+        ? value.fullVersionList
+            .filter((item) => item && typeof item.brand === 'string' && typeof item.version === 'string')
+            .map((item) => ({ brand: item.brand!, version: item.version! }))
+        : []
+    }
+  }
+
   async snapshot(): Promise<{
     url: string
     title: string
