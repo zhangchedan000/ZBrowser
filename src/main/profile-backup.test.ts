@@ -89,7 +89,7 @@ describe('ProfileBackupManager', () => {
     const imported = await manager.import(exported.path)
     expect(imported.profile.id).not.toBe(source.id)
     expect(imported.profile.name).toContain('迁移')
-    expect(imported.profile.proxy.password).toBe('')
+    expect(imported.profile.proxy).toMatchObject({ protocol: 'direct', host: '', username: '', password: '' })
     expect(imported.profile.extensionIds).toEqual([])
     for (const [relativePath, content] of browserData) {
       await expect(readFile(join(profiles.profileDataPath(imported.profile.id), relativePath), 'utf8')).resolves.toBe(content)

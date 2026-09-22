@@ -106,8 +106,10 @@ function healthFor(entry: StoredEntry): ProxyPoolHealth {
   if (!entry.stats.checks || !entry.check) return 'unchecked'
   if (entry.quarantined) return 'quarantined'
   if (!entry.check.ok) return 'failed'
-  const stats = publicStats(entry.stats)
-  if (entry.check.degraded || entry.check.geoConfidence === 'conflict' || stats.successRate < 0.8 || (stats.averageLatencyMs ?? 0) > 1500) return 'degraded'
+  // Health reflects the latest usable state. Historical reliability remains visible in
+  // score/stats, so a proxy can recover immediately after a successful re-check instead
+  // of staying permanently degraded because of old failures.
+  if (entry.check.degraded || entry.check.geoConfidence === 'conflict' || entry.check.latencyMs > 1500) return 'degraded'
   return 'healthy'
 }
 

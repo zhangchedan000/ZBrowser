@@ -239,7 +239,10 @@ export class ProfileBackupManager {
       kernelVersion: typeof manifest.profile.kernelVersion === 'string' ? manifest.profile.kernelVersion : '',
       name: `${manifest.profile.name.slice(0, 53)}（迁移）`,
       extensionIds: [],
-      proxy: { ...manifest.profile.proxy, password: '', passwordStored: false }
+      // A restored browser-data copy must never silently inherit an account proxy binding.
+      // Keep the imported environment offline from the old proxy until the user explicitly
+      // assigns a fresh, verified proxy from the pool.
+      proxy: { protocol: 'direct', host: '', username: '', password: '', passwordStored: false }
     })
     const stagingRoot = await mkdtemp(join(this.profiles.vaultPath, '.profile-backup-import-'))
     const staging = join(stagingRoot, 'user-data')

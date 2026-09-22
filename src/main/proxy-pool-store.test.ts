@@ -68,6 +68,8 @@ describe('ProxyPoolStore', () => {
     const recovered = await store.test(entry.id)
     expect(recovered.health).toBe('healthy')
     expect(recovered.stats.consecutiveFailures).toBe(0)
+    expect(recovered.stats.successRate).toBe(0.25)
+    expect(recovered.score).toBeGreaterThan(0)
   })
 
   it('rejects duplicate proxy identities', async () => {
