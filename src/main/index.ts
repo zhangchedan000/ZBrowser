@@ -19,6 +19,7 @@ import { WorkspaceMigrationManager } from './workspace-migration'
 import { EnvironmentCheckHistoryStore } from './environment-check-history'
 import { LocalApiServer, localApiPortFromEnvironment } from './local-api-server'
 import { ProxyPoolStore } from './proxy-pool-store'
+import { runMcpStdio } from './mcp-stdio-server'
 
 let mainWindow: BrowserWindow | null = null
 let launcher: BrowserLauncher | null = null
@@ -32,6 +33,8 @@ const e2eUserData = process.env.ZBROWSER_E2E_USER_DATA ?? process.env.PRISM_E2E_
 if ((process.env.ZBROWSER_E2E === '1' || process.env.PRISM_E2E === '1') && e2eUserData && isAbsolute(e2eUserData)) {
   app.setPath('userData', e2eUserData)
 }
+
+const mcpStdioMode = process.argv.includes('--mcp-stdio')
 
 function createWindow(): BrowserWindow {
   const window = new BrowserWindow({
@@ -70,11 +73,16 @@ function createWindow(): BrowserWindow {
   return window
 }
 
-const hasSingleInstanceLock = app.requestSingleInstanceLock()
+const hasSingleInstanceLock = mcpStdioMode ? true : app.requestSingleInstanceLock()
 if (!hasSingleInstanceLock) app.quit()
 
 app.whenReady().then(async () => {
   const vaultPath = join(app.getPath('userData'), 'vault')
+  if (mcpStdioMode) {
+    await runMcpStdio(vaultPath, app.getVersion())
+    app.quit()
+    return
+  }
   logger = new AppLogger(vaultPath)
   appSession = new AppSessionTracker(vaultPath)
   const secrets = new ElectronSecretCodec()
@@ -145,6 +153,11 @@ app.whenReady().then(async () => {
   mainWindow = createWindow()
   if (app.isPackaged && process.env.ZBROWSER_E2E !== '1' && process.env.PRISM_E2E !== '1') setTimeout(() => void updater.check().catch(() => undefined), 10_000)
 }).catch(async (error) => {
+  if (mcpStdioMode) {
+    process.stderr.write(`ZBrowser MCP stdio failed: ${error instanceof Error ? error.message : String(error)}\n`)
+    app.exit(1)
+    return
+  }
   logger?.error('ZBrowser 启动失败', error)
   await logger?.flush()
   dialog.showErrorBox('ZBrowser 无法启动', '应用启动失败，请查看日志。')
