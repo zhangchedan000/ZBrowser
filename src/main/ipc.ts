@@ -2,7 +2,7 @@ import { app, BrowserWindow, dialog, ipcMain, shell } from 'electron'
 import { lstat, readFile, stat, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import type { ProfileDraft } from '../shared/types'
-import { kernelFamilyForRelease } from '../shared/kernel-version'
+import { compareKernelVersions, kernelFamilyForRelease } from '../shared/kernel-version'
 import type { KernelManager } from './kernel-manager'
 import { listBundledBrowsers, locateBrowser, locateBrowserForProfile, locateBundledBrowser, normalizeBrowserSelection } from './browser-locator'
 import { mergeKernelCatalog } from './kernel-catalog'
@@ -74,6 +74,16 @@ export function registerIpc({ profiles, settings, launcher, kernels, extensions,
     if (!managedMatch && !bundledMatch) throw new Error(`目标内核 ${targetVersion}（${family}）尚未安装`)
 
     const current = profiles.get(id)
+    if (!current.kernelVersion || !current.kernelFamily) {
+      throw new Error('当前环境尚未固定内核系列，请先在环境编辑器中选择固定内核')
+    }
+    if (current.kernelFamily !== family) {
+      throw new Error(`环境已固定 ${current.kernelFamily} 系列，不能跨系列升级到 ${family}`)
+    }
+    if (compareKernelVersions(targetVersion, current.kernelVersion) <= 0) {
+      throw new Error(`目标内核 ${targetVersion} 不是高于当前 ${current.kernelVersion} 的升级版本`)
+    }
+
     const draft: ProfileDraft = {
       name: current.name,
       note: current.note,
