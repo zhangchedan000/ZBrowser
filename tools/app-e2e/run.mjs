@@ -562,6 +562,12 @@ async function main() {
       && runtimeFingerprint.uaData?.platform === 'Windows'
       && runtimeFingerprint.uaData?.architecture === 'x86'
       && runtimeFingerprint.uaData?.bitness === '64'
+    const runtimeKernelVersion = firstRun.engineStatus?.fingerprintKernel ? firstRun.engineStatus.version : undefined
+    const runtimeKernelMajor = runtimeKernelVersion?.split('.')[0]
+    const runtimeUserAgentKernelVersionSynced = !runtimeKernelMajor
+      || new RegExp(`(?:Chrome|Chromium)/${runtimeKernelMajor}\\.`).test(runtimeFingerprint.userAgent ?? '')
+    const runtimeUaChFullVersionSynced = !runtimeKernelVersion
+      || Boolean(runtimeFingerprint.uaData?.fullVersionList?.some((item) => item.version === runtimeKernelVersion))
     const checks = {
       createdIndependentProfiles: firstRun.a.id !== firstRun.updated.id,
       duplicatedWithNewIdentityAndSeed: firstRun.copy.id !== firstRun.a.id
@@ -597,7 +603,14 @@ async function main() {
         && editedLaunch.args.includes('--disable-spoofing=canvas,audio')
         && editedLaunch.args.includes('--disable-non-proxied-udp')
         && editedLaunch.args.includes('--webrtc-ip-handling-policy=disable_non_proxied_udp')
-        && editedLaunch.args.includes('--fingerprint-brand-version=144.0.7559.132'),
+        && (!runtimeKernelVersion || editedLaunch.args.includes(`--fingerprint-brand-version=${runtimeKernelVersion}`)),
+      runtimeUserAgentKernelVersionSynced,
+      runtimeUaChFullVersionSynced,
+      runningKernelUpgradeBlocked: firstRun.runningKernelUpgradeBlocked === true,
+      kernelUpgradeAutoBackupAndRollback: !options.installKernelVersion || (firstRun.upgradeFlow?.exercised === true
+        && firstRun.upgradeFlow.backupCreated === true
+        && firstRun.upgradeFlow.rollbackRestored === true
+        && firstRun.upgradeFlow.checkpointCleared === true),
       realBrowsersStarted: firstRun.launchedStatuses.every((status) => status === 'running')
         && firstRun.runningStatuses.every((status) => status === 'running'),
       allBrowsersClosed: firstRun.closedStatuses.every((status) => status === 'closed'),
@@ -634,7 +647,10 @@ async function main() {
       runtimeFingerprint,
       runtimeSurfaceDiagnostics: {
         baseFingerprintVisible: runtimeBaseFingerprintVisible,
-        customKernelHardwareFingerprintVisible: runtimeCustomKernelHardwareFingerprintVisible
+        customKernelHardwareFingerprintVisible: runtimeCustomKernelHardwareFingerprintVisible,
+        expectedKernelVersion: runtimeKernelVersion,
+        userAgentKernelVersionSynced: runtimeUserAgentKernelVersionSynced,
+        uaChFullVersionSynced: runtimeUaChFullVersionSynced
       },
       checks,
       passed: Object.values(checks).every(Boolean),
