@@ -22,3 +22,16 @@ export function isKernelDowngrade(currentVersion: string, nextVersion: string): 
   if (!current || !next) return false
   return compareKernelVersions(next, current) < 0
 }
+
+export function latestKernelVersion(versions: string[]): string | undefined {
+  const valid = versions.map((version) => version.trim()).filter(validKernelVersion)
+  if (!valid.length) return undefined
+  return valid.reduce((latest, version) => compareKernelVersions(version, latest) > 0 ? version : latest)
+}
+
+export function newerKernelVersion(currentVersion: string, candidates: string[]): string | undefined {
+  const current = currentVersion.trim()
+  if (!validKernelVersion(current)) return undefined
+  const latest = latestKernelVersion(candidates)
+  return latest && compareKernelVersions(latest, current) > 0 ? latest : undefined
+}
