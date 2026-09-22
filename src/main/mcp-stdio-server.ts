@@ -244,8 +244,35 @@ async function callTool(client: McpApiClient, name: string, rawArguments: unknow
   }
 }
 
-function success(id: JsonRpcId, result: unknown): Record<string, unknown> {
-  return { jsonrpc: '2.0', id, result }
+function modernRequest(message: Record<string, unknown>): boolean {
+  if (message.method === 'server/discover') return true
+  if (!isRecord(message.params) || !isRecord(message.params._meta)) return false
+  return message.params._meta['io.modelcontextprotocol/protocolVersion'] === MODERN_PROTOCOL_VERSION
+}
+
+function success(
+  id: JsonRpcId,
+  result: unknown,
+  modern: boolean,
+  serverVersion: string
+): Record<string, unknown> {
+  if (!modern || !isRecord(result)) return { jsonrpc: '2.0', id, result }
+  const meta = isRecord(result._meta) ? result._meta : {}
+  return {
+    jsonrpc: '2.0',
+    id,
+    result: {
+      ...result,
+      resultType: typeof result.resultType === 'string' ? result.resultType : 'complete',
+      _meta: {
+        ...meta,
+        'io.modelcontextprotocol/serverInfo': {
+          name: 'zbrowser',
+          version: serverVersion
+        }
+      }
+    }
+  }
 }
 
 function rpcError(id: JsonRpcId, code: number, message: string): Record<string, unknown> {
@@ -288,6 +315,7 @@ export async function handleMcpMessage(
     ? message.id
     : undefined
   const notification = id === undefined
+  const modern = modernRequest(message)
 
   if (message.method === 'notifications/initialized' || message.method === 'notifications/cancelled') return undefined
   if (notification) return undefined
@@ -296,14 +324,8 @@ export async function handleMcpMessage(
     return success(id, {
       supportedVersions: [MODERN_PROTOCOL_VERSION],
       capabilities: { tools: {} },
-      instructions: 'Use ZBrowser tools to control only the local ZBrowser instance. Proxy credentials and Local API tokens are never exposed.',
-      _meta: {
-        'io.modelcontextprotocol/serverInfo': {
-          name: 'zbrowser',
-          version: serverVersion
-        }
-      }
-    })
+      instructions: 'Use ZBrowser tools to control only the local ZBrowser instance. Proxy credentials and Local API tokens are never exposed.'
+    }, modern, serverVersion)
   }
 
   if (message.method === 'initialize') {
@@ -312,13 +334,13 @@ export async function handleMcpMessage(
       capabilities: { tools: {} },
       serverInfo: { name: 'zbrowser', version: serverVersion },
       instructions: 'Use ZBrowser tools to control only the local ZBrowser instance. Proxy credentials and Local API tokens are never exposed.'
-    })
+    }, modern, serverVersion)
   }
 
-  if (message.method === 'ping') return success(id, {})
+  if (message.method === 'ping') return success(id, {}, modern, serverVersion)
 
   if (message.method === 'tools/list') {
-    return success(id, { tools: TOOLS })
+    return success(id, { tools: TOOLS }, modern, serverVersion)
   }
 
   if (message.method === 'tools/call') {
@@ -327,9 +349,9 @@ export async function handleMcpMessage(
     }
     try {
       const payload = await callTool(client, message.params.name, message.params.arguments)
-      return success(id, toolResult(payload))
+      return success(id, toolResult(payload), modern, serverVersion)
     } catch (error) {
-      return success(id, toolError(error))
+      return success(id, toolError(error), modern, serverVersion)
     }
   }
 
