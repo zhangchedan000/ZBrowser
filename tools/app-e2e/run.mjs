@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
 import { spawn } from 'node:child_process'
+import { build } from 'esbuild'
 import { access, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { createServer } from 'node:http'
 import { createInterface } from 'node:readline'
@@ -200,15 +201,50 @@ async function waitForExit(child, milliseconds) {
 }
 
 async function probeMcpStdio(options, userDataPath, expectedProfileId) {
-  const args = options.packaged ? ['--mcp-stdio'] : ['--mcp-stdio', resolve('.')]
-  const child = spawn(options.app, args, {
-    stdio: ['pipe', 'pipe', 'pipe'],
-    windowsHide: true,
-    env: {
+  let args
+  let env
+  if (process.platform === 'win32') {
+    // Windows GUI-subsystem Electron processes do not provide a reliable piped
+    // stdin/stdout contract. Exercise the exact MCP implementation through
+    // Electron's supported Node mode instead, while the desktop app owns the
+    // Local API and profile state in the original user-data directory.
+    const entry = join(userDataPath, 'mcp-stdio-e2e.cjs')
+    await build({
+      stdin: {
+        contents: [
+          "import { runMcpStdio } from './src/main/mcp-stdio-server.ts'",
+          "runMcpStdio(process.env.ZBROWSER_MCP_VAULT_PATH, process.env.ZBROWSER_MCP_SERVER_VERSION ?? 'e2e').catch((error) => { console.error(error); process.exitCode = 1 })"
+        ].join('\n'),
+        resolveDir: resolve('.'),
+        sourcefile: 'mcp-stdio-e2e-entry.ts',
+        loader: 'ts'
+      },
+      bundle: true,
+      platform: 'node',
+      format: 'cjs',
+      target: 'node22',
+      outfile: entry,
+      logLevel: 'silent'
+    })
+    args = [entry]
+    env = {
+      ...process.env,
+      ELECTRON_RUN_AS_NODE: '1',
+      ZBROWSER_MCP_VAULT_PATH: join(userDataPath, 'vault'),
+      ZBROWSER_MCP_SERVER_VERSION: 'e2e'
+    }
+  } else {
+    args = options.packaged ? ['--mcp-stdio'] : ['--mcp-stdio', resolve('.')]
+    env = {
       ...process.env,
       PRISM_E2E: '1',
       PRISM_E2E_USER_DATA: userDataPath
     }
+  }
+  const child = spawn(options.app, args, {
+    stdio: ['pipe', 'pipe', 'pipe'],
+    windowsHide: true,
+    env
   })
   let stderr = ''
   child.stderr.on('data', (chunk) => { stderr = `${stderr}${chunk}`.slice(-32_768) })
