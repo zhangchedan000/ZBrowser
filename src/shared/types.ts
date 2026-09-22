@@ -395,6 +395,7 @@ export interface BrowserApi {
     closeAll: () => Promise<void>
     testProxy: (id: string) => Promise<BrowserProfileView>
     diagnose: (id: string) => Promise<LaunchDiagnosticReport>
+    diagnoseKernelRuntime: (id: string) => Promise<LaunchDiagnosticReport>
     crashHistory: (id: string) => Promise<BrowserCrashRecord[]>
     environmentCheckHistory: (id: string) => Promise<EnvironmentCheckRecord[]>
     recordEnvironmentCheck: (id: string, urls: string[]) => Promise<EnvironmentCheckRecord[]>
