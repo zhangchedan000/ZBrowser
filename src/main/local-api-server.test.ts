@@ -72,6 +72,35 @@ describe('Local API server', () => {
               }
             }
           : { status: current.status }
+      },
+      async openPage(id: string, url: string) {
+        expect(id).toBe(current.id)
+        return { url, title: 'Opened', readyState: 'complete' }
+      },
+      async pageSnapshot(id: string) {
+        expect(id).toBe(current.id)
+        return {
+          url: 'https://example.test/',
+          title: 'Snapshot',
+          readyState: 'complete',
+          elements: [
+            { role: 'textbox', name: 'E2E input', ref: 'p1-e1' },
+            { role: 'button', name: 'E2E button', ref: 'p1-e2' }
+          ],
+          truncated: false
+        }
+      },
+      async clickPageElement(id: string, ref: string) {
+        expect(id).toBe(current.id)
+        expect(ref).toBe('p1-e2')
+        return { url: 'https://example.test/', title: 'Clicked', readyState: 'complete' }
+      },
+      async typePageElement(id: string, ref: string, text: string, clear = true) {
+        expect(id).toBe(current.id)
+        expect(ref).toBe('p1-e1')
+        expect(text).toBe('hello')
+        expect(clear).toBe(true)
+        return { url: 'https://example.test/', title: 'Typed', readyState: 'complete' }
       }
     }
     const token = 'test-local-api-token-0123456789-abcdef'
@@ -108,6 +137,41 @@ describe('Local API server', () => {
         profileId: current.id,
         cdp: { httpUrl: 'http://127.0.0.1:45678' }
       })
+
+      const opened = await fetch(status.url + '/api/v1/profiles/' + current.id + '/page/open', {
+        method: 'POST',
+        headers: { ...authorization, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url: 'https://example.test/' })
+      })
+      expect(opened.status).toBe(200)
+      expect(await opened.json()).toMatchObject({ page: { title: 'Opened', readyState: 'complete' } })
+
+      const snapshot = await fetch(status.url + '/api/v1/profiles/' + current.id + '/page/snapshot', {
+        headers: authorization
+      })
+      expect(snapshot.status).toBe(200)
+      expect(await snapshot.json()).toMatchObject({
+        page: {
+          elements: [
+            { role: 'textbox', ref: 'p1-e1' },
+            { role: 'button', ref: 'p1-e2' }
+          ]
+        }
+      })
+
+      const typed = await fetch(status.url + '/api/v1/profiles/' + current.id + '/page/type', {
+        method: 'POST',
+        headers: { ...authorization, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ref: 'p1-e1', text: 'hello' })
+      })
+      expect(typed.status).toBe(200)
+
+      const clicked = await fetch(status.url + '/api/v1/profiles/' + current.id + '/page/click', {
+        method: 'POST',
+        headers: { ...authorization, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ref: 'p1-e2' })
+      })
+      expect(clicked.status).toBe(200)
 
       const stopped = await fetch(status.url + '/api/profile/stop', {
         method: 'POST',

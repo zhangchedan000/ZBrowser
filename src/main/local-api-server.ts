@@ -5,6 +5,7 @@ import { join } from 'node:path'
 import type { BrowserProfile } from '../shared/types'
 import type { Logger } from './app-logger'
 import type { LocalApiProfileRuntime } from './browser-launcher'
+import type { BrowserControlSession } from './browser-control-session'
 import { safeErrorText } from './redaction'
 
 export const DEFAULT_LOCAL_API_PORT = 17653
@@ -19,6 +20,10 @@ interface LocalApiLauncher {
   launch(id: string): Promise<BrowserProfile>
   close(id: string): Promise<BrowserProfile>
   localApiRuntime(id: string): Promise<LocalApiProfileRuntime>
+  openPage(id: string, url: string): ReturnType<BrowserControlSession['open']>
+  pageSnapshot(id: string): ReturnType<BrowserControlSession['snapshot']>
+  clickPageElement(id: string, ref: string): ReturnType<BrowserControlSession['click']>
+  typePageElement(id: string, ref: string, text: string, clear?: boolean): ReturnType<BrowserControlSession['type']>
 }
 
 export interface LocalApiServerOptions {
@@ -242,6 +247,44 @@ export class LocalApiServer {
     }
     if (method === 'GET' && (url.pathname === '/api/v1/profiles' || url.pathname === '/api/profile/list')) {
       this.sendJson(response, 200, { profiles: this.profiles.list().map(profileSummary) })
+      return
+    }
+
+    const pageRoute = url.pathname.match(/^\/api\/v1\/profiles\/([^/]+)\/page\/(open|snapshot|click|type)$/)
+    if (pageRoute) {
+      const id = decodeURIComponent(pageRoute[1])
+      const action = pageRoute[2]
+      if (action === 'snapshot' && method === 'GET') {
+        this.profile(id)
+        this.sendJson(response, 200, { profileId: id, page: await this.launcher.pageSnapshot(id) })
+        return
+      }
+      if (method !== 'POST') throw new LocalApiHttpError(405, 'METHOD_NOT_ALLOWED', 'Method not allowed')
+      const body = await readJsonBody(request)
+      if (action === 'open') {
+        const pageUrl = typeof body.url === 'string' ? body.url : ''
+        if (!pageUrl) throw new LocalApiHttpError(400, 'URL_REQUIRED', 'HTTP or HTTPS URL is required')
+        this.profile(id)
+        this.sendJson(response, 200, { profileId: id, page: await this.launcher.openPage(id, pageUrl) })
+        return
+      }
+      const ref = typeof body.ref === 'string' ? body.ref : ''
+      if (!ref) throw new LocalApiHttpError(400, 'ELEMENT_REF_REQUIRED', 'Element ref is required')
+      this.profile(id)
+      if (action === 'click') {
+        this.sendJson(response, 200, { profileId: id, page: await this.launcher.clickPageElement(id, ref) })
+        return
+      }
+      if (typeof body.text !== 'string') {
+        throw new LocalApiHttpError(400, 'TEXT_REQUIRED', 'Text is required')
+      }
+      if (body.clear !== undefined && typeof body.clear !== 'boolean') {
+        throw new LocalApiHttpError(400, 'INVALID_CLEAR', 'clear must be a boolean')
+      }
+      this.sendJson(response, 200, {
+        profileId: id,
+        page: await this.launcher.typePageElement(id, ref, body.text, body.clear !== false)
+      })
       return
     }
 
