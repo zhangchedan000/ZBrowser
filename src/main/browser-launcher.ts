@@ -18,7 +18,7 @@ import { hostHardwareSnapshot } from './host-hardware'
 import { classifyProxyFailure, testProxy } from './proxy-tester'
 import { GEOIP_CONFLICT_CONFIRMATION_PREFIX, hasCompleteProxyIdentity, proxyLaunchError } from '../shared/network-identity'
 import { sameProxyIdentity } from './profile-secrets'
-import { BrowserControlSession, PipeCdpTransport } from './browser-control-session'
+import { BrowserControlSession, PipeCdpTransport, WebSocketCdpTransport } from './browser-control-session'
 import { buildRuntimeFingerprintChecks } from '../shared/runtime-fingerprint-diagnostics'
 import type { Readable, Writable } from 'node:stream'
 
@@ -555,19 +555,19 @@ export class BrowserLauncher {
 
   async openPage(id: string, url: string): Promise<{ url: string; title: string; readyState: string }> {
     await this.launch(id)
-    return this.controlSession(id).open(url)
+    return (await this.controlSession(id)).open(url)
   }
 
-  pageSnapshot(id: string): ReturnType<BrowserControlSession['snapshot']> {
-    return this.controlSession(id).snapshot()
+  async pageSnapshot(id: string): ReturnType<BrowserControlSession['snapshot']> {
+    return (await this.controlSession(id)).snapshot()
   }
 
-  clickPageElement(id: string, ref: string): ReturnType<BrowserControlSession['click']> {
-    return this.controlSession(id).click(ref)
+  async clickPageElement(id: string, ref: string): ReturnType<BrowserControlSession['click']> {
+    return (await this.controlSession(id)).click(ref)
   }
 
-  typePageElement(id: string, ref: string, text: string, clear = true): ReturnType<BrowserControlSession['type']> {
-    return this.controlSession(id).type(ref, text, clear)
+  async typePageElement(id: string, ref: string, text: string, clear = true): ReturnType<BrowserControlSession['type']> {
+    return (await this.controlSession(id)).type(ref, text, clear)
   }
 
   runtimeSnapshot(): LauncherRuntimeSnapshot {
@@ -613,15 +613,36 @@ export class BrowserLauncher {
     return runtime
   }
 
-  private controlSession(id: string): BrowserControlSession {
+  private async controlSession(id: string): Promise<BrowserControlSession> {
     const running = this.processes.get(id)
     if (!running) throw new Error('浏览器环境尚未启动')
-    if (!running.automation) {
-      throw new Error(process.platform === 'win32'
-        ? '当前 Windows 内部版本尚未启用 MCP 页面操作，请先在 macOS 验证后统一移植'
-        : '当前浏览器内核没有建立安全页面控制管道，请关闭环境后重新启动')
+    if (running.automation) return running.automation
+    if (!running.loopbackDebugging) {
+      throw new Error('当前浏览器内核没有建立安全页面控制通道，请关闭环境后重新启动')
     }
-    return running.automation
+
+    let endpoint: string | undefined
+    for (let attempt = 0; attempt < 50; attempt += 1) {
+      const runtime = await this.localApiRuntime(id)
+      endpoint = runtime.cdp?.webSocketDebuggerUrl
+      if (endpoint) break
+      await new Promise((resolve) => setTimeout(resolve, 100))
+    }
+    if (!endpoint) throw new Error('浏览器 CDP 调试端点尚未就绪，请稍后重试')
+
+    const transport = await WebSocketCdpTransport.connect(endpoint)
+    const current = this.processes.get(id)
+    if (current !== running) {
+      transport.close()
+      throw new Error('浏览器环境已在建立页面控制连接时关闭')
+    }
+    if (running.automation) {
+      transport.close()
+      return running.automation
+    }
+    const session = new BrowserControlSession(transport)
+    running.automation = session
+    return session
   }
 
   async crashHistory(id: string): Promise<BrowserCrashRecord[]> {
@@ -807,7 +828,7 @@ export class BrowserLauncher {
 
     try {
       await this.launch(id, { startUrls: [], runtimeVersionProbe: true })
-      const runtime = await this.controlSession(id).runtimeVersionSnapshot()
+      const runtime = await (await this.controlSession(id)).runtimeVersionSnapshot()
       const expectedVersion = engine.version
       const expectedMajor = expectedVersion.split('.')[0]
       const uaMatches = Boolean(expectedMajor)
@@ -904,7 +925,7 @@ export class BrowserLauncher {
 
     try {
       await this.launch(id, { startUrls: [], runtimeVersionProbe: true })
-      const snapshot = await this.controlSession(id).runtimeFingerprintSnapshot()
+      const snapshot = await (await this.controlSession(id)).runtimeFingerprintSnapshot()
       const current = this.profiles.get(id)
       const checks = buildRuntimeFingerprintChecks(current, snapshot, engine)
       return {

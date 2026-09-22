@@ -1,4 +1,5 @@
 import type { Readable, Writable } from 'node:stream'
+import { WebSocket } from 'undici'
 import type { RuntimeFingerprintSnapshot } from '../shared/types'
 
 const MAX_PAGE_NODES = 300
@@ -25,6 +26,106 @@ interface CdpMessage {
 export interface CdpTransport {
   send<T>(method: string, params?: Record<string, unknown>, sessionId?: string): Promise<T>
   close(): void
+}
+
+function validateLoopbackCdpWebSocketUrl(value: string): string {
+  const url = new URL(value)
+  const port = Number(url.port)
+  if (url.protocol !== 'ws:' || url.hostname !== '127.0.0.1'
+    || !Number.isInteger(port) || port < 1 || port > 65535
+    || url.username || url.password || !url.pathname.startsWith('/devtools/browser/')) {
+    throw new Error('CDP WebSocket 只允许连接本机 127.0.0.1 的浏览器调试端点')
+  }
+  return url.toString()
+}
+
+export class WebSocketCdpTransport implements CdpTransport {
+  private sequence = 0
+  private closed = false
+  private readonly pending = new Map<number, PendingCommand>()
+  private readonly ready: Promise<void>
+
+  private constructor(private readonly socket: WebSocket) {
+    this.ready = new Promise<void>((resolve, reject) => {
+      const timer = setTimeout(() => reject(new Error('连接浏览器 CDP WebSocket 超时')), 5_000)
+      socket.addEventListener('open', () => {
+        clearTimeout(timer)
+        resolve()
+      }, { once: true })
+      socket.addEventListener('error', () => {
+        clearTimeout(timer)
+        reject(new Error('无法连接浏览器 CDP WebSocket'))
+      }, { once: true })
+    })
+    socket.addEventListener('message', (event) => this.onMessage(event.data))
+    socket.addEventListener('close', () => this.rejectAll(new Error('浏览器 CDP WebSocket 已关闭')))
+    socket.addEventListener('error', () => this.rejectAll(new Error('浏览器 CDP WebSocket 连接异常')))
+  }
+
+  static async connect(urlValue: string): Promise<WebSocketCdpTransport> {
+    const url = validateLoopbackCdpWebSocketUrl(urlValue)
+    const transport = new WebSocketCdpTransport(new WebSocket(url))
+    await transport.ready
+    return transport
+  }
+
+  async send<T>(method: string, params: Record<string, unknown> = {}, sessionId?: string): Promise<T> {
+    await this.ready
+    if (this.closed || this.socket.readyState !== WebSocket.OPEN) {
+      throw new Error('浏览器 CDP WebSocket 不可用')
+    }
+    const id = ++this.sequence
+    const payload: Record<string, unknown> = { id, method, params }
+    if (sessionId) payload.sessionId = sessionId
+    return new Promise<T>((resolve, reject) => {
+      const timer = setTimeout(() => {
+        this.pending.delete(id)
+        reject(new Error(`浏览器操作超时：${method}`))
+      }, 20_000)
+      this.pending.set(id, {
+        timer,
+        resolve: (value) => resolve(value as T),
+        reject
+      })
+      this.socket.send(JSON.stringify(payload))
+    })
+  }
+
+  close(): void {
+    if (this.closed) return
+    this.closed = true
+    try { this.socket.close() } catch { /* already closing */ }
+    this.rejectAll(new Error('浏览器 CDP WebSocket 已关闭'))
+  }
+
+  private onMessage(data: unknown): void {
+    let text = ''
+    if (typeof data === 'string') text = data
+    else if (data instanceof ArrayBuffer) text = Buffer.from(data).toString('utf8')
+    else if (ArrayBuffer.isView(data)) {
+      text = Buffer.from(data.buffer, data.byteOffset, data.byteLength).toString('utf8')
+    }
+    if (!text) return
+    let message: CdpMessage
+    try { message = JSON.parse(text) as CdpMessage }
+    catch { this.rejectAll(new Error('浏览器 CDP WebSocket 返回了无效消息')); return }
+    if (!message.id) return
+    const pending = this.pending.get(message.id)
+    if (!pending) return
+    this.pending.delete(message.id)
+    clearTimeout(pending.timer)
+    if (message.error) pending.reject(new Error(message.error.message ?? '浏览器操作失败'))
+    else pending.resolve(message.result)
+  }
+
+  private rejectAll(error: Error): void {
+    this.closed = true
+    for (const pending of this.pending.values()) {
+      clearTimeout(pending.timer)
+      pending.reject(error)
+    }
+    this.pending.clear()
+  }
 }
 
 export class PipeCdpTransport implements CdpTransport {
