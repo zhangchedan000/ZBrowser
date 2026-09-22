@@ -566,7 +566,9 @@ async function main() {
     const runtimeKernelMajor = runtimeKernelVersion?.split('.')[0]
     const runtimeUserAgentKernelVersionSynced = !runtimeKernelMajor
       || new RegExp(`(?:Chrome|Chromium)/${runtimeKernelMajor}\\.`).test(runtimeFingerprint.userAgent ?? '')
+    const runtimeUaChExposed = Boolean(runtimeFingerprint.uaData)
     const runtimeUaChFullVersionSynced = !runtimeKernelVersion
+      || !runtimeUaChExposed
       || Boolean(runtimeFingerprint.uaData?.fullVersionList?.some((item) => item.version === runtimeKernelVersion))
     const checks = {
       createdIndependentProfiles: firstRun.a.id !== firstRun.updated.id,
@@ -650,7 +652,9 @@ async function main() {
         customKernelHardwareFingerprintVisible: runtimeCustomKernelHardwareFingerprintVisible,
         expectedKernelVersion: runtimeKernelVersion,
         userAgentKernelVersionSynced: runtimeUserAgentKernelVersionSynced,
-        uaChFullVersionSynced: runtimeUaChFullVersionSynced
+        uaChExposed: runtimeUaChExposed,
+        uaChFullVersionSynced: runtimeUaChFullVersionSynced,
+        uaChStatus: runtimeUaChExposed ? 'exposed-and-checked' : 'not-exposed-by-runtime'
       },
       checks,
       passed: Object.values(checks).every(Boolean),
