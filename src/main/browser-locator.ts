@@ -2,7 +2,7 @@ import { app } from 'electron'
 import { access, readFile, readdir, stat } from 'node:fs/promises'
 import { constants } from 'node:fs'
 import { basename, isAbsolute, join, resolve, sep } from 'node:path'
-import type { AppSettings, EngineStatus } from '../shared/types'
+import type { AppSettings, EngineStatus, KernelFamily } from '../shared/types'
 import type { SettingsStore } from './settings-store'
 import {
   validateKernelIntegrityFields,
@@ -46,6 +46,7 @@ interface ManagedKernelManifest {
   version: string
   executableRelative: string
   target?: string
+  source?: 'release' | 'local-build'
   criticalFiles?: KernelCriticalFile[]
   criticalFilesSha256?: string
 }
@@ -70,6 +71,7 @@ export async function locateBrowserForProfile(
   settingsStore: SettingsStore,
   vaultPath: string,
   kernelVersion: string,
+  kernelFamily?: KernelFamily,
   runtime: ProfileBrowserRuntime = {}
 ): Promise<EngineStatus> {
   const version = kernelVersion.trim()
@@ -98,31 +100,36 @@ export async function locateBrowserForProfile(
       } else if (!await executableExists(executable)) {
         managedResult = missing('文件缺失')
       } else {
-        const integrityShapeError = manifest.schemaVersion === 2 && (!manifest.criticalFiles || !manifest.criticalFilesSha256)
-          ? '完整性清单缺失'
-          : validateKernelIntegrityFields(manifest, manifest.executableRelative)
-        if (integrityShapeError) {
-          managedResult = missing(integrityShapeError)
+        const actualFamily: KernelFamily = manifest.source === 'local-build' ? 'custom' : 'fingerprint-chromium'
+        if (kernelFamily && actualFamily !== kernelFamily) {
+          managedResult = missing(`内核系列不匹配：需要 ${kernelFamily}，实际 ${actualFamily}`)
         } else {
-          const integrity = await verifyKernelIntegrity(root, manifest.executableRelative, manifest)
-          if (integrity.status === 'corrupt') {
-            managedResult = missing(`完整性校验失败：${integrity.reason}`)
+          const integrityShapeError = manifest.schemaVersion === 2 && (!manifest.criticalFiles || !manifest.criticalFilesSha256)
+            ? '完整性清单缺失'
+            : validateKernelIntegrityFields(manifest, manifest.executableRelative)
+          if (integrityShapeError) {
+            managedResult = missing(integrityShapeError)
           } else {
-            const preferBundled = runtime.preferBundledOverLegacyManaged ?? process.platform === 'darwin'
-            if (integrity.status === 'legacy' && preferBundled) {
-              const bundled = await locateBundledBrowser(runtime.resourcesPath ?? process.resourcesPath, version)
-              if (bundled?.executable && !bundled.label.includes('旧版完整性清单')) {
-                return { ...bundled, source: 'profile', label: 'Fingerprint Chromium（环境固定 · 内置新版）' }
+            const integrity = await verifyKernelIntegrity(root, manifest.executableRelative, manifest)
+            if (integrity.status === 'corrupt') {
+              managedResult = missing(`完整性校验失败：${integrity.reason}`)
+            } else {
+              const preferBundled = runtime.preferBundledOverLegacyManaged ?? process.platform === 'darwin'
+              if (integrity.status === 'legacy' && preferBundled) {
+                const bundled = await locateBundledBrowser(runtime.resourcesPath ?? process.resourcesPath, version)
+                if (bundled?.executable && !bundled.label.includes('旧版完整性清单')) {
+                  return { ...bundled, source: 'profile', label: 'Fingerprint Chromium（环境固定 · 内置新版）' }
+                }
               }
-            }
-            return {
-              executable,
-              source: 'profile',
-              fingerprintKernel: true,
-              label: integrity.status === 'legacy'
-                ? 'Fingerprint Chromium（环境固定 · 旧版完整性清单）'
-                : 'Fingerprint Chromium（环境固定）',
-              version
+              return {
+                executable,
+                source: 'profile',
+                fingerprintKernel: true,
+                label: integrity.status === 'legacy'
+                  ? 'Fingerprint Chromium（环境固定 · 旧版完整性清单）'
+                  : 'Fingerprint Chromium（环境固定）',
+                version
+              }
             }
           }
         }
@@ -132,7 +139,7 @@ export async function locateBrowserForProfile(
     managedResult = (error as NodeJS.ErrnoException).code === 'ENOENT' ? missing('未安装') : missing('清单损坏')
   }
 
-  const bundled = await locateBundledBrowser(runtime.resourcesPath ?? process.resourcesPath, version)
+  const bundled = kernelFamily === 'custom' ? null : await locateBundledBrowser(runtime.resourcesPath ?? process.resourcesPath, version)
   if (bundled?.executable) {
     return { ...bundled, source: 'profile', label: 'Fingerprint Chromium（环境固定 · 内置）' }
   }
