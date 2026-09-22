@@ -320,6 +320,10 @@ export function hardwareProfile(id: HardwareProfileId): HardwareProfile | undefi
   return HARDWARE_PROFILES.find((profile) => profile.id === id)
 }
 
+export function hardwareProfileForPersonaId(personaId: string): HardwareProfile | undefined {
+  return HARDWARE_PROFILES.find((profile) => HARDWARE_PROFILE_PERSONAS[profile.id] === personaId)
+}
+
 export function defaultHardwareProfileId(platform: BrowserPlatform): HardwareProfileId {
   return platform === 'windows' ? 'windows-seeded-nvidia' : 'macos-seeded-apple'
 }

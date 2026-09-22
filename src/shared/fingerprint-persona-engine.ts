@@ -6,9 +6,11 @@ import {
   type FingerprintHardwareRegion
 } from './fingerprint-hardware-database'
 import {
+  applyHardwareProfile,
   effectiveGpuIdentity,
   effectiveHardwareSurfaceIdentity,
-  hardwareProfile
+  hardwareProfile,
+  hardwareProfileForPersonaId
 } from './hardware-profiles'
 
 export type FingerprintPersonaSource =
@@ -48,6 +50,34 @@ export interface FingerprintPersonaRecommendationOptions {
   seed: number
   region?: FingerprintHardwareRegion
   asOf?: string
+}
+
+const EU_HARDWARE_REGION = new Set([
+  'AT', 'BE', 'CH', 'CZ', 'DE', 'DK', 'ES', 'FI', 'FR', 'GB', 'GR', 'HU', 'IE',
+  'IT', 'NL', 'NO', 'PL', 'PT', 'RO', 'SE', 'SK'
+])
+
+const APAC_HARDWARE_REGION = new Set([
+  'AU', 'CN', 'HK', 'ID', 'IN', 'JP', 'KR', 'MY', 'NZ', 'PH', 'SG', 'TH', 'TW', 'VN'
+])
+
+export function fingerprintHardwareRegionForCountry(countryCode: string | undefined): FingerprintHardwareRegion {
+  const code = countryCode?.trim().toUpperCase()
+  if (code === 'US') return 'us'
+  if (code && EU_HARDWARE_REGION.has(code)) return 'eu'
+  if (code && APAC_HARDWARE_REGION.has(code)) return 'apac'
+  return 'global'
+}
+
+export function applyFingerprintHardwarePersona(
+  config: FingerprintConfig,
+  personaId: string
+): FingerprintConfig | undefined {
+  const persona = hardwarePersona(personaId)
+  if (!persona) return undefined
+  const profile = hardwareProfileForPersonaId(persona.id)
+  if (!profile) return undefined
+  return applyHardwareProfile(config, profile.id, { refreshSeededGpu: true })
 }
 
 function compareValue(

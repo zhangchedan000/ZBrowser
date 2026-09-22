@@ -22,6 +22,12 @@ import { useEffect, useMemo, useState } from 'react'
 import { defaultPlatform, defaultProfileDraft, randomSeed } from '../../shared/defaults'
 import { fingerprintVersionWarning } from '../../shared/fingerprint-consistency'
 import {
+  applyFingerprintHardwarePersona,
+  fingerprintHardwareRegionForCountry,
+  recommendFingerprintHardwarePersona,
+  resolveFingerprintPersona
+} from '../../shared/fingerprint-persona-engine'
+import {
   applyHardwareProfile,
   effectiveGpuIdentity,
   HARDWARE_PROFILES,
@@ -86,6 +92,7 @@ export function ProfileEditor({ open, profile, suggestedIndex, saving, extension
   const proxyPassword = Form.useWatch(['proxy', 'password'], form) ?? ''
   const proxyPasswordStored = Form.useWatch(['proxy', 'passwordStored'], form) === true
   const webrtcPolicy = Form.useWatch(['fingerprint', 'webrtcPolicy'], form) ?? 'proxy_only'
+  const fingerprintConfig = Form.useWatch('fingerprint', form)
   const fingerprintTimezone = Form.useWatch(['fingerprint', 'timezone'], form)
   const fingerprintLanguage = Form.useWatch(['fingerprint', 'language'], form) ?? 'zh-CN'
   const fingerprintAcceptLanguages = Form.useWatch(['fingerprint', 'acceptLanguages'], form) ?? 'zh-CN,zh,en-US,en'
@@ -134,6 +141,20 @@ export function ProfileEditor({ open, profile, suggestedIndex, saving, extension
     gpuBucket: fingerprintGpuBucket
   })
   const hostPlatform = defaultPlatform()
+  const personaResolution = fingerprintConfig ? resolveFingerprintPersona(fingerprintConfig) : undefined
+  const personaRegion = fingerprintHardwareRegionForCountry(
+    proxyResult?.ok ? proxyResult.countryCode : profile?.proxyCheck?.countryCode
+  )
+  const recommendedPersona = fingerprintConfig
+    ? recommendFingerprintHardwarePersona({
+        platform: fingerprintConfig.platform,
+        seed: fingerprintConfig.seed,
+        region: personaRegion
+      })
+    : undefined
+  const personaRecommendationApplied = Boolean(
+    recommendedPersona?.id && personaResolution?.personaId === recommendedPersona.id
+  )
   const timezoneMismatch = Boolean(proxyResult?.timezone && fingerprintTimezone && proxyResult.timezone !== fingerprintTimezone)
   const networkIdentity = effectiveNetworkIdentity({
     ...form.getFieldValue('fingerprint'),
@@ -575,6 +596,42 @@ export function ProfileEditor({ open, profile, suggestedIndex, saving, extension
           showIcon
           message="这是升级前创建的自定义硬件组合"
           description="为避免已使用环境的指纹突变，当前值不会自动修改。新账号建议新建环境并选择成套硬件模板。"
+        />
+      )}
+      {personaResolution && (
+        <Alert
+          type={personaResolution.consistency === 'conflict' || personaResolution.consistency === 'unresolved' ? 'warning' : 'success'}
+          showIcon
+          message={personaResolution.personaId
+            ? `Persona Engine · ${personaResolution.label}`
+            : `Persona Engine · ${personaResolution.label}`}
+          description={personaResolution.warnings.length
+            ? personaResolution.warnings.join('；')
+            : personaResolution.source === 'catalog'
+              ? `${personaResolution.personaId} · CPU / GPU / 内存 / 屏幕参数已按整套 Persona 锁定。`
+              : '当前环境身份已解析；Persona Engine 不会在后台重映射已有环境。'}
+        />
+      )}
+      {!profile && recommendedPersona && (
+        <Alert
+          type="info"
+          showIcon
+          message={personaRecommendationApplied
+            ? `已使用推荐 Persona · ${recommendedPersona.label}`
+            : `新环境推荐 Persona · ${recommendedPersona.label}`}
+          description={`按当前 Seed 和 ${personaRegion.toUpperCase()} 区域做确定性推荐；只在你点击应用时修改新环境，不会自动改变已有 Profile。`}
+          action={!personaRecommendationApplied ? (
+            <Button
+              size="small"
+              onClick={() => {
+                const current = form.getFieldValue('fingerprint')
+                const applied = applyFingerprintHardwarePersona(current, recommendedPersona.id)
+                if (applied) form.setFieldValue('fingerprint', applied)
+              }}
+            >
+              应用推荐 Persona
+            </Button>
+          ) : undefined}
         />
       )}
       <Divider />

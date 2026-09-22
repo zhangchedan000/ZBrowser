@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest'
 import { defaultFingerprint } from './defaults'
 import { applyHardwareProfile } from './hardware-profiles'
 import {
+  applyFingerprintHardwarePersona,
+  fingerprintHardwareRegionForCountry,
   recommendFingerprintHardwarePersona,
   resolveFingerprintPersona
 } from './fingerprint-persona-engine'
@@ -75,5 +77,28 @@ describe('fingerprint persona engine', () => {
       .toBe(recommendFingerprintHardwarePersona({ platform: 'windows', seed: 100 })?.id)
     expect(recommendFingerprintHardwarePersona({ platform: 'macos', seed: 0 })?.id)
       .toBe('mac-mainstream-m1')
+  })
+
+  it('maps proxy countries to broad hardware recommendation regions', () => {
+    expect(fingerprintHardwareRegionForCountry('US')).toBe('us')
+    expect(fingerprintHardwareRegionForCountry('DE')).toBe('eu')
+    expect(fingerprintHardwareRegionForCountry('JP')).toBe('apac')
+    expect(fingerprintHardwareRegionForCountry('BR')).toBe('global')
+    expect(fingerprintHardwareRegionForCountry(undefined)).toBe('global')
+  })
+
+  it('applies a recommended persona only when explicitly requested', () => {
+    const config = defaultFingerprint(987654)
+    const applied = applyFingerprintHardwarePersona(config, 'win-mainstream-4060-1080p')
+
+    expect(applied).toMatchObject({
+      seed: 987654,
+      hardwareProfileId: 'windows-11-rtx4060',
+      hardwarePersonaId: 'win-mainstream-4060-1080p',
+      hardwareConcurrency: 12,
+      screenWidth: 1920,
+      screenHeight: 1080
+    })
+    expect(applyFingerprintHardwarePersona(config, 'missing-persona')).toBeUndefined()
   })
 })
