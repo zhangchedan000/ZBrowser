@@ -1,6 +1,6 @@
 import { EventEmitter } from 'node:events'
 import { spawn, type ChildProcess } from 'node:child_process'
-import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { chmod, mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
@@ -108,6 +108,31 @@ class FakeSpawnController {
   }
 }
 
+async function installManagedTestKernel(
+  vault: string,
+  version: string,
+  source: 'release' | 'local-build' = 'release'
+): Promise<string> {
+  const root = join(vault, 'kernels', version)
+  const browserRoot = join(root, 'browser')
+  await mkdir(browserRoot, { recursive: true })
+  const executableName = process.platform === 'win32' ? 'chrome.exe' : 'chrome'
+  const executable = join(browserRoot, executableName)
+  await writeFile(executable, `test-kernel-${version}`, { mode: 0o700 })
+  await chmod(executable, 0o700)
+  await writeFile(join(root, 'manifest.json'), JSON.stringify({
+    schemaVersion: 1,
+    version,
+    assetName: 'test.zip',
+    sha256: 'a'.repeat(64),
+    installedAt: '2026-09-22T00:00:00.000Z',
+    executableRelative: `browser/${executableName}`,
+    source,
+    target: `${process.platform}-${process.arch}`
+  }))
+  return executable
+}
+
 async function waitUntil(predicate: () => boolean, timeoutMs = 2_000): Promise<void> {
   const deadline = Date.now() + timeoutMs
   while (!predicate()) {
@@ -149,6 +174,55 @@ async function launchFixture(profileCount: number, concurrency = 3): Promise<{
   )
   return { profiles, launcher, controller, ids: created.map((profile) => profile.id) }
 }
+
+describe('BrowserLauncher major-pinned kernel patch upgrades', () => {
+  it('launches the highest same-major patch and advances the persisted floor only after spawn succeeds', async () => {
+    const vault = await mkdtemp(join(tmpdir(), 'zbrowser-launcher-kernel-major-'))
+    temporaryPaths.push(vault)
+    const profiles = new ProfileStore(vault)
+    const settings = new SettingsStore(vault)
+    const extensions = new ExtensionStore(vault)
+    await Promise.all([profiles.initialize(), settings.initialize(), extensions.initialize()])
+
+    const floor = '144.0.7559.132'
+    const patch = '144.0.7559.150'
+    await installManagedTestKernel(vault, floor)
+    await installManagedTestKernel(vault, patch)
+    await installManagedTestKernel(vault, '145.0.1.1')
+
+    const draft = defaultProfileDraft()
+    draft.name = '主版本锁定环境'
+    draft.kernelVersion = floor
+    draft.kernelFamily = 'fingerprint-chromium'
+    const profile = await profiles.create(draft)
+
+    const controller = new FakeSpawnController()
+    const launcher = new BrowserLauncher(
+      profiles,
+      settings,
+      () => undefined,
+      extensions,
+      undefined,
+      new FakeProcessInspector([]),
+      async () => ({ ok: true, latencyMs: 1, checkedAt: new Date().toISOString() }),
+      1,
+      controller.spawn
+    )
+
+    const launchPromise = launcher.launch(profile.id)
+    await waitUntil(() => controller.children.length === 1)
+    expect(profiles.get(profile.id).kernelVersion).toBe(floor)
+    controller.startPending()
+    const running = await launchPromise
+
+    expect(running.kernelVersion).toBe(patch)
+    expect(profiles.get(profile.id).kernelVersion).toBe(patch)
+    expect(controller.arguments[0]).toContain(`--fingerprint-brand-version=${patch}`)
+    expect(controller.arguments[0].some((arg) => arg.includes('145.0.1.1'))).toBe(false)
+
+    await launcher.close(profile.id)
+  })
+})
 
 describe('BrowserLauncher orphan recovery', () => {
   it('adopts a process using the profile directory and safely closes it', async () => {
