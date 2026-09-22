@@ -23,6 +23,7 @@ export interface ProfileLaunchOptions {
   startUrls?: string[]
 }
 export type EnginePreference = 'auto' | 'bundled' | 'system'
+export type KernelFamily = 'fingerprint-chromium' | 'custom'
 export interface ProfileWindowConfig {
   mode: 'auto' | 'custom'
   x: number
@@ -84,6 +85,8 @@ export interface BrowserProfile {
   startUrls: string[]
   /** Empty means follow the globally selected/default engine. */
   kernelVersion: string
+  /** Explicit family prevents a pinned version from silently resolving to a different kernel build. */
+  kernelFamily?: KernelFamily
   window: ProfileWindowConfig
   favorite: boolean
   proxy: ProxyConfig
@@ -105,7 +108,7 @@ export type BrowserProfileView = Omit<BrowserProfile, 'proxy'> & { proxy: Public
 
 export type ProfileDraft = Pick<
   BrowserProfile,
-  'name' | 'note' | 'group' | 'tags' | 'extensionIds' | 'color' | 'startUrls' | 'kernelVersion' | 'window' | 'proxy' | 'fingerprint'
+  'name' | 'note' | 'group' | 'tags' | 'extensionIds' | 'color' | 'startUrls' | 'kernelVersion' | 'kernelFamily' | 'window' | 'proxy' | 'fingerprint'
 >
 
 export interface ProfileBatchClassification {
