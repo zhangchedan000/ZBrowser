@@ -98,7 +98,7 @@ app.whenReady().then(async () => {
     settings,
     (progress) => mainWindow?.webContents.send('engine:install-progress', progress),
     logger,
-    (version) => profiles.kernelUsers(version),
+    (version, family) => profiles.kernelUsers(version, family),
     kernelRegistry
   )
   await kernels.initialize()
