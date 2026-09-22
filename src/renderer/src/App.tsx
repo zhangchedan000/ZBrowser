@@ -488,7 +488,7 @@ export default function App() {
     try {
       const result = await executeBatchKernelUpgrades(plans, {
         upgrade: (id, version, family) => window.browserApi.profiles.upgradeKernel(id, version, family),
-        diagnose: (id) => window.browserApi.profiles.diagnose(id),
+        diagnose: (id) => window.browserApi.profiles.diagnoseKernelRuntime(id),
         rollback: (id) => window.browserApi.profiles.rollbackKernelUpgrade(id),
         onProfileChanged: upsert
       }, { testFirst: batchKernelTestFirst })
