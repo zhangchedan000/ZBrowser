@@ -222,7 +222,7 @@ async function probeMcpStdio(options, userDataPath, expectedProfileId) {
         iterator.next(),
         delay(15_000).then(() => { throw new Error('MCP stdio response timed out') })
       ])
-      if (result.done) throw new Error('MCP stdio closed before sending a response')
+      if (result.done) throw new Error(`MCP stdio closed before sending a response (code=${child.exitCode ?? '-'}, signal=${child.signalCode ?? '-'})`)
       const line = result.value.trim()
       if (!line) continue
       transcript += line + '\n'
