@@ -326,6 +326,14 @@ export class BrowserLauncher {
               userDataDir: this.profiles.profileDataPath(id),
               startedAt: new Date().toISOString()
             }, null, 2), { mode: 0o600 })
+            if (profile.kernelVersion && profile.kernelFamily && engine.version && engine.version !== profile.kernelVersion) {
+              profile = await this.profiles.advanceKernelFloor(id, engine.version, profile.kernelFamily)
+              this.logger?.info('环境已自动推进同主版本内核补丁下限', {
+                profileId: id,
+                kernelMajor: engine.version.split('.')[0],
+                kernelVersion: engine.version
+              })
+            }
             const next = await this.profiles.setRuntime(id, {
               status: 'running',
               lastOpenedAt: new Date().toISOString(),
