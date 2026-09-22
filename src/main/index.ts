@@ -17,11 +17,13 @@ import { UpdateManager } from './update-manager'
 import { migrateMacLegacyKernelSelection } from './browser-locator'
 import { WorkspaceMigrationManager } from './workspace-migration'
 import { EnvironmentCheckHistoryStore } from './environment-check-history'
+import { LocalApiServer, localApiPortFromEnvironment } from './local-api-server'
 
 let mainWindow: BrowserWindow | null = null
 let launcher: BrowserLauncher | null = null
 let logger: AppLogger | null = null
 let appSession: AppSessionTracker | null = null
+let localApi: LocalApiServer | null = null
 
 if (process.platform === 'win32') app.setAppUserModelId('com.zbrowser.desktop')
 
@@ -93,6 +95,17 @@ app.whenReady().then(async () => {
     mainWindow?.webContents.send('profiles:changed', publicProfile(profile))
   }, extensions, logger)
   await launcher.initialize()
+  localApi = new LocalApiServer(vaultPath, profiles, launcher, logger, {
+    port: localApiPortFromEnvironment(process.env.ZBROWSER_LOCAL_API_PORT),
+    token: process.env.ZBROWSER_LOCAL_API_TOKEN
+  })
+  try {
+    const api = await localApi.start()
+    logger.info('Local API 已启动', { url: api.url, tokenPath: api.tokenPath, metadataPath: api.metadataPath })
+  } catch (error) {
+    logger.error('Local API 启动失败；桌面功能继续可用', error)
+    localApi = null
+  }
   const kernels = new ManagedKernelManager(
     vaultPath,
     settings,
@@ -124,11 +137,16 @@ app.on('activate', () => {
 })
 
 app.on('before-quit', (event) => {
-  if (!launcher) return
+  if (!launcher && !localApi) return
   event.preventDefault()
   const current = launcher
+  const api = localApi
   launcher = null
-  void Promise.allSettled([current.closeAll()]).finally(async () => {
+  localApi = null
+  void Promise.allSettled([
+    current?.closeAll() ?? Promise.resolve(),
+    api?.close() ?? Promise.resolve()
+  ]).finally(async () => {
     await appSession?.complete().catch(() => undefined)
     await logger?.flush()
     app.quit()

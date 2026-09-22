@@ -32,6 +32,7 @@ interface InternalProfileLaunchOptions extends ProfileLaunchOptions {
 interface RunningBrowser {
   process: ChildProcess
   automation?: BrowserControlSession
+  loopbackDebugging: boolean
   proxyUrl?: string
   proxyIdentityIp?: string
   proxyMonitor?: ReturnType<typeof setInterval>
@@ -53,6 +54,16 @@ export interface LauncherRuntimeSnapshot {
   activeLaunches: number
   queuedLaunches: number
   closingAll: boolean
+}
+
+export interface LocalApiProfileRuntime {
+  status: BrowserProfile['status']
+  pid?: number
+  cdp?: {
+    port: number
+    httpUrl: string
+    webSocketDebuggerUrl?: string
+  }
 }
 
 export type { BrowserCrashRecord } from '../shared/types'
@@ -224,13 +235,16 @@ export class BrowserLauncher {
       }
       if (options.runtimeVersionProbe && !args.includes('--headless=new')) args.push('--headless=new')
       const pipeControlEnabled = process.platform !== 'win32' || options.runtimeVersionProbe === true
-      if (pipeControlEnabled) args.push('--remote-debugging-pipe')
-      else if (e2eEnabled) {
-        // Windows production launches keep remote debugging disabled. E2E uses
-        // an ephemeral loopback-only port so the test harness can inspect the
-        // actual page-visible fingerprint surfaces of the spawned Chromium.
+      const loopbackDebugging = process.platform === 'win32' && !pipeControlEnabled
+      const devToolsActivePortPath = join(this.profiles.profileDataPath(id), 'DevToolsActivePort')
+      if (pipeControlEnabled) {
+        args.push('--remote-debugging-pipe')
+      } else if (loopbackDebugging) {
+        // Local API / Playwright / Puppeteer integration uses Chromium's ephemeral
+        // debugging port, but it is bound to loopback only and never exposed on LAN.
         args.push('--remote-debugging-address=127.0.0.1')
         args.push('--remote-debugging-port=0')
+        await rm(devToolsActivePortPath, { force: true })
       }
       await writeFile(
         join(runtimePath, 'last-launch.json'),
@@ -280,7 +294,8 @@ export class BrowserLauncher {
         try {
           const cleanup = await Promise.allSettled([
             closeProxyBridge(localProxyUrl),
-            rm(join(runtimePath, 'process.json'), { force: true })
+            rm(join(runtimePath, 'process.json'), { force: true }),
+            ...(running?.loopbackDebugging ? [rm(devToolsActivePortPath, { force: true })] : [])
           ])
           for (const result of cleanup) {
             if (result.status === 'rejected') {
@@ -304,6 +319,7 @@ export class BrowserLauncher {
       const running: RunningBrowser = {
         process: child,
         automation,
+        loopbackDebugging,
         proxyUrl: localProxyUrl,
         proxyIdentityIp: profile.proxyCheck?.ip,
         proxyMonitorRunning: false,
@@ -564,6 +580,37 @@ export class BrowserLauncher {
       queuedLaunches: this.launchWaiters.length,
       closingAll: Boolean(this.closeAllOperation)
     }
+  }
+
+  async localApiRuntime(id: string): Promise<LocalApiProfileRuntime> {
+    const profile = this.profiles.get(id)
+    const running = this.processes.get(id)
+    const runtime: LocalApiProfileRuntime = {
+      status: profile.status,
+      pid: running?.process.pid ?? this.orphanProcesses.get(id)
+    }
+    if (!running?.loopbackDebugging) return runtime
+
+    try {
+      const lines = (await readFile(join(this.profiles.profileDataPath(id), 'DevToolsActivePort'), 'utf8'))
+        .trim()
+        .split(/\r?\n/)
+      const port = Number(lines[0])
+      if (!Number.isInteger(port) || port <= 0 || port > 65535) return runtime
+      const path = lines[1]?.trim()
+      runtime.cdp = {
+        port,
+        httpUrl: 'http://127.0.0.1:' + port,
+        webSocketDebuggerUrl: path?.startsWith('/')
+          ? 'ws://127.0.0.1:' + port + path
+          : undefined
+      }
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') {
+        this.logger?.error('读取 Local API CDP 端点失败', { profileId: id, error: safeErrorText(error) })
+      }
+    }
+    return runtime
   }
 
   private controlSession(id: string): BrowserControlSession {

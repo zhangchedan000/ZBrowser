@@ -175,6 +175,36 @@ async function launchFixture(profileCount: number, concurrency = 3): Promise<{
   return { profiles, launcher, controller, ids: created.map((profile) => profile.id) }
 }
 
+describe('BrowserLauncher Local API debugging endpoint', () => {
+  it('keeps the Windows CDP endpoint loopback-only and reports the active DevTools port', async () => {
+    if (process.platform !== 'win32') return
+    const { profiles, launcher, controller, ids } = await launchFixture(1)
+    const launch = launcher.launch(ids[0])
+    await waitUntil(() => controller.children.length === 1)
+    controller.startPending()
+    await launch
+
+    expect(controller.arguments[0]).toContain('--remote-debugging-address=127.0.0.1')
+    expect(controller.arguments[0]).toContain('--remote-debugging-port=0')
+    await writeFile(
+      join(profiles.profileDataPath(ids[0]), 'DevToolsActivePort'),
+      '45678\n/devtools/browser/zbrowser-local-api\n'
+    )
+    await expect(launcher.localApiRuntime(ids[0])).resolves.toMatchObject({
+      status: 'running',
+      pid: controller.children[0].pid,
+      cdp: {
+        port: 45678,
+        httpUrl: 'http://127.0.0.1:45678',
+        webSocketDebuggerUrl: 'ws://127.0.0.1:45678/devtools/browser/zbrowser-local-api'
+      }
+    })
+
+    await launcher.close(ids[0])
+    await expect(launcher.localApiRuntime(ids[0])).resolves.toMatchObject({ status: 'closed' })
+  })
+})
+
 describe('BrowserLauncher major-pinned kernel patch upgrades', () => {
   it('launches the highest same-major patch and advances the persisted floor only after spawn succeeds', async () => {
     const vault = await mkdtemp(join(tmpdir(), 'zbrowser-launcher-kernel-major-'))
