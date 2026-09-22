@@ -21,7 +21,7 @@ function profile(
     favorite: false,
     createdAt: '2026-09-22T00:00:00.000Z',
     updatedAt: '2026-09-22T00:00:00.000Z',
-    proxy: { protocol: 'direct', host: '', username: '', passwordStored: false }
+    proxy: { protocol: 'direct', host: '', username: '', password: '', passwordStored: false }
   }
 }
 
