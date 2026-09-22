@@ -1,4 +1,4 @@
-import { createServer } from 'node:http'
+import { createServer, type IncomingMessage, type ServerResponse } from 'node:http'
 import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -21,7 +21,7 @@ async function vault(): Promise<string> {
   return path
 }
 
-async function listen(handler: Parameters<typeof createServer>[0]): Promise<{ url: string; port: number }> {
+async function listen(handler: (request: IncomingMessage, response: ServerResponse) => void): Promise<{ url: string; port: number }> {
   const server = createServer(handler)
   servers.push(server)
   await new Promise<void>((resolve, reject) => {
@@ -69,17 +69,17 @@ describe('MCP Local API discovery', () => {
       url: 'http://localhost:17653'
     }))
 
-    await expect(discoverRunningLocalApi(path)).rejects.toMatchObject<McpLocalApiError>({
+    await expect(discoverRunningLocalApi(path)).rejects.toMatchObject({
       code: 'UNSAFE_LOCAL_API_METADATA'
     })
   })
 
   it('never allows a caller to turn a tool path into an arbitrary URL', async () => {
     const client = new ZBrowserLocalApiClient('http://127.0.0.1:17653', 'c'.repeat(40))
-    await expect(client.request('http://example.com/steal')).rejects.toMatchObject<McpLocalApiError>({
+    await expect(client.request('http://example.com/steal')).rejects.toMatchObject({
       code: 'INVALID_LOCAL_API_PATH'
     })
-    await expect(client.request('/api/v1/../token')).rejects.toMatchObject<McpLocalApiError>({
+    await expect(client.request('/api/v1/../token')).rejects.toMatchObject({
       code: 'INVALID_LOCAL_API_PATH'
     })
   })
