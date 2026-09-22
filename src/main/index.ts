@@ -95,17 +95,6 @@ app.whenReady().then(async () => {
     mainWindow?.webContents.send('profiles:changed', publicProfile(profile))
   }, extensions, logger)
   await launcher.initialize()
-  localApi = new LocalApiServer(vaultPath, profiles, launcher, logger, {
-    port: localApiPortFromEnvironment(process.env.ZBROWSER_LOCAL_API_PORT),
-    token: process.env.ZBROWSER_LOCAL_API_TOKEN
-  })
-  try {
-    const api = await localApi.start()
-    logger.info('Local API 已启动', { url: api.url, tokenPath: api.tokenPath, metadataPath: api.metadataPath })
-  } catch (error) {
-    logger.error('Local API 启动失败；桌面功能继续可用', error)
-    localApi = null
-  }
   const kernels = new ManagedKernelManager(
     vaultPath,
     settings,
@@ -123,6 +112,17 @@ app.whenReady().then(async () => {
   }, logger)
   const environmentChecks = new EnvironmentCheckHistoryStore(vaultPath)
   registerIpc({ profiles, settings, launcher, kernels, extensions, cookies, logger, backups, workspaceMigration, appSession, updater, environmentChecks })
+  localApi = new LocalApiServer(vaultPath, profiles, launcher, logger, {
+    port: localApiPortFromEnvironment(process.env.ZBROWSER_LOCAL_API_PORT),
+    token: process.env.ZBROWSER_LOCAL_API_TOKEN
+  })
+  try {
+    const api = await localApi.start()
+    logger.info('Local API 已启动', { url: api.url, tokenPath: api.tokenPath, metadataPath: api.metadataPath })
+  } catch (error) {
+    logger.error('Local API 启动失败；桌面功能继续可用', error)
+    localApi = null
+  }
   mainWindow = createWindow()
   if (app.isPackaged && process.env.ZBROWSER_E2E !== '1' && process.env.PRISM_E2E !== '1') setTimeout(() => void updater.check().catch(() => undefined), 10_000)
 }).catch(async (error) => {
