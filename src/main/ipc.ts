@@ -64,6 +64,32 @@ export function registerIpc({ profiles, settings, launcher, kernels, extensions,
   ipcMain.handle('profiles:storage-health', () => profiles.storageHealth())
   ipcMain.handle('profiles:create', async (_event, draft: ProfileDraft) => publicProfile(await profiles.create(await pinKernelFamily(draft))))
   ipcMain.handle('profiles:update', async (_event, id: string, draft: ProfileDraft) => publicProfile(await profiles.update(id, await pinKernelFamily(draft))))
+  ipcMain.handle('profiles:upgrade-kernel', async (_event, id: string, version: string, family: unknown) => {
+    if (typeof version !== 'string' || !/^\d+(?:\.\d+){3}$/.test(version.trim())) throw new Error('目标内核版本号无效')
+    if (family !== 'fingerprint-chromium' && family !== 'custom') throw new Error('目标内核系列无效')
+    const targetVersion = version.trim()
+    const [managed, bundled] = await Promise.all([kernels.installed(), listBundledBrowsers()])
+    const managedMatch = managed.some((kernel) => kernel.version === targetVersion && kernelFamilyForRelease(kernel) === family)
+    const bundledMatch = family === 'fingerprint-chromium' && bundled.some((kernel) => kernel.version === targetVersion)
+    if (!managedMatch && !bundledMatch) throw new Error(`目标内核 ${targetVersion}（${family}）尚未安装`)
+
+    const current = profiles.get(id)
+    const draft: ProfileDraft = {
+      name: current.name,
+      note: current.note,
+      group: current.group,
+      tags: [...current.tags],
+      extensionIds: [...current.extensionIds],
+      color: current.color,
+      startUrls: [...current.startUrls],
+      kernelVersion: targetVersion,
+      kernelFamily: family,
+      window: { ...current.window },
+      proxy: { ...current.proxy },
+      fingerprint: { ...current.fingerprint, disabledSpoofing: [...current.fingerprint.disabledSpoofing] }
+    }
+    return publicProfile(await profiles.update(id, await pinKernelFamily(draft)))
+  })
   ipcMain.handle('profiles:duplicate', async (_event, id: string) => publicProfile(await profiles.duplicate(id)))
   ipcMain.handle('profiles:export-config', async (_event, id: string) => {
     const profile = profiles.get(id)
