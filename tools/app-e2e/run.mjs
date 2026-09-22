@@ -8,7 +8,7 @@ import { basename, dirname, join, resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
 
 const delay = (milliseconds) => new Promise((resolveDelay) => setTimeout(resolveDelay, milliseconds))
-const APP_E2E_TOOL_VERSION = 3
+const APP_E2E_TOOL_VERSION = 4
 const RETRYABLE_CLEANUP_CODES = new Set(['EBUSY', 'EPERM', 'ENOTEMPTY'])
 
 function cleanupRetryDelay(attempt) {
@@ -80,6 +80,29 @@ async function reservePort() {
   return address.port
 }
 
+function syntheticUpgradeVersion(version) {
+  const major = Number(String(version).split('.')[0])
+  return Number.isInteger(major) && major > 0 ? `${major + 1}.0.0.1` : ''
+}
+
+async function seedSyntheticInstalledKernel(vaultPath, version) {
+  if (!version) return
+  const root = join(vaultPath, 'kernels', version)
+  const executableRelative = process.platform === 'win32' ? 'browser/chrome.exe' : 'browser/chrome'
+  const executable = join(root, ...executableRelative.split('/'))
+  await mkdir(dirname(executable), { recursive: true })
+  await writeFile(executable, 'zbrowser-e2e-synthetic-kernel')
+  await writeFile(join(root, 'manifest.json'), JSON.stringify({
+    schemaVersion: 1,
+    version,
+    assetName: 'zbrowser-e2e-synthetic.zip',
+    sha256: 'e'.repeat(64),
+    installedAt: new Date().toISOString(),
+    executableRelative,
+    source: 'release',
+    target: `${process.platform}-${process.arch}`
+  }, null, 2))
+}
 async function startSiteServer() {
   const server = createServer((_request, response) => {
     response.setHeader('Cache-Control', 'no-store')
@@ -328,6 +351,7 @@ async function probeRuntimeFingerprint(userDataPath, profileId) {
         ? await uaData.getHighEntropyValues(['architecture', 'bitness', 'platformVersion', 'fullVersionList'])
         : {}
       return {
+        userAgent: navigator.userAgent,
         hardwareConcurrency: navigator.hardwareConcurrency,
         deviceMemory: navigator.deviceMemory,
         devicePixelRatio: window.devicePixelRatio,
@@ -380,6 +404,8 @@ async function main() {
     recycleRetentionDays: 0
   }, null, 2))
   const site = await startSiteServer()
+  const syntheticKernelVersion = options.installKernelVersion ? syntheticUpgradeVersion(options.installKernelVersion) : ''
+  if (syntheticKernelVersion) await seedSyntheticInstalledKernel(vault, syntheticKernelVersion)
   let first
   let second
   let primaryError
