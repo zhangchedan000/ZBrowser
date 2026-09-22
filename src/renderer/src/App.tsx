@@ -59,7 +59,7 @@ import { UpdateModal } from './UpdateModal'
 import { WorkspaceMigrationModal } from './WorkspaceMigrationModal'
 import { EnvironmentCheckModal } from './EnvironmentCheckModal'
 import { effectiveNetworkIdentity, geoConflictConfirmationMessage } from '../../shared/network-identity'
-import { kernelReleaseMatchesPin } from '../../shared/kernel-version'
+import { kernelFamilyForRelease, kernelReleaseMatchesPin, newerCompatibleKernelVersion } from '../../shared/kernel-version'
 import { orderBatchLaunchProfiles, waitForBatchLaunchGap } from './batch-launch-order'
 import { profileTableSorters } from './profile-table-sort'
 
@@ -231,6 +231,15 @@ export default function App() {
     if (!profile.kernelVersion) return Boolean(engine?.executable)
     return selectableKernels.some((kernel) => kernelReleaseMatchesPin(kernel, profile.kernelVersion, profile.kernelFamily))
   }
+
+  function profileKernelUpgrade(profile: BrowserProfileView): { version: string; family: 'fingerprint-chromium' | 'custom' } | undefined {
+    if (!profile.kernelVersion || !profile.kernelFamily) return undefined
+    const version = newerCompatibleKernelVersion(profile.kernelVersion, profile.kernelFamily, selectableKernels)
+    if (!version) return undefined
+    const release = selectableKernels.find((kernel) => kernelReleaseMatchesPin(kernel, version, profile.kernelFamily))
+    return release ? { version, family: kernelFamilyForRelease(release) } : undefined
+  }
+
 
   const selectableKernels = useMemo(() => {
     if (!bundledEngine?.version || !bundledEngine.executable || kernels.some((kernel) => kernel.version === bundledEngine.version)) {
@@ -639,9 +648,16 @@ export default function App() {
 
   function profileMenu(profile: BrowserProfileView): MenuProps {
     const editable = profile.status === 'closed' || profile.status === 'error'
+    const kernelUpgrade = profileKernelUpgrade(profile)
     return {
       items: [
         { key: 'edit', icon: <EditOutlined />, label: '编辑', disabled: !editable },
+        ...(kernelUpgrade ? [{
+          key: 'upgrade-kernel',
+          icon: <ReloadOutlined />,
+          label: `升级内核到 ${kernelUpgrade.version}`,
+          disabled: !editable
+        }] : []),
         { key: 'data', icon: <DatabaseOutlined />, label: '环境数据' },
         { key: 'diagnose', icon: <SafetyCertificateOutlined />, label: '启动诊断' },
         { key: 'crashes', icon: <WarningFilled />, label: '异常与恢复' },
@@ -654,6 +670,19 @@ export default function App() {
       ],
       onClick: ({ key }) => {
         if (key === 'edit') openEditor(profile)
+        if (key === 'upgrade-kernel' && kernelUpgrade) {
+          Modal.confirm({
+            title: `将“${profile.name}”升级到内核 ${kernelUpgrade.version}？`,
+            content: '只会升级这个环境的固定内核，不会修改其他环境，也不会改变指纹种子。已禁止降级。',
+            okText: '升级此环境',
+            cancelText: '取消',
+            onOk: () => withBusy(profile.id, async () => {
+              const upgraded = await window.browserApi.profiles.upgradeKernel(profile.id, kernelUpgrade.version, kernelUpgrade.family)
+              upsert(upgraded)
+              messageApi.success(`环境内核已升级到 ${kernelUpgrade.version}`)
+            })
+          })
+        }
         if (key === 'data') setDataProfile(profile)
         if (key === 'diagnose') void runDiagnostics(profile)
         if (key === 'crashes') void openCrashHistory(profile)
