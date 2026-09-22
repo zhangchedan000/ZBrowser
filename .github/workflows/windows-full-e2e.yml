@@ -133,6 +133,10 @@ jobs:
         if: env.ZBROWSER_RESUME_STAGE != 'package'
         run: npm run build
 
+      - name: Kernel Manager UI smoke
+        if: env.ZBROWSER_RESUME_STAGE != 'package'
+        run: node tools/app-e2e/kernel-manager-ui.mjs
+
       - name: Development-runtime full app E2E
         if: env.ZBROWSER_RESUME_STAGE != 'package'
         shell: pwsh
