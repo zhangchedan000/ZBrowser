@@ -30,7 +30,7 @@ import {
   refreshSeededGpuIdentity
 } from '../../shared/hardware-profiles'
 import { effectiveNetworkIdentity, localeForCountry } from '../../shared/network-identity'
-import { isKernelDowngrade, kernelFamilyForRelease, kernelReleaseMatchesPin, newerCompatibleKernelVersion } from '../../shared/kernel-version'
+import { isKernelDowngrade, kernelFamilyForRelease, kernelMajorVersion, kernelReleaseMatchesPin, latestSameMajorCompatibleKernelVersion, newerCompatibleKernelVersion } from '../../shared/kernel-version'
 import type { BrowserExtension, BrowserProfileView, EngineStatus, HardwareProfileId, KernelRelease, ProfileDraft, ProxyTestResult } from '../../shared/types'
 
 interface EditorValues extends Omit<ProfileDraft, 'startUrls' | 'color'> {
@@ -101,6 +101,13 @@ export function ProfileEditor({ open, profile, suggestedIndex, saving, extension
   const [proxyResult, setProxyResult] = useState<ProxyTestResult | null>(null)
   const pinnedKernel = kernels.find((kernel) => kernelReleaseMatchesPin(kernel, kernelVersion, kernelFamily))
   const effectiveKernelFamily = kernelFamily ?? (pinnedKernel ? kernelFamilyForRelease(pinnedKernel) : profile?.kernelFamily)
+  const automaticPatchVersion = kernelVersion && effectiveKernelFamily
+    ? latestSameMajorCompatibleKernelVersion(kernelVersion, effectiveKernelFamily, kernels)
+    : undefined
+  const automaticPatchKernel = automaticPatchVersion
+    ? kernels.find((kernel) => kernelReleaseMatchesPin(kernel, automaticPatchVersion, effectiveKernelFamily))
+    : undefined
+  const resolvedPinnedKernel = automaticPatchKernel ?? pinnedKernel
   const upgradeVersion = useMemo(
     () => profile?.kernelVersion
       ? newerCompatibleKernelVersion(profile.kernelVersion, effectiveKernelFamily, kernels)
@@ -112,11 +119,11 @@ export function ProfileEditor({ open, profile, suggestedIndex, saving, extension
     : undefined
   const selectedEngine: EngineStatus | null = kernelVersion
     ? {
-        executable: pinnedKernel?.executable ?? null,
-        source: pinnedKernel ? 'profile' : 'missing',
+        executable: resolvedPinnedKernel?.executable ?? null,
+        source: resolvedPinnedKernel ? 'profile' : 'missing',
         fingerprintKernel: true,
-        label: pinnedKernel ? 'Fingerprint Chromium（环境固定）' : '固定内核未安装',
-        version: kernelVersion
+        label: resolvedPinnedKernel ? 'Fingerprint Chromium（主版本固定）' : '固定主版本无可用内核',
+        version: automaticPatchVersion ?? kernelVersion
       }
     : engine
   const versionWarning = fingerprintVersionWarning(brandVersion, selectedEngine)
@@ -211,7 +218,7 @@ export function ProfileEditor({ open, profile, suggestedIndex, saving, extension
       <Form.Item
         name="kernelVersion"
         label="浏览器内核"
-        extra="长期使用的账号建议固定版本；自动模式会跟随应用当前选择的内核。固定版本会同时绑定内核系列，避免同版本被另一种构建替换。"
+        extra="固定后锁定 Chromium 主版本和内核系列：同主版本补丁可自动升级且不会降级；跨主版本必须手动选择升级。"
       >
         <Select
           onChange={(value: string) => {
@@ -236,14 +243,22 @@ export function ProfileEditor({ open, profile, suggestedIndex, saving, extension
           ]}
         />
       </Form.Item>
-      {kernelVersion && !pinnedKernel && (
+      {kernelVersion && !resolvedPinnedKernel && (
         <Alert
           type="error"
           showIcon
-          message={`固定内核 ${kernelVersion} 当前不可用`}
+          message={`固定的 ${kernelMajorVersion(kernelVersion) ?? '?'} 系列当前没有可用内核`}
           description={kernelFamily
-            ? `需要 ${kernelFamily} 系列的该版本；请安装匹配内核，或者修改环境配置。`
-            : '安装该版本后才能启动此环境，或者改回自动跟随。'}
+            ? `需要 ${kernelFamily} 系列、版本不低于 ${kernelVersion} 的同主版本内核；不会自动降级或跨主版本。`
+            : '旧环境尚未固定内核系列，只会继续寻找原来的精确版本；保存一次环境配置即可锁定系列。'}
+        />
+      )}
+      {kernelVersion && resolvedPinnedKernel && automaticPatchVersion && automaticPatchVersion !== kernelVersion && (
+        <Alert
+          type="success"
+          showIcon
+          message={`${kernelMajorVersion(kernelVersion)} 系列可自动使用补丁 ${automaticPatchVersion}`}
+          description={`当前版本下限为 ${kernelVersion}。下一次成功启动后会把下限推进到 ${automaticPatchVersion}，以后不会退回旧补丁。`}
         />
       )}
       {profile?.kernelVersion && upgradeVersion && upgradeKernel && (
@@ -251,7 +266,9 @@ export function ProfileEditor({ open, profile, suggestedIndex, saving, extension
           type="info"
           showIcon
           message={`该环境可升级到内核 ${upgradeVersion}`}
-          description="升级只修改这个环境的固定内核版本，不会自动影响其他环境，也不会允许降级。"
+          description={kernelMajorVersion(upgradeVersion) === kernelMajorVersion(profile.kernelVersion)
+            ? '这是同主版本补丁，也可在下次启动时自动采用；手动选择会立即推进版本下限。'
+            : `这是跨主版本升级（${kernelMajorVersion(profile.kernelVersion)} → ${kernelMajorVersion(upgradeVersion)}），只会在你明确保存后生效，不会自动跨版本。`}
           action={
             <Button
               size="small"
