@@ -160,7 +160,7 @@ export class BrowserLauncher {
     if (this.orphanProcesses.has(id)) throw new Error('该环境仍有异常遗留进程，请先点击“结束遗留”')
     let profile = this.profiles.get(id)
     await this.guardProfileAvailable(id)
-    const engine = await locateBrowserForProfile(this.settings, this.profiles.vaultPath, profile.kernelVersion)
+    const engine = await locateBrowserForProfile(this.settings, this.profiles.vaultPath, profile.kernelVersion, profile.kernelFamily)
     if (!engine.executable) {
       throw new Error(profile.kernelVersion
         ? `环境绑定的内核 ${profile.kernelVersion} 不可用，请先安装该版本或修改环境配置`
@@ -606,7 +606,7 @@ export class BrowserLauncher {
       add('data-identity', '数据目录身份', 'error', error instanceof Error ? error.message : String(error))
     }
 
-    const engine = await locateBrowserForProfile(this.settings, this.profiles.vaultPath, profile.kernelVersion)
+    const engine = await locateBrowserForProfile(this.settings, this.profiles.vaultPath, profile.kernelVersion, profile.kernelFamily)
     if (!engine.executable) {
       add('engine', '浏览器内核', 'error', engine.label)
     } else {
