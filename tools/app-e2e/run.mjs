@@ -340,7 +340,7 @@ async function launchAppOnce(options, userDataPath) {
   let stderr = ''
   child.stderr.on('data', (chunk) => { stderr = `${stderr}${chunk}`.slice(-32_768) })
   try {
-    const client = new CdpClient(await waitForRenderer(port, child))
+    client = new CdpClient(await waitForRenderer(port, child))
     await client.open()
     let appReady = false
     for (let attempt = 0; attempt < 300; attempt += 1) {
@@ -453,7 +453,11 @@ async function probeLocalApi(userDataPath, profileId, pageUrl) {
     method: 'POST',
     headers: jsonHeaders,
     body: JSON.stringify({ url: pageUrl }),
-    signal: AbortSignal.timeout(15_000)
+    // The application may spend up to 5s waiting for Windows loopback CDP,
+    // then up to 20s on a CDP command and 15s waiting for document readiness.
+    // Keep the harness deadline outside that application-side failure budget so
+    // packaged CI reports the real page-control result instead of aborting first.
+    signal: AbortSignal.timeout(45_000)
   })
   const firstSnapshotResponse = await fetch(metadata.url + profilePath + '/page/snapshot', {
     headers: authorization,
