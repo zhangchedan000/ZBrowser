@@ -95,6 +95,7 @@ async function main() {
       ...process.env,
       PRISM_E2E: '1',
       PRISM_E2E_USER_DATA: dataRoot,
+      PRISM_E2E_BROWSER_HEADLESS: '1',
       ZBROWSER_LOCAL_API_PORT: '0'
     }
   })
