@@ -60,7 +60,7 @@ import { UpdateModal } from './UpdateModal'
 import { WorkspaceMigrationModal } from './WorkspaceMigrationModal'
 import { EnvironmentCheckModal } from './EnvironmentCheckModal'
 import { effectiveNetworkIdentity, geoConflictConfirmationMessage } from '../../shared/network-identity'
-import { kernelFamilyForRelease, kernelReleaseMatchesPin, newerCompatibleKernelVersion } from '../../shared/kernel-version'
+import { kernelFamilyForRelease, kernelMajorVersion, kernelReleaseMatchesPin, latestSameMajorCompatibleKernelVersion, newerCompatibleKernelVersion } from '../../shared/kernel-version'
 import { orderBatchLaunchProfiles, waitForBatchLaunchGap } from './batch-launch-order'
 import { profileTableSorters } from './profile-table-sort'
 import { executeBatchKernelUpgrades, planBatchKernelUpgrades } from './batch-kernel-upgrade'
@@ -233,7 +233,14 @@ export default function App() {
 
   function canLaunchProfile(profile: BrowserProfileView): boolean {
     if (!profile.kernelVersion) return Boolean(engine?.executable)
-    return selectableKernels.some((kernel) => kernelReleaseMatchesPin(kernel, profile.kernelVersion, profile.kernelFamily))
+    if (!profile.kernelFamily) {
+      return selectableKernels.some((kernel) => kernelReleaseMatchesPin(kernel, profile.kernelVersion))
+    }
+    return Boolean(latestSameMajorCompatibleKernelVersion(
+      profile.kernelVersion,
+      profile.kernelFamily,
+      selectableKernels
+    ))
   }
 
   function profileKernelUpgrade(profile: BrowserProfileView): { version: string; family: 'fingerprint-chromium' | 'custom' } | undefined {
@@ -865,7 +872,7 @@ export default function App() {
           <span>{profile.fingerprint.screenWidth}×{profile.fingerprint.screenHeight}</span>
           <span>{effectiveNetworkIdentity(profile.fingerprint, profile.proxyCheck).timezone}</span>
           <span>{profile.kernelVersion
-            ? <>内核 {profile.kernelVersion}{profile.kernelFamily === 'custom' ? ' · 自定义' : profile.kernelFamily === 'fingerprint-chromium' ? ' · 官方' : ''}</>
+            ? <>内核 {kernelMajorVersion(profile.kernelVersion) ?? '?'} 系列 · 当前 {profile.kernelVersion}{profile.kernelFamily === 'custom' ? ' · 自定义' : profile.kernelFamily === 'fingerprint-chromium' ? ' · 官方' : ''}</>
             : '内核自动'}</span>
           <span className={`webrtc-badge ${profile.fingerprint.webrtcPolicy}`}>
             {profile.fingerprint.webrtcPolicy === 'proxy_only' ? 'WebRTC 防泄漏' : profile.fingerprint.webrtcPolicy === 'public_only' ? 'WebRTC 公网' : 'WebRTC 默认'}
