@@ -28,10 +28,22 @@ interface KernelUpgradeCheckpointRecord extends KernelUpgradeCheckpointSummary {
   schemaVersion: 1
   profileId: string
   backupDirectory: string
+  healthySince?: string
 }
 
 const MAX_BACKUP_FILES = 1_000_000
 const MAX_BACKUP_BYTES = 500 * 1024 * 1024 * 1024
+const KERNEL_UPGRADE_BACKUP_GRACE_MS = 7 * 24 * 60 * 60 * 1000
+const DISPOSABLE_CACHE_DIRECTORIES = new Set([
+  'cache',
+  'code cache',
+  'gpucache',
+  'dawncache',
+  'grshadercache',
+  'shadercache',
+  'graphitedawncache',
+  'media cache'
+])
 
 function safeDirectoryName(name: string): string {
   const safe = name.trim().replace(/[<>:"/\\|?*\u0000-\u001f]/g, '_').replace(/[. ]+$/g, '').slice(0, 50)
@@ -46,13 +58,26 @@ function ensureOutside(source: string, target: string): void {
   }
 }
 
-async function copySafeTree(source: string, target: string, stats: CopyStats, relativePath = ''): Promise<void> {
+function disposableKernelUpgradeCache(relativePath: string): boolean {
+  if (!relativePath) return false
+  const leaf = relativePath.replaceAll('\\', '/').split('/').filter(Boolean).at(-1)?.toLowerCase()
+  return Boolean(leaf && DISPOSABLE_CACHE_DIRECTORIES.has(leaf))
+}
+
+async function copySafeTree(
+  source: string,
+  target: string,
+  stats: CopyStats,
+  relativePath = '',
+  skipDirectory: (relativePath: string) => boolean = () => false
+): Promise<void> {
   const info = await lstat(source)
   if (info.isSymbolicLink()) return
   if (info.isDirectory()) {
+    if (relativePath && skipDirectory(relativePath)) return
     await mkdir(target, { recursive: true })
     for (const entry of (await readdir(source)).sort()) {
-      await copySafeTree(join(source, entry), join(target, entry), stats, join(relativePath, entry))
+      await copySafeTree(join(source, entry), join(target, entry), stats, join(relativePath, entry), skipDirectory)
     }
     return
   }
@@ -126,7 +151,7 @@ export class ProfileBackupManager {
     private readonly logger?: Logger
   ) {}
 
-  async export(profileId: string, destinationParent: string): Promise<ProfileBackupResult> {
+  async export(profileId: string, destinationParent: string, options: { excludeDisposableCache?: boolean } = {}): Promise<ProfileBackupResult> {
     const profile = this.profiles.get(profileId)
     if (profile.status !== 'closed' && profile.status !== 'error') throw new Error('请先关闭浏览器环境再备份完整数据')
     await this.profiles.assertProfileDataIdentity(profileId)
@@ -144,7 +169,7 @@ export class ProfileBackupManager {
     await mkdir(staging, { recursive: false })
     const stats: CopyStats = { bytes: 0, files: 0, hash: createHash('sha256') }
     try {
-      await copySafeTree(source, join(staging, 'user-data'), stats)
+      await copySafeTree(source, join(staging, 'user-data'), stats, '', options.excludeDisposableCache ? disposableKernelUpgradeCache : undefined)
       const contentSha256 = stats.hash.digest('hex')
       const manifest: ProfileBackupManifest = {
         schemaVersion: 1,
@@ -238,7 +263,8 @@ export class ProfileBackupManager {
       || (record.toFamily !== 'fingerprint-chromium' && record.toFamily !== 'custom')
       || !Number.isSafeInteger(record.totalBytes) || record.totalBytes < 0
       || !Number.isSafeInteger(record.fileCount) || record.fileCount < 0
-      || typeof record.backupDirectory !== 'string' || basename(record.backupDirectory) !== record.backupDirectory) {
+      || typeof record.backupDirectory !== 'string' || basename(record.backupDirectory) !== record.backupDirectory
+      || (record.healthySince !== undefined && (typeof record.healthySince !== 'string' || !Number.isFinite(Date.parse(record.healthySince))))) {
       throw new Error('内核升级备份记录无效')
     }
     return record
@@ -248,6 +274,32 @@ export class ProfileBackupManager {
     this.profiles.get(profileId)
     const record = await this.readKernelUpgradeCheckpoint(profileId)
     return record ? checkpointSummary(record) : null
+  }
+
+  async noteKernelUpgradeHealthyLaunch(profileId: string): Promise<'none' | 'marked' | 'cleaned'> {
+    const current = this.profiles.get(profileId)
+    const record = await this.readKernelUpgradeCheckpoint(profileId)
+    if (!record) return 'none'
+    if (current.kernelVersion !== record.toVersion || current.kernelFamily !== record.toFamily) return 'none'
+
+    const now = Date.now()
+    if (!record.healthySince) {
+      record.healthySince = new Date(now).toISOString()
+      const root = this.checkpointRoot(profileId)
+      const temporary = join(root, 'latest.json.tmp')
+      await writeFile(temporary, JSON.stringify(record, null, 2), { encoding: 'utf8', mode: 0o600 })
+      await rename(temporary, join(root, 'latest.json'))
+      this.logger?.info('内核升级备份进入健康使用保留期', {
+        profileId,
+        expiresAfterDays: Math.round(KERNEL_UPGRADE_BACKUP_GRACE_MS / 86_400_000)
+      })
+      return 'marked'
+    }
+
+    if (now - Date.parse(record.healthySince) < KERNEL_UPGRADE_BACKUP_GRACE_MS) return 'none'
+    await rm(this.checkpointRoot(profileId), { recursive: true, force: true })
+    this.logger?.info('已清理超过健康保留期的内核升级备份', { profileId })
+    return 'cleaned'
   }
 
   async createKernelUpgradeCheckpoint(
@@ -260,7 +312,7 @@ export class ProfileBackupManager {
     if (!profile.kernelVersion || !profile.kernelFamily) throw new Error('当前环境尚未固定内核，不能创建升级回滚点')
     const root = this.checkpointRoot(profileId)
     await mkdir(root, { recursive: true })
-    const exported = await this.export(profileId, root)
+    const exported = await this.export(profileId, root, { excludeDisposableCache: true })
     const record: KernelUpgradeCheckpointRecord = {
       schemaVersion: 1,
       profileId,
