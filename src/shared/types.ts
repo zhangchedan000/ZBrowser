@@ -263,6 +263,16 @@ export interface ProfileBackupResult {
   fileCount: number
 }
 
+export interface KernelUpgradeCheckpointSummary {
+  createdAt: string
+  fromVersion: string
+  fromFamily?: KernelFamily
+  toVersion: string
+  toFamily: KernelFamily
+  totalBytes: number
+  fileCount: number
+}
+
 export interface WorkspaceMigrationResult {
   path: string
   profileCount: number
@@ -354,7 +364,9 @@ export interface BrowserApi {
     list: () => Promise<BrowserProfileView[]>
     create: (draft: ProfileDraft) => Promise<BrowserProfileView>
     update: (id: string, draft: ProfileDraft) => Promise<BrowserProfileView>
-    upgradeKernel: (id: string, version: string, family: KernelFamily) => Promise<BrowserProfileView>
+    upgradeKernel: (id: string, version: string, family: KernelFamily) => Promise<{ profile: BrowserProfileView; checkpoint: KernelUpgradeCheckpointSummary }>
+    kernelUpgradeCheckpoint: (id: string) => Promise<KernelUpgradeCheckpointSummary | null>
+    rollbackKernelUpgrade: (id: string) => Promise<BrowserProfileView>
     duplicate: (id: string) => Promise<BrowserProfileView>
     exportConfig: (id: string) => Promise<string | null>
     importConfig: () => Promise<BrowserProfileView | null>
