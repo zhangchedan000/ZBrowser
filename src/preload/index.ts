@@ -37,6 +37,7 @@ const api: BrowserApi = {
     closeAll: () => ipcRenderer.invoke('profiles:close-all'),
     testProxy: (id: string) => ipcRenderer.invoke('profiles:test-proxy', id),
     diagnose: (id: string) => ipcRenderer.invoke('profiles:diagnose', id),
+    diagnoseKernelRuntime: (id: string) => ipcRenderer.invoke('profiles:diagnose-kernel-runtime', id),
     crashHistory: (id: string) => ipcRenderer.invoke('profiles:crash-history', id),
     environmentCheckHistory: (id: string) => ipcRenderer.invoke('profiles:environment-check-history', id),
     recordEnvironmentCheck: (id: string, urls: string[]) => ipcRenderer.invoke('profiles:record-environment-check', id, urls),
