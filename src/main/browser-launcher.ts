@@ -23,6 +23,11 @@ import type { Readable, Writable } from 'node:stream'
 
 type ProxyTester = (config: ProxyConfig) => Promise<ProxyTestResult>
 
+interface InternalProfileLaunchOptions extends ProfileLaunchOptions {
+  /** Internal-only: starts Chromium headlessly with a secure CDP pipe for runtime UA checks. */
+  runtimeVersionProbe?: boolean
+}
+
 interface RunningBrowser {
   process: ChildProcess
   automation?: BrowserControlSession
@@ -138,7 +143,7 @@ export class BrowserLauncher {
     }
   }
 
-  async launch(id: string, options: ProfileLaunchOptions = {}): Promise<BrowserProfile> {
+  async launch(id: string, options: InternalProfileLaunchOptions = {}): Promise<BrowserProfile> {
     if (this.closeAllOperation) throw new Error('正在关闭全部浏览器环境，请等待操作完成后再启动')
     const existing = this.launchOperations.get(id)
     if (existing) return existing
@@ -155,7 +160,7 @@ export class BrowserLauncher {
     }
   }
 
-  private async launchProfile(id: string, options: ProfileLaunchOptions): Promise<BrowserProfile> {
+  private async launchProfile(id: string, options: InternalProfileLaunchOptions): Promise<BrowserProfile> {
     if (this.processes.has(id)) return this.profiles.get(id)
     if (this.orphanProcesses.has(id)) throw new Error('该环境仍有异常遗留进程，请先点击“结束遗留”')
     let profile = this.profiles.get(id)
@@ -216,7 +221,8 @@ export class BrowserLauncher {
         args.push('--headless=new')
         if (process.platform === 'darwin') args.push('--use-mock-keychain')
       }
-      const pipeControlEnabled = process.platform !== 'win32'
+      if (options.runtimeVersionProbe && !args.includes('--headless=new')) args.push('--headless=new')
+      const pipeControlEnabled = process.platform !== 'win32' || options.runtimeVersionProbe === true
       if (pipeControlEnabled) args.push('--remote-debugging-pipe')
       else if (e2eEnabled) {
         // Windows production launches keep remote debugging disabled. E2E uses
@@ -703,6 +709,85 @@ export class BrowserLauncher {
       add('rendering', '渲染策略', 'pass', hardware.hostMatched
         ? 'GPU、字体、Canvas、Audio、ClientRects 使用本机原生结果'
         : `GPU 固定为 ${hardware.gpuModel}；Canvas、Audio、ClientRects 使用稳定原生结果`)
+    }
+
+    return {
+      profileId: id,
+      checkedAt: new Date().toISOString(),
+      ready: !checks.some((check) => check.status === 'error'),
+      checks
+    }
+  }
+
+  async diagnoseKernelRuntime(id: string): Promise<LaunchDiagnosticReport> {
+    const base = await this.diagnose(id)
+    const checks = [...base.checks]
+    const add = (key: string, label: string, status: LaunchDiagnosticCheck['status'], message: string): void => {
+      checks.push({ key, label, status, message })
+    }
+
+    if (!base.ready) {
+      add('runtime-version-probe', '升级后运行时版本', 'error', '基础启动诊断未通过，未继续启动浏览器检查 UA / UA-CH')
+      return {
+        profileId: id,
+        checkedAt: new Date().toISOString(),
+        ready: false,
+        checks
+      }
+    }
+
+    const profile = this.profiles.get(id)
+    const engine = await locateBrowserForProfile(this.settings, this.profiles.vaultPath, profile.kernelVersion, profile.kernelFamily)
+    if (!engine.fingerprintKernel || !engine.version) {
+      add('runtime-version-probe', '升级后运行时版本', 'error', '当前环境没有可核验版本的 Fingerprint Chromium 内核')
+      return {
+        profileId: id,
+        checkedAt: new Date().toISOString(),
+        ready: false,
+        checks
+      }
+    }
+
+    try {
+      await this.launch(id, { startUrls: [], runtimeVersionProbe: true })
+      const runtime = await this.controlSession(id).runtimeVersionSnapshot()
+      const expectedVersion = engine.version
+      const expectedMajor = expectedVersion.split('.')[0]
+      const uaMatches = Boolean(expectedMajor)
+        && new RegExp(`(?:Chrome|Chromium)/${expectedMajor}\\.`).test(runtime.userAgent)
+      add(
+        'runtime-user-agent-version',
+        'User-Agent 运行时版本',
+        uaMatches ? 'pass' : 'error',
+        uaMatches
+          ? `navigator.userAgent 已与实际内核主版本 ${expectedMajor} 同步`
+          : `navigator.userAgent 未体现实际内核主版本 ${expectedMajor}：${safeErrorText(runtime.userAgent || '空值')}`
+      )
+
+      if (!runtime.uaChExposed) {
+        add('runtime-ua-ch-version', 'UA-CH 运行时版本', 'pass', '当前内核未暴露 navigator.userAgentData，不存在旧 UA-CH 版本泄漏面')
+      } else {
+        const fullVersionMatch = runtime.fullVersionList.some((item) => item.version === expectedVersion)
+        add(
+          'runtime-ua-ch-version',
+          'UA-CH 运行时版本',
+          fullVersionMatch ? 'pass' : 'error',
+          fullVersionMatch
+            ? `fullVersionList 已与实际内核 ${expectedVersion} 同步`
+            : `fullVersionList 未找到实际内核版本 ${expectedVersion}`
+        )
+      }
+    } catch (error) {
+      add('runtime-version-probe', '升级后运行时版本', 'error', error instanceof Error ? error.message : String(error))
+    } finally {
+      if (this.isRunning(id)) {
+        await this.close(id).catch((error) => {
+          this.logger?.error('运行时版本诊断后关闭浏览器失败', {
+            profileId: id,
+            error: error instanceof Error ? error.message : String(error)
+          })
+        })
+      }
     }
 
     return {
