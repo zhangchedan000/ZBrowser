@@ -85,23 +85,9 @@ function syntheticUpgradeVersion(version) {
   return Number.isInteger(major) && major > 0 ? `${major + 1}.0.0.1` : ''
 }
 
-async function seedSyntheticInstalledKernel(vaultPath, version) {
-  if (!version) return
-  const root = join(vaultPath, 'kernels', version)
-  const executableRelative = process.platform === 'win32' ? 'browser/chrome.exe' : 'browser/chrome'
-  const executable = join(root, ...executableRelative.split('/'))
-  await mkdir(dirname(executable), { recursive: true })
-  await writeFile(executable, 'zbrowser-e2e-synthetic-kernel')
-  await writeFile(join(root, 'manifest.json'), JSON.stringify({
-    schemaVersion: 1,
-    version,
-    assetName: 'zbrowser-e2e-synthetic.zip',
-    sha256: 'e'.repeat(64),
-    installedAt: new Date().toISOString(),
-    executableRelative,
-    source: 'release',
-    target: `${process.platform}-${process.arch}`
-  }, null, 2))
+function syntheticPreviousVersion(version) {
+  const major = Number(String(version).split('.')[0])
+  return Number.isInteger(major) && major > 1 ? `${major - 1}.0.0.1` : ''
 }
 async function startSiteServer() {
   const server = createServer((_request, response) => {
@@ -405,7 +391,7 @@ async function main() {
   }, null, 2))
   const site = await startSiteServer()
   const syntheticKernelVersion = options.installKernelVersion ? syntheticUpgradeVersion(options.installKernelVersion) : ''
-  if (syntheticKernelVersion) await seedSyntheticInstalledKernel(vault, syntheticKernelVersion)
+  const previousKernelVersion = options.installKernelVersion ? syntheticPreviousVersion(options.installKernelVersion) : ''
   let first
   let second
   let primaryError
@@ -415,6 +401,7 @@ async function main() {
       const expectedKernelVersions = ${JSON.stringify(options.expectedKernelVersions)}
       const installKernelVersion = ${JSON.stringify(options.installKernelVersion)}
       const syntheticKernelVersion = ${JSON.stringify(syntheticKernelVersion)}
+      const previousKernelVersion = ${JSON.stringify(previousKernelVersion)}
       let managedKernelInstall = null
       let remoteCatalog = []
       if (installKernelVersion) {
@@ -442,28 +429,33 @@ async function main() {
         }
       }
       const engineStatus = await window.browserApi.engine.status()
-      let upgradeFlow = { exercised: false, backupCreated: false, rollbackRestored: false, checkpointCleared: false }
-      if (installKernelVersion && syntheticKernelVersion) {
+      let upgradeFlow = { exercised: false, backupCreated: false, runtimeVersionDiagnosed: false, rollbackRestored: false, checkpointCleared: false }
+      if (installKernelVersion && previousKernelVersion) {
         const upgradeProbeDraft = ${JSON.stringify(draft('E2E 内核升级回滚', 300003, site.url))}
-        upgradeProbeDraft.kernelVersion = installKernelVersion
+        upgradeProbeDraft.kernelVersion = previousKernelVersion
         upgradeProbeDraft.kernelFamily = 'fingerprint-chromium'
         const upgradeProbe = await window.browserApi.profiles.create(upgradeProbeDraft)
-        const upgradedResult = await window.browserApi.profiles.upgradeKernel(upgradeProbe.id, syntheticKernelVersion, 'fingerprint-chromium')
+        const upgradedResult = await window.browserApi.profiles.upgradeKernel(upgradeProbe.id, installKernelVersion, 'fingerprint-chromium')
         const checkpoint = await window.browserApi.profiles.kernelUpgradeCheckpoint(upgradeProbe.id)
+        const runtimeDiagnostic = await window.browserApi.profiles.diagnoseKernelRuntime(upgradeProbe.id)
         const rolledBack = await window.browserApi.profiles.rollbackKernelUpgrade(upgradeProbe.id)
         const cleared = await window.browserApi.profiles.kernelUpgradeCheckpoint(upgradeProbe.id)
         upgradeFlow = {
           exercised: true,
           backupCreated: Boolean(checkpoint
-            && upgradedResult.checkpoint?.fromVersion === installKernelVersion
-            && checkpoint.fromVersion === installKernelVersion
-            && checkpoint.toVersion === syntheticKernelVersion),
-          rollbackRestored: upgradedResult.profile?.kernelVersion === syntheticKernelVersion
-            && rolledBack.kernelVersion === installKernelVersion
+            && upgradedResult.checkpoint?.fromVersion === previousKernelVersion
+            && checkpoint.fromVersion === previousKernelVersion
+            && checkpoint.toVersion === installKernelVersion),
+          runtimeVersionDiagnosed: runtimeDiagnostic.ready
+            && runtimeDiagnostic.checks.some(check => check.key === 'runtime-user-agent-version' && check.status === 'pass')
+            && runtimeDiagnostic.checks.some(check => check.key === 'runtime-ua-ch-version' && check.status === 'pass'),
+          rollbackRestored: upgradedResult.profile?.kernelVersion === installKernelVersion
+            && rolledBack.kernelVersion === previousKernelVersion
             && rolledBack.kernelFamily === 'fingerprint-chromium',
           checkpointCleared: cleared === null,
           upgradedVersion: upgradedResult.profile?.kernelVersion,
-          rolledBackVersion: rolledBack.kernelVersion
+          rolledBackVersion: rolledBack.kernelVersion,
+          runtimeDiagnosticChecks: runtimeDiagnostic.checks
         }
         await window.browserApi.profiles.remove(upgradeProbe.id)
       }
@@ -613,6 +605,7 @@ async function main() {
         && firstRun.upgradeFlow.backupCreated === true
         && firstRun.upgradeFlow.rollbackRestored === true
         && firstRun.upgradeFlow.checkpointCleared === true),
+      kernelUpgradeRuntimeVersionDiagnosed: !options.installKernelVersion || firstRun.upgradeFlow?.runtimeVersionDiagnosed === true,
       realBrowsersStarted: firstRun.launchedStatuses.every((status) => status === 'running')
         && firstRun.runningStatuses.every((status) => status === 'running'),
       allBrowsersClosed: firstRun.closedStatuses.every((status) => status === 'closed'),
