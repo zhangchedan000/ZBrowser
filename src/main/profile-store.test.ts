@@ -192,15 +192,36 @@ describe('ProfileStore', () => {
     expect(await repository.listTrash()).toHaveLength(0)
   })
 
-  it('tracks pinned kernel references in active and recyclable profiles', async () => {
+  it('tracks pinned kernel references by family in active and recyclable profiles', async () => {
     const repository = await store()
     const draft = defaultProfileDraft()
     draft.name = '固定内核环境'
     draft.kernelVersion = '144.0.7559.132'
+    draft.kernelFamily = 'fingerprint-chromium'
     const profile = await repository.create(draft)
+
     expect(await repository.kernelUsers(draft.kernelVersion)).toEqual(['固定内核环境'])
+    expect(await repository.kernelUsers(draft.kernelVersion, 'fingerprint-chromium')).toEqual(['固定内核环境'])
+    expect(await repository.kernelUsers(draft.kernelVersion, 'custom')).toEqual([])
+
     await repository.remove(profile.id)
-    expect(await repository.kernelUsers(draft.kernelVersion)).toEqual(['固定内核环境'])
+    expect(await repository.kernelUsers(draft.kernelVersion, 'fingerprint-chromium')).toEqual(['固定内核环境'])
+    expect(await repository.kernelUsers(draft.kernelVersion, 'custom')).toEqual([])
+  })
+
+  it('conservatively treats legacy version-only pins as users of either family', async () => {
+    const repository = await store()
+    const draft = defaultProfileDraft()
+    draft.name = '旧版固定环境'
+    draft.kernelVersion = '144.0.7559.132'
+    const profile = await repository.create(draft)
+
+    expect(await repository.kernelUsers(draft.kernelVersion, 'fingerprint-chromium')).toEqual(['旧版固定环境'])
+    expect(await repository.kernelUsers(draft.kernelVersion, 'custom')).toEqual(['旧版固定环境'])
+
+    await repository.remove(profile.id)
+    expect(await repository.kernelUsers(draft.kernelVersion, 'fingerprint-chromium')).toEqual(['旧版固定环境'])
+    expect(await repository.kernelUsers(draft.kernelVersion, 'custom')).toEqual(['旧版固定环境'])
   })
 
   it('allows pinned kernel upgrades but blocks downgrades for an existing profile', async () => {
