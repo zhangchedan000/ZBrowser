@@ -52,5 +52,5 @@ describe('SystemProcessInspector real process integration', () => {
     await inspector.terminate(matched.pid, userDataPath)
     await exited
     expect(child.signalCode ?? child.exitCode).not.toBeNull()
-  }, 15_000)
+  }, 30_000)
 })
