@@ -575,7 +575,8 @@ async function main() {
           upgradedVersion: upgradedResult.profile?.kernelVersion,
           rolledBackVersion: rolledBack.kernelVersion,
           runtimeDiagnosticChecks: runtimeDiagnostic.checks,
-          runtimeFingerprintDiagnosticChecks: runtimeFingerprintDiagnostic.checks
+          runtimeFingerprintDiagnosticChecks: runtimeFingerprintDiagnostic.checks,
+          runtimeFingerprintSnapshot: runtimeFingerprintDiagnostic.snapshot
         }
         await window.browserApi.profiles.remove(upgradeProbe.id)
       }
@@ -785,6 +786,7 @@ async function main() {
         uaChStatus: runtimeUaChExposed ? 'exposed-and-checked' : 'not-exposed-by-runtime'
       },
       localApiDiagnostics: localApiProbe,
+      kernelUpgradeDiagnostics: firstRun.upgradeFlow,
       checks,
       passed: Object.values(checks).every(Boolean),
       retainedDataPath: options.keepData ? root : undefined

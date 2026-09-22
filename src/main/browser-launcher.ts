@@ -233,6 +233,15 @@ export class BrowserLauncher {
       const e2eHeadless = process.env.ZBROWSER_E2E_BROWSER_HEADLESS === '1' || process.env.PRISM_E2E_BROWSER_HEADLESS === '1'
       if (e2eEnabled && e2eHeadless) {
         args.push('--headless=new')
+        if (options.runtimeFingerprintProbe) {
+          // CI must exercise the WebGL read/compare chain even without a physical GPU.
+          // Force an explicit software adapter so vendor/renderer are observable; the
+          // diagnostic layer still treats these surfaces as non-representative warnings.
+          args.push('--enable-webgl')
+          args.push('--ignore-gpu-blocklist')
+          args.push('--enable-unsafe-swiftshader')
+          args.push('--use-angle=swiftshader')
+        }
         if (process.platform === 'darwin') args.push('--use-mock-keychain')
       }
       if (options.runtimeVersionProbe && !args.includes('--headless=new')) args.push('--headless=new')
