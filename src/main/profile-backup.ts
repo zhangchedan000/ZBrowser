@@ -60,8 +60,11 @@ function ensureOutside(source: string, target: string): void {
 
 function disposableKernelUpgradeCache(relativePath: string): boolean {
   if (!relativePath) return false
-  const leaf = relativePath.replaceAll('\\', '/').split('/').filter(Boolean).at(-1)?.toLowerCase()
-  return Boolean(leaf && DISPOSABLE_CACHE_DIRECTORIES.has(leaf))
+  const parts = relativePath.replaceAll('\\', '/').split('/').filter(Boolean).map((part) => part.toLowerCase())
+  const leaf = parts.at(-1)
+  if (!leaf || !DISPOSABLE_CACHE_DIRECTORIES.has(leaf)) return false
+  if (parts.length <= 2) return true
+  return parts.length === 3 && parts[parts.length - 2] === 'network' && leaf === 'cache'
 }
 
 async function copySafeTree(
