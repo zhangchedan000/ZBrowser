@@ -369,6 +369,13 @@ async function probeLocalApi(userDataPath, profileId, pageUrl) {
     clickStatus = clicked.status
   }
 
+  const launchDiagnosticResponse = await fetch(metadata.url + profilePath + '/diagnostics/launch', {
+    method: 'POST',
+    headers: authorization,
+    signal: AbortSignal.timeout(15_000)
+  })
+  const launchDiagnostic = launchDiagnosticResponse.ok ? await launchDiagnosticResponse.json() : {}
+
   return {
     unauthorizedStatus: unauthorized.status,
     authorizedStatus: authorized.status,
@@ -380,7 +387,12 @@ async function probeLocalApi(userDataPath, profileId, pageUrl) {
     typeStatus,
     secondSnapshotStatus: secondSnapshotResponse.status,
     buttonFound: Boolean(button?.ref),
-    clickStatus
+    clickStatus,
+    launchDiagnosticStatus: launchDiagnosticResponse.status,
+    launchDiagnosticProfileId: launchDiagnostic.profileId,
+    launchDiagnosticChecks: Array.isArray(launchDiagnostic.report?.checks)
+      ? launchDiagnostic.report.checks.length
+      : 0
   }
 }
 
@@ -704,6 +716,9 @@ async function main() {
       localApiPageClick: localApiProbe.secondSnapshotStatus === 200
         && localApiProbe.buttonFound === true
         && localApiProbe.clickStatus === 200,
+      localApiLaunchDiagnostic: localApiProbe.launchDiagnosticStatus === 200
+        && localApiProbe.launchDiagnosticProfileId === firstRun.editedA.id
+        && localApiProbe.launchDiagnosticChecks > 0,
       runningKernelUpgradeBlocked: firstRun.runningKernelUpgradeBlocked === true,
       kernelUpgradeAutoBackupAndRollback: !options.installKernelVersion || (firstRun.upgradeFlow?.exercised === true
         && firstRun.upgradeFlow.backupCreated === true
