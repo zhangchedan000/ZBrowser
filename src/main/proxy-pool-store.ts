@@ -194,8 +194,15 @@ export class ProxyPoolStore {
 
   async update(id: string, input: ProxyPoolEntryInput): Promise<ProxyPoolEntry> {
     const current = this.internal(id)
-    const proxy = validateProxyConfig(input.proxy)
-    if (proxy.protocol === 'direct') throw new Error('代理池不能保存直连配置')
+    const candidate = validateProxyConfig(input.proxy)
+    if (candidate.protocol === 'direct') throw new Error('代理池不能保存直连配置')
+    const keepStoredPassword = !candidate.password
+      && candidate.passwordStored
+      && sameProxyIdentity(current.proxy, candidate)
+    const proxy = privateProxyConfig({
+      ...candidate,
+      password: keepStoredPassword ? current.proxy.password : candidate.password
+    })
     this.assertUniqueProxy(id, proxy)
     const same = sameProxyIdentity(current.proxy, proxy) && current.proxy.password === proxy.password
     const next: StoredEntry = {

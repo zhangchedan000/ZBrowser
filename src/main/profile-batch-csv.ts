@@ -10,6 +10,7 @@ export const BATCH_PROFILE_COLUMNS = [
   'note',
   'start_urls',
   'kernel_version',
+  'environment_type',
   'color',
   'proxy_protocol',
   'proxy_host',
@@ -158,6 +159,11 @@ function rowDraft(values: Record<string, string>, index: number, rowNumber: numb
       note: values.note,
       startUrls: values.start_urls.trim() ? splitPipe(values.start_urls) : [],
       kernelVersion: values.kernel_version,
+      environmentType: values.environment_type.trim().toLowerCase() === 'temporary'
+        ? 'temporary'
+        : values.environment_type.trim().toLowerCase() === 'account' || !values.environment_type.trim()
+          ? 'account'
+          : values.environment_type.trim() as typeof draft.environmentType,
       color: values.color.trim() || draft.color,
       proxy: {
         protocol,
@@ -213,6 +219,7 @@ export function serializeBatchProfileTemplate(): string {
     note: '单元格可包含逗号',
     start_urls: 'https://example.com|https://browserleaks.com/',
     kernel_version: '',
+    environment_type: 'account',
     color: '#5965e8',
     proxy_protocol: 'http',
     proxy_host: 'proxy.example.com',

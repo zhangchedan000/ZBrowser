@@ -61,6 +61,7 @@ import { UpdateModal } from './UpdateModal'
 import { WorkspaceMigrationModal } from './WorkspaceMigrationModal'
 import { EnvironmentCheckModal } from './EnvironmentCheckModal'
 import { AutomationApiModal } from './AutomationApiModal'
+import { ProxyPoolModal } from './ProxyPoolModal'
 import { effectiveNetworkIdentity, geoConflictConfirmationMessage } from '../../shared/network-identity'
 import { kernelFamilyForRelease, kernelMajorVersion, kernelReleaseMatchesPin, latestSameMajorCompatibleKernelVersion, newerCompatibleKernelVersion } from '../../shared/kernel-version'
 import { orderBatchLaunchProfiles, waitForBatchLaunchGap } from './batch-launch-order'
@@ -137,6 +138,7 @@ export default function App() {
   const [extensions, setExtensions] = useState<BrowserExtension[]>([])
   const [extensionManagerOpen, setExtensionManagerOpen] = useState(false)
   const [automationApiOpen, setAutomationApiOpen] = useState(false)
+  const [proxyPoolOpen, setProxyPoolOpen] = useState(false)
   const [profileStorageHealth, setProfileStorageHealth] = useState<ProfileStoreHealth | null>(null)
   const [appRecoveryStatus, setAppRecoveryStatus] = useState<AppRecoveryStatus | null>(null)
   const [diagnosticProfile, setDiagnosticProfile] = useState<BrowserProfileView>()
@@ -837,7 +839,12 @@ export default function App() {
             onClick={() => void toggleFavorite(profile)}
           />
           <div>
-            <Typography.Text strong>#{profile.serialNumber} · {profile.name}</Typography.Text>
+            <Space size={4} wrap>
+              <Typography.Text strong>#{profile.serialNumber} · {profile.name}</Typography.Text>
+              <Tag color={(profile.environmentType ?? 'account') === 'account' ? 'blue' : 'gold'}>
+                {(profile.environmentType ?? 'account') === 'account' ? '账号环境' : '临时环境'}
+              </Tag>
+            </Space>
             {profile.note && <Typography.Text type="secondary" className="profile-subtitle">{profile.note}</Typography.Text>}
           </div>
         </div>
@@ -958,6 +965,9 @@ export default function App() {
         <button className="nav-item sidebar-action" onClick={() => setRecycleBinOpen(true)}>
           <RestOutlined /><span>环境回收站</span>
         </button>
+        <button className="nav-item sidebar-action" onClick={() => setProxyPoolOpen(true)}>
+          <GlobalOutlined /><span>代理池</span>
+        </button>
         <div className="sidebar-section-label secondary">本地工具</div>
         <button className="nav-item sidebar-action" onClick={() => setExtensionManagerOpen(true)}>
           <AppstoreAddOutlined /><span>浏览器扩展</span><b>{extensions.length || ''}</b>
@@ -988,7 +998,7 @@ export default function App() {
           <span><strong>{engine?.fingerprintKernel ? '指纹内核已连接' : '配置浏览器内核'}</strong><small>{engine?.label ?? '正在检查…'}</small></span>
           <SettingOutlined />
         </button>
-        <div className="version">ZBrowser · v{updateStatus?.currentVersion ?? '0.2.0-beta.1'}</div>
+        <div className="version">ZBrowser · v{updateStatus?.currentVersion ?? '0.2.0-beta.3'}</div>
       </Sider>
 
       <Layout>
@@ -1192,6 +1202,12 @@ export default function App() {
           </section>
         </Content>
       </Layout>
+      <ProxyPoolModal
+        open={proxyPoolOpen}
+        profiles={profiles}
+        onClose={() => setProxyPoolOpen(false)}
+        onProfileChanged={upsert}
+      />
       <AutomationApiModal
         open={automationApiOpen}
         onClose={() => setAutomationApiOpen(false)}

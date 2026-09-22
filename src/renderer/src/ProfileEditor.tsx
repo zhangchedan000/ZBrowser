@@ -70,6 +70,7 @@ function editorValues(profile: BrowserProfileView | undefined, index: number): E
     startUrlsText: draft.startUrls.join('\n'),
     kernelVersion: draft.kernelVersion,
     kernelFamily: draft.kernelFamily,
+    environmentType: draft.environmentType ?? 'account',
     window: { ...draft.window },
     proxy: { ...draft.proxy },
     fingerprint: {
@@ -230,6 +231,7 @@ export function ProfileEditor({ open, profile, suggestedIndex, saving, extension
       startUrls: values.startUrlsText.split(/\r?\n/).map((line) => line.trim()).filter(Boolean),
       kernelVersion: values.kernelVersion,
       kernelFamily: values.kernelFamily,
+      environmentType: values.environmentType ?? 'account',
       window: values.window,
       proxy: values.proxy,
       extensionIds: values.extensionIds,
@@ -239,6 +241,18 @@ export function ProfileEditor({ open, profile, suggestedIndex, saving, extension
 
   const general = (
     <div className="editor-section">
+      <Form.Item
+        name="environmentType"
+        label="环境类型"
+        extra="账号环境默认锁定代理：代理失效或出口变化时阻止/隔离并报警，不自动换 IP。临时环境用于采集、测试，可手动使用代理池的最佳代理/轮换工具。"
+      >
+        <Select
+          options={[
+            { value: 'account', label: '账号环境（默认 · 一号一代理 · 禁止自动切换）' },
+            { value: 'temporary', label: '临时环境（采集 / 测试 · 允许显式轮换）' }
+          ]}
+        />
+      </Form.Item>
       <Form.Item name="name" label="环境名称" rules={[{ required: true, message: '请输入环境名称' }]}>
         <Input placeholder="例如：美国店铺 01" maxLength={60} />
       </Form.Item>

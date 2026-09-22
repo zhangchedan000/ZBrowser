@@ -31,6 +31,7 @@ export function serializeProfileConfig(profile: BrowserProfile): string {
       color: profile.color,
       startUrls: [...profile.startUrls],
       kernelVersion: profile.kernelVersion,
+      environmentType: profile.environmentType ?? 'account',
       window: { ...profile.window },
       proxy: { ...profile.proxy, password: '' },
       fingerprint: { ...profile.fingerprint, disabledSpoofing: [...profile.fingerprint.disabledSpoofing] }
