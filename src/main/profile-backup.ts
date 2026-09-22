@@ -156,7 +156,7 @@ export class ProfileBackupManager {
     if (profile.status !== 'closed' && profile.status !== 'error') throw new Error('请先关闭浏览器环境再备份完整数据')
     await this.profiles.assertProfileDataIdentity(profileId)
     const source = this.profiles.profileDataPath(profileId)
-    const stamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19)
+    const stamp = new Date().toISOString().replace(/[:.]/g, '-').replace(/Z$/, '')
     const target = join(resolve(destinationParent), `Prism Backup - ${safeDirectoryName(profile.name)} - ${stamp}`)
     const staging = `${target}.partial`
     ensureOutside(source, target)
