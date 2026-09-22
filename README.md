@@ -55,6 +55,10 @@ POST /api/v1/profiles/:id/page/open
 GET  /api/v1/profiles/:id/page/snapshot
 POST /api/v1/profiles/:id/page/type
 POST /api/v1/profiles/:id/page/click
+POST /api/v1/profiles/:id/proxy/test
+POST /api/v1/profiles/:id/diagnostics/launch
+POST /api/v1/profiles/:id/diagnostics/kernel-runtime
+POST /api/v1/profiles/:id/diagnostics/fingerprint-runtime
 ```
 
 同时保留 `/api/profile/list`、`/api/profile/start`、`/api/profile/stop`、`/api/profile/status` 和 `/api/cdp/connect` 兼容入口。所有请求都必须发送：

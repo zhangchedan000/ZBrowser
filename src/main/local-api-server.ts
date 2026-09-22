@@ -2,7 +2,7 @@ import { randomBytes, timingSafeEqual } from 'node:crypto'
 import { mkdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http'
 import { join } from 'node:path'
-import type { BrowserProfile } from '../shared/types'
+import type { BrowserProfile, FingerprintRuntimeDiagnosticReport, LaunchDiagnosticReport } from '../shared/types'
 import type { Logger } from './app-logger'
 import type { LocalApiProfileRuntime } from './browser-launcher'
 import type { BrowserControlSession } from './browser-control-session'
@@ -24,6 +24,10 @@ interface LocalApiLauncher {
   pageSnapshot(id: string): ReturnType<BrowserControlSession['snapshot']>
   clickPageElement(id: string, ref: string): ReturnType<BrowserControlSession['click']>
   typePageElement(id: string, ref: string, text: string, clear?: boolean): ReturnType<BrowserControlSession['type']>
+  testProfileProxy(id: string): Promise<BrowserProfile>
+  diagnose(id: string): Promise<LaunchDiagnosticReport>
+  diagnoseKernelRuntime(id: string): Promise<LaunchDiagnosticReport>
+  diagnoseFingerprintRuntime(id: string): Promise<FingerprintRuntimeDiagnosticReport>
 }
 
 export interface LocalApiServerOptions {
@@ -285,6 +289,31 @@ export class LocalApiServer {
         profileId: id,
         page: await this.launcher.typePageElement(id, ref, body.text, body.clear !== false)
       })
+      return
+    }
+
+    const proxyTestRoute = url.pathname.match(/^\/api\/v1\/profiles\/([^/]+)\/proxy\/test$/)
+    if (proxyTestRoute) {
+      if (method !== 'POST') throw new LocalApiHttpError(405, 'METHOD_NOT_ALLOWED', 'Method not allowed')
+      const id = decodeURIComponent(proxyTestRoute[1])
+      this.profile(id)
+      const profile = await this.launcher.testProfileProxy(id)
+      this.sendJson(response, 200, { profile: profileSummary(profile) })
+      return
+    }
+
+    const diagnosticRoute = url.pathname.match(/^\/api\/v1\/profiles\/([^/]+)\/diagnostics\/(launch|kernel-runtime|fingerprint-runtime)$/)
+    if (diagnosticRoute) {
+      if (method !== 'POST') throw new LocalApiHttpError(405, 'METHOD_NOT_ALLOWED', 'Method not allowed')
+      const id = decodeURIComponent(diagnosticRoute[1])
+      const action = diagnosticRoute[2]
+      this.profile(id)
+      const report = action === 'launch'
+        ? await this.launcher.diagnose(id)
+        : action === 'kernel-runtime'
+          ? await this.launcher.diagnoseKernelRuntime(id)
+          : await this.launcher.diagnoseFingerprintRuntime(id)
+      this.sendJson(response, 200, { profileId: id, report })
       return
     }
 

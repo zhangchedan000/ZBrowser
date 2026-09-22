@@ -101,6 +101,50 @@ describe('Local API server', () => {
         expect(text).toBe('hello')
         expect(clear).toBe(true)
         return { url: 'https://example.test/', title: 'Typed', readyState: 'complete' }
+      },
+      async testProfileProxy(id: string): Promise<BrowserProfile> {
+        expect(id).toBe(current.id)
+        current = {
+          ...current,
+          proxyCheck: {
+            ok: true,
+            latencyMs: 42,
+            ip: '203.0.113.42',
+            countryCode: 'US',
+            timezone: 'America/Los_Angeles',
+            latitude: 34.05,
+            longitude: -118.24,
+            checkedAt: '2026-09-22T00:00:00.000Z'
+          }
+        }
+        return current
+      },
+      async diagnose(id: string) {
+        expect(id).toBe(current.id)
+        return {
+          profileId: id,
+          checkedAt: '2026-09-22T00:00:00.000Z',
+          ready: true,
+          checks: [{ key: 'launch', label: 'launch', status: 'pass', message: 'ok' }]
+        }
+      },
+      async diagnoseKernelRuntime(id: string) {
+        expect(id).toBe(current.id)
+        return {
+          profileId: id,
+          checkedAt: '2026-09-22T00:00:00.000Z',
+          ready: true,
+          checks: [{ key: 'kernel', label: 'kernel', status: 'pass', message: 'ok' }]
+        }
+      },
+      async diagnoseFingerprintRuntime(id: string) {
+        expect(id).toBe(current.id)
+        return {
+          profileId: id,
+          checkedAt: '2026-09-22T00:00:00.000Z',
+          ready: true,
+          checks: [{ key: 'fingerprint', label: 'fingerprint', status: 'pass', message: 'ok' }]
+        }
       }
     }
     const token = 'test-local-api-token-0123456789-abcdef'
@@ -172,6 +216,43 @@ describe('Local API server', () => {
         body: JSON.stringify({ ref: 'p1-e2' })
       })
       expect(clicked.status).toBe(200)
+
+      const testedProxy = await fetch(status.url + '/api/v1/profiles/' + current.id + '/proxy/test', {
+        method: 'POST',
+        headers: authorization
+      })
+      expect(testedProxy.status).toBe(200)
+      expect(await testedProxy.json()).toMatchObject({
+        profile: {
+          id: current.id,
+          proxy: {
+            checked: true,
+            ok: true,
+            ip: '203.0.113.42',
+            countryCode: 'US',
+            timezone: 'America/Los_Angeles'
+          }
+        }
+      })
+
+      for (const [path, key] of [
+        ['launch', 'launch'],
+        ['kernel-runtime', 'kernel'],
+        ['fingerprint-runtime', 'fingerprint']
+      ] as const) {
+        const diagnostic = await fetch(status.url + '/api/v1/profiles/' + current.id + '/diagnostics/' + path, {
+          method: 'POST',
+          headers: authorization
+        })
+        expect(diagnostic.status).toBe(200)
+        expect(await diagnostic.json()).toMatchObject({
+          profileId: current.id,
+          report: {
+            ready: true,
+            checks: [{ key, status: 'pass' }]
+          }
+        })
+      }
 
       const stopped = await fetch(status.url + '/api/profile/stop', {
         method: 'POST',

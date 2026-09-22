@@ -570,6 +570,18 @@ export class BrowserLauncher {
     return (await this.controlSession(id)).type(ref, text, clear)
   }
 
+  async testProfileProxy(id: string): Promise<BrowserProfile> {
+    const testedProfile = this.profiles.get(id)
+    const result = await this.proxyTester(testedProfile.proxy)
+    const current = this.profiles.get(id)
+    if (!sameProxyIdentity(testedProfile.proxy, current.proxy) || testedProfile.proxy.password !== current.proxy.password) {
+      throw new Error('检测期间代理配置已变更，本次结果未保存')
+    }
+    const profile = await this.profiles.setProxyCheck(id, { ...result, checkedAt: new Date().toISOString() })
+    this.onChanged(profile)
+    return profile
+  }
+
   runtimeSnapshot(): LauncherRuntimeSnapshot {
     return {
       managedProcesses: this.processes.size,

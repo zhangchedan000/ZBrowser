@@ -18,7 +18,7 @@ import type { ExtensionStore } from './extension-store'
 import type { CookieManager } from './cookie-manager'
 import { parseCookieFile, serializeCookieFile } from './cookie-file'
 import { parseBatchProfileCsv, serializeBatchProfileTemplate } from './profile-batch-csv'
-import { proxyForTest, publicProfile, sameProxyIdentity } from './profile-secrets'
+import { proxyForTest, publicProfile } from './profile-secrets'
 import type { ProfileBackupManager } from './profile-backup'
 import type { AppSessionTracker } from './app-session'
 import type { UpdateManager } from './update-manager'
@@ -328,16 +328,7 @@ export function registerIpc({ profiles, settings, launcher, kernels, extensions,
   })
   ipcMain.handle('profiles:close', (_event, id: string) => launcher.close(id).then(publicProfile))
   ipcMain.handle('profiles:close-all', () => launcher.closeAll())
-  ipcMain.handle('profiles:test-proxy', async (_event, id: string) => {
-    const testedProfile = profiles.get(id)
-    const result = await testProxy(testedProfile.proxy)
-    const current = profiles.get(id)
-    if (!sameProxyIdentity(testedProfile.proxy, current.proxy) || testedProfile.proxy.password !== current.proxy.password) {
-      throw new Error('检测期间代理配置已变更，本次结果未保存')
-    }
-    const profile = await profiles.setProxyCheck(id, { ...result, checkedAt: new Date().toISOString() })
-    return publicProfile(profile)
-  })
+  ipcMain.handle('profiles:test-proxy', (_event, id: string) => launcher.testProfileProxy(id).then(publicProfile))
   ipcMain.handle('profiles:diagnose', (_event, id: string) => launcher.diagnose(id))
   ipcMain.handle('profiles:diagnose-kernel-runtime', (_event, id: string) => launcher.diagnoseKernelRuntime(id))
   ipcMain.handle('profiles:diagnose-fingerprint-runtime', (_event, id: string) => launcher.diagnoseFingerprintRuntime(id))
