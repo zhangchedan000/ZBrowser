@@ -147,10 +147,6 @@ describe('runtime fingerprint diagnostics', () => {
       detected: []
     }
 
-    const checks = buildRuntimeFingerprintChecks(fixture(), observed, engine, {
-      renderSurfacesRepresentative: false
-    })
-
     observed.systemGpu = {
       devices: [{ vendorString: 'Google', deviceString: 'SwiftShader Device', driverVendor: 'Google' }],
       glRenderer: 'ANGLE (Google, Vulkan SwiftShader Device)'
