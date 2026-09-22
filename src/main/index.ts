@@ -30,14 +30,23 @@ let localApi: LocalApiServer | null = null
 if (process.platform === 'win32') app.setAppUserModelId('com.zbrowser.desktop')
 
 const e2eUserData = process.env.ZBROWSER_E2E_USER_DATA ?? process.env.PRISM_E2E_USER_DATA
-if ((process.env.ZBROWSER_E2E === '1' || process.env.PRISM_E2E === '1') && e2eUserData && isAbsolute(e2eUserData)) {
-  app.setPath('userData', e2eUserData)
-}
-
+const e2eMode = process.env.ZBROWSER_E2E === '1' || process.env.PRISM_E2E === '1'
 const mcpStdioMode = process.env.ZBROWSER_MCP_STDIO === '1'
   || (process.env.PRISM_E2E === '1' && process.env.PRISM_E2E_BROWSER_HEADLESS !== '1')
   || process.argv.includes('--mcp-stdio')
   || app.commandLine.hasSwitch('mcp-stdio')
+const primaryUserDataPath = e2eMode && e2eUserData && isAbsolute(e2eUserData)
+  ? e2eUserData
+  : app.getPath('userData')
+const mcpVaultPath = join(primaryUserDataPath, 'vault')
+
+if (mcpStdioMode) {
+  // MCP stdio runs beside the desktop app. Keep its Electron/Chromium runtime
+  // files isolated so two processes never contend for the desktop userData.
+  app.setPath('userData', join(app.getPath('temp'), `zbrowser-mcp-stdio-${process.pid}`))
+} else if (e2eMode && e2eUserData && isAbsolute(e2eUserData)) {
+  app.setPath('userData', e2eUserData)
+}
 
 function createWindow(): BrowserWindow {
   const window = new BrowserWindow({
@@ -80,7 +89,7 @@ const hasSingleInstanceLock = mcpStdioMode ? true : app.requestSingleInstanceLoc
 if (!hasSingleInstanceLock) app.quit()
 
 app.whenReady().then(async () => {
-  const vaultPath = join(app.getPath('userData'), 'vault')
+  const vaultPath = mcpStdioMode ? mcpVaultPath : join(app.getPath('userData'), 'vault')
   if (mcpStdioMode) {
     await runMcpStdio(vaultPath, app.getVersion())
     app.quit()
