@@ -34,7 +34,7 @@ if ((process.env.ZBROWSER_E2E === '1' || process.env.PRISM_E2E === '1') && e2eUs
   app.setPath('userData', e2eUserData)
 }
 
-const mcpStdioMode = process.argv.includes('--mcp-stdio') || app.commandLine.hasSwitch('mcp-stdio')
+const mcpStdioMode = process.env.ZBROWSER_MCP_STDIO === '1' || process.argv.includes('--mcp-stdio') || app.commandLine.hasSwitch('mcp-stdio')
 
 function createWindow(): BrowserWindow {
   const window = new BrowserWindow({
