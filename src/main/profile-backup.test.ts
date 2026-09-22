@@ -96,6 +96,7 @@ describe('ProfileBackupManager', () => {
     upgradedDraft.kernelVersion = '148.0.7778.215'
     upgradedDraft.kernelFamily = 'fingerprint-chromium'
     await profiles.update(source.id, upgradedDraft)
+    await profiles.advanceKernelFloor(source.id, '148.0.7778.220', 'fingerprint-chromium')
     await writeFile(marker, 'after-upgrade')
 
     const restored = await manager.rollbackKernelUpgrade(source.id)
