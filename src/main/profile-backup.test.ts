@@ -65,6 +65,43 @@ describe('ProfileBackupManager', () => {
     expect((await readdir(vault)).filter((name) => name.startsWith('.profile-backup-import-'))).toEqual([])
   })
 
+  it('creates a pre-upgrade checkpoint and restores data plus the previous kernel binding', async () => {
+    const vault = await mkdtemp(join(tmpdir(), 'zbrowser-upgrade-backup-vault-'))
+    temporaryPaths.push(vault)
+    const profiles = new ProfileStore(vault)
+    await profiles.initialize()
+    const draft = defaultProfileDraft()
+    draft.name = '升级回滚环境'
+    draft.kernelVersion = '144.0.7559.132'
+    draft.kernelFamily = 'fingerprint-chromium'
+    const source = await profiles.create(draft)
+    const marker = join(profiles.profileDataPath(source.id), 'Default', 'upgrade-marker.txt')
+    await mkdir(join(marker, '..'), { recursive: true })
+    await writeFile(marker, 'before-upgrade')
+
+    const manager = new ProfileBackupManager(profiles, '0.1.0')
+    const checkpoint = await manager.createKernelUpgradeCheckpoint(source.id, '148.0.7778.215', 'fingerprint-chromium')
+    expect(checkpoint).toMatchObject({
+      fromVersion: '144.0.7559.132',
+      fromFamily: 'fingerprint-chromium',
+      toVersion: '148.0.7778.215',
+      toFamily: 'fingerprint-chromium'
+    })
+
+    const upgradedDraft = defaultProfileDraft()
+    upgradedDraft.name = source.name
+    upgradedDraft.kernelVersion = '148.0.7778.215'
+    upgradedDraft.kernelFamily = 'fingerprint-chromium'
+    await profiles.update(source.id, upgradedDraft)
+    await writeFile(marker, 'after-upgrade')
+
+    const restored = await manager.rollbackKernelUpgrade(source.id)
+    expect(restored.kernelVersion).toBe('144.0.7559.132')
+    expect(restored.kernelFamily).toBe('fingerprint-chromium')
+    await expect(readFile(marker, 'utf8')).resolves.toBe('before-upgrade')
+    await expect(manager.kernelUpgradeCheckpoint(source.id)).resolves.toBeNull()
+  })
+
   it('rejects unsafe manifest limits before creating an imported environment', async () => {
     const vault = await mkdtemp(join(tmpdir(), 'prism-backup-vault-'))
     const source = await mkdtemp(join(tmpdir(), 'prism-backup-input-'))
