@@ -145,7 +145,7 @@ export class CookieManager {
     try {
       const profile = this.profiles.get(id)
       await this.profiles.assertProfileDataIdentity(id)
-      const engine = await locateBrowserForProfile(this.settings, this.profiles.vaultPath, profile.kernelVersion)
+      const engine = await locateBrowserForProfile(this.settings, this.profiles.vaultPath, profile.kernelVersion, profile.kernelFamily)
       if (!engine.executable) {
         throw new Error(profile.kernelVersion
           ? `环境绑定的内核 ${profile.kernelVersion} 不可用，无法管理 Cookie`
