@@ -3,6 +3,7 @@ import { access, readFile, readdir, stat } from 'node:fs/promises'
 import { constants } from 'node:fs'
 import { basename, isAbsolute, join, resolve, sep } from 'node:path'
 import type { AppSettings, EngineStatus, KernelFamily } from '../shared/types'
+import { compareKernelVersions, kernelMajorVersion, validKernelVersion } from '../shared/kernel-version'
 import type { SettingsStore } from './settings-store'
 import {
   validateKernelIntegrityFields,
@@ -62,12 +63,62 @@ export interface MacBundledKernelMigration {
   bundledVersion?: string
 }
 
-function validKernelVersion(version: string): boolean {
-  return /^\d+(?:\.\d+){3}$/.test(version)
+async function listManagedKernelVersions(vaultPath: string): Promise<string[]> {
+  try {
+    return (await readdir(resolve(vaultPath, 'kernels'), { withFileTypes: true }))
+      .filter((entry) => entry.isDirectory() && validKernelVersion(entry.name))
+      .map((entry) => entry.name)
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return []
+    throw error
+  }
 }
 
-/** Resolve a profile-pinned managed kernel without ever falling back to another browser. */
+/**
+ * Resolve the highest installed patch in the profile's pinned Chromium major.
+ * The stored full version is a monotonic floor: never downgrade and never
+ * cross to another major automatically.
+ */
 export async function locateBrowserForProfile(
+  settingsStore: SettingsStore,
+  vaultPath: string,
+  kernelVersion: string,
+  kernelFamily?: KernelFamily,
+  runtime: ProfileBrowserRuntime = {}
+): Promise<EngineStatus> {
+  const floor = kernelVersion.trim()
+  if (!floor) return locateBrowser(settingsStore)
+  if (!validKernelVersion(floor)) throw new Error('环境绑定的内核版本号无效')
+
+  const major = kernelMajorVersion(floor)
+  const [managedVersions, bundled] = await Promise.all([
+    listManagedKernelVersions(vaultPath),
+    kernelFamily === 'custom' ? Promise.resolve([] as EngineStatus[]) : listBundledBrowsers(runtime.resourcesPath ?? process.resourcesPath)
+  ])
+  const candidates = [...new Set([
+    ...managedVersions,
+    ...bundled.map((engine) => engine.version).filter((version): version is string => Boolean(version))
+  ])]
+    .filter((version) => kernelMajorVersion(version) === major && compareKernelVersions(version, floor) >= 0)
+    .sort((first, second) => compareKernelVersions(second, first))
+
+  let floorResult: EngineStatus | undefined
+  for (const version of candidates) {
+    const result = await locateExactBrowserForProfile(settingsStore, vaultPath, version, kernelFamily, runtime)
+    if (version === floor) floorResult = result
+    if (!result.executable) continue
+    if (version === floor) return result
+    return {
+      ...result,
+      label: `${result.label} · ${major} 系列自动补丁`
+    }
+  }
+
+  return floorResult ?? locateExactBrowserForProfile(settingsStore, vaultPath, floor, kernelFamily, runtime)
+}
+
+/** Resolve one exact profile-pinned managed kernel without falling back to another version. */
+async function locateExactBrowserForProfile(
   settingsStore: SettingsStore,
   vaultPath: string,
   kernelVersion: string,
