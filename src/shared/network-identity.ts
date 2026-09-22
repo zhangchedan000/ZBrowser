@@ -1,4 +1,4 @@
-import type { FingerprintConfig, ProxyTestResult } from './types'
+import type { FingerprintConfig, ProxyProtocol, ProxyTestResult } from './types'
 
 export const GEOIP_CONFLICT_CONFIRMATION_PREFIX = '[ZBROWSER_GEOIP_CONFLICT_CONFIRMATION_REQUIRED]'
 const LEGACY_GEOIP_CONFLICT_CONFIRMATION_PREFIX = '[PRISM_GEOIP_CONFLICT_CONFIRMATION_REQUIRED]'
@@ -15,6 +15,25 @@ export interface NetworkIdentity {
   longitude?: number
   accuracyMeters?: number
   source: 'manual' | 'proxy'
+}
+
+export type NetworkIdentityReadiness =
+  | 'manual'
+  | 'direct'
+  | 'unchecked'
+  | 'failed'
+  | 'incomplete'
+  | 'conflict'
+  | 'ready'
+
+export interface NetworkIdentityPlan {
+  readiness: NetworkIdentityReadiness
+  ready: boolean
+  canApply: boolean
+  identity: NetworkIdentity
+  proxyIp?: string
+  countryCode?: string
+  warnings: string[]
 }
 
 const COUNTRY_LOCALES: Record<string, { language: string; acceptLanguages: string }> = {
@@ -91,6 +110,112 @@ export function effectiveNetworkIdentity(
     longitude: check.longitude,
     accuracyMeters: check.accuracyMeters,
     source: 'proxy'
+  }
+}
+
+export function networkIdentityPlan(
+  fingerprint: FingerprintConfig,
+  proxyProtocol: ProxyProtocol,
+  check?: ProxyTestResult,
+  options: NetworkIdentityOptions = {}
+): NetworkIdentityPlan {
+  const manualIdentity: NetworkIdentity = {
+    language: fingerprint.language,
+    acceptLanguages: fingerprint.acceptLanguages,
+    timezone: fingerprint.timezone,
+    source: 'manual'
+  }
+
+  if (fingerprint.networkIdentityMode === 'manual') {
+    return {
+      readiness: 'manual',
+      ready: true,
+      canApply: false,
+      identity: manualIdentity,
+      warnings: []
+    }
+  }
+
+  if (proxyProtocol === 'direct') {
+    return {
+      readiness: 'direct',
+      ready: false,
+      canApply: false,
+      identity: manualIdentity,
+      warnings: ['网络身份设置为跟随代理，但当前环境仍是直连']
+    }
+  }
+
+  if (!check) {
+    return {
+      readiness: 'unchecked',
+      ready: false,
+      canApply: false,
+      identity: manualIdentity,
+      warnings: ['代理尚未检测，不能生成可信的自动网络身份']
+    }
+  }
+
+  if (!check.ok) {
+    return {
+      readiness: 'failed',
+      ready: false,
+      canApply: false,
+      identity: manualIdentity,
+      warnings: [check.error ? `代理检测失败：${check.error}` : '代理检测失败，不能生成自动网络身份']
+    }
+  }
+
+  if (check.geoConfidence === 'conflict' && !options.allowGeoConflict) {
+    return {
+      readiness: 'conflict',
+      ready: false,
+      canApply: false,
+      identity: manualIdentity,
+      proxyIp: check.ip,
+      countryCode: check.countryCode,
+      warnings: [check.geoConflict ?? 'GeoIP 数据源对代理地区或时区判断不一致']
+    }
+  }
+
+  if (!hasCompleteProxyIdentity(check, options)) {
+    return {
+      readiness: 'incomplete',
+      ready: false,
+      canApply: false,
+      identity: manualIdentity,
+      proxyIp: check.ip,
+      countryCode: check.countryCode,
+      warnings: ['代理检测缺少出口 IP、国家、时区或城市级坐标，不能生成完整网络身份']
+    }
+  }
+
+  return {
+    readiness: 'ready',
+    ready: true,
+    canApply: true,
+    identity: effectiveNetworkIdentity(fingerprint, check, options),
+    proxyIp: check.ip,
+    countryCode: check.countryCode,
+    warnings: []
+  }
+}
+
+export function applyRecommendedProxyNetworkIdentity(
+  fingerprint: FingerprintConfig,
+  check: ProxyTestResult,
+  options: NetworkIdentityOptions = {}
+): FingerprintConfig | undefined {
+  if (!hasCompleteProxyIdentity(check, options)) return undefined
+  const locale = localeForCountry(check.countryCode)
+  return {
+    ...fingerprint,
+    networkIdentityMode: 'proxy',
+    proxyExitPolicy: 'block',
+    webrtcPolicy: 'proxy_only',
+    timezone: check.timezone,
+    language: locale?.language ?? fingerprint.language,
+    acceptLanguages: locale?.acceptLanguages ?? fingerprint.acceptLanguages
   }
 }
 

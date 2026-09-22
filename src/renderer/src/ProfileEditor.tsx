@@ -35,7 +35,7 @@ import {
   hardwareProfileSummary,
   refreshSeededGpuIdentity
 } from '../../shared/hardware-profiles'
-import { effectiveNetworkIdentity, localeForCountry } from '../../shared/network-identity'
+import { applyRecommendedProxyNetworkIdentity, effectiveNetworkIdentity, networkIdentityPlan } from '../../shared/network-identity'
 import { isKernelDowngrade, kernelFamilyForRelease, kernelMajorVersion, kernelReleaseMatchesPin, latestSameMajorCompatibleKernelVersion, newerCompatibleKernelVersion } from '../../shared/kernel-version'
 import type { BrowserExtension, BrowserProfileView, EngineStatus, HardwareProfileId, KernelRelease, ProfileDraft, ProxyTestResult } from '../../shared/types'
 
@@ -88,6 +88,7 @@ const riskLabels: Record<NonNullable<ProxyTestResult['networkRisk']>, string> = 
 
 export function ProfileEditor({ open, profile, suggestedIndex, saving, extensions, engine, kernels, groups, onCancel, onSave }: ProfileEditorProps) {
   const [form] = Form.useForm<EditorValues>()
+  const proxyConfig = Form.useWatch('proxy', form)
   const proxyProtocol = Form.useWatch(['proxy', 'protocol'], form)
   const proxyPassword = Form.useWatch(['proxy', 'password'], form) ?? ''
   const proxyPasswordStored = Form.useWatch(['proxy', 'passwordStored'], form) === true
@@ -142,8 +143,18 @@ export function ProfileEditor({ open, profile, suggestedIndex, saving, extension
   })
   const hostPlatform = defaultPlatform()
   const personaResolution = fingerprintConfig ? resolveFingerprintPersona(fingerprintConfig) : undefined
+  const savedProxyCheckApplies = Boolean(
+    profile
+      && proxyConfig
+      && profile.proxy.protocol === proxyConfig.protocol
+      && profile.proxy.host === proxyConfig.host
+      && profile.proxy.port === proxyConfig.port
+      && profile.proxy.username === proxyConfig.username
+      && !proxyConfig.password
+  )
+  const activeProxyCheck = proxyResult ?? (savedProxyCheckApplies ? profile?.proxyCheck : undefined)
   const personaRegion = fingerprintHardwareRegionForCountry(
-    proxyResult?.ok ? proxyResult.countryCode : profile?.proxyCheck?.countryCode
+    activeProxyCheck?.ok ? activeProxyCheck.countryCode : undefined
   )
   const recommendedPersona = fingerprintConfig
     ? recommendFingerprintHardwarePersona({
@@ -156,13 +167,15 @@ export function ProfileEditor({ open, profile, suggestedIndex, saving, extension
     recommendedPersona?.id && personaResolution?.personaId === recommendedPersona.id
   )
   const timezoneMismatch = Boolean(proxyResult?.timezone && fingerprintTimezone && proxyResult.timezone !== fingerprintTimezone)
-  const networkIdentity = effectiveNetworkIdentity({
+  const networkFingerprint = {
     ...form.getFieldValue('fingerprint'),
     language: fingerprintLanguage,
     acceptLanguages: fingerprintAcceptLanguages,
     timezone: fingerprintTimezone,
     networkIdentityMode
-  }, proxyResult?.ok ? proxyResult : profile?.proxyCheck)
+  }
+  const networkIdentity = effectiveNetworkIdentity(networkFingerprint, activeProxyCheck)
+  const identityPlan = networkIdentityPlan(networkFingerprint, proxyProtocol ?? 'direct', activeProxyCheck)
 
   useEffect(() => {
     if (open) {
@@ -172,18 +185,9 @@ export function ProfileEditor({ open, profile, suggestedIndex, saving, extension
   }, [form, open, profile, suggestedIndex])
 
   function applyRecommendedNetworkIdentityFrom(result: ProxyTestResult): void {
-    if (!result.ok) return
-    const locale = localeForCountry(result.countryCode)
     const current = form.getFieldValue('fingerprint')
-    form.setFieldValue('fingerprint', {
-      ...current,
-      networkIdentityMode: 'proxy',
-      proxyExitPolicy: 'block',
-      webrtcPolicy: 'proxy_only',
-      timezone: result.timezone ?? current.timezone,
-      language: locale?.language ?? current.language,
-      acceptLanguages: locale?.acceptLanguages ?? current.acceptLanguages
-    })
+    const applied = applyRecommendedProxyNetworkIdentity(current, result)
+    if (applied) form.setFieldValue('fingerprint', applied)
   }
 
   async function testCurrentProxy(autoApply = false): Promise<void> {
@@ -487,12 +491,12 @@ export function ProfileEditor({ open, profile, suggestedIndex, saving, extension
           </Space>
           {networkIdentityMode === 'proxy' && (
             <Alert
-              type={proxyResult.geoConfidence === 'conflict' ? 'warning' : 'success'}
+              type={identityPlan.ready ? 'success' : 'warning'}
               showIcon
-              message={proxyResult.geoConfidence === 'conflict' ? '代理地理信息存在冲突' : '代理网络身份已生成'}
-              description={proxyResult.geoConfidence === 'conflict'
-                ? `${proxyResult.geoConflict}。继续使用可能影响指纹一致性；启动时会再次检测，并由用户确认是否继续。`
-                : `${networkIdentity.language} · ${networkIdentity.acceptLanguages} · ${networkIdentity.timezone}`}
+              message={identityPlan.ready ? '代理网络身份已生成' : '代理网络身份尚未就绪'}
+              description={identityPlan.ready
+                ? `${networkIdentity.language} · ${networkIdentity.acceptLanguages} · ${networkIdentity.timezone}`
+                : identityPlan.warnings.join('；')}
             />
           )}
           {proxyResult.degraded && <Typography.Text type="warning">{proxyResult.warning}</Typography.Text>}
