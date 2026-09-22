@@ -150,11 +150,26 @@ export function ProfileEditor({ open, profile, suggestedIndex, saving, extension
       && profile.proxy.host === proxyConfig.host
       && profile.proxy.port === proxyConfig.port
       && profile.proxy.username === proxyConfig.username
+      && (profile.proxy.passwordStored === true) === (proxyConfig.passwordStored === true)
       && !proxyConfig.password
   )
   const activeProxyCheck = proxyResult ?? (savedProxyCheckApplies ? profile?.proxyCheck : undefined)
+  const networkFingerprint = {
+    ...form.getFieldValue('fingerprint'),
+    language: fingerprintLanguage,
+    acceptLanguages: fingerprintAcceptLanguages,
+    timezone: fingerprintTimezone,
+    networkIdentityMode
+  }
+  const networkIdentity = effectiveNetworkIdentity(networkFingerprint, activeProxyCheck)
+  const identityPlan = networkIdentityPlan(networkFingerprint, proxyProtocol ?? 'direct', activeProxyCheck)
+  const proxyRecommendationPlan = networkIdentityPlan(
+    { ...networkFingerprint, networkIdentityMode: 'proxy' },
+    proxyProtocol ?? 'direct',
+    activeProxyCheck
+  )
   const personaRegion = fingerprintHardwareRegionForCountry(
-    activeProxyCheck?.ok ? activeProxyCheck.countryCode : undefined
+    proxyRecommendationPlan.ready ? proxyRecommendationPlan.countryCode : undefined
   )
   const recommendedPersona = fingerprintConfig
     ? recommendFingerprintHardwarePersona({
@@ -167,15 +182,6 @@ export function ProfileEditor({ open, profile, suggestedIndex, saving, extension
     recommendedPersona?.id && personaResolution?.personaId === recommendedPersona.id
   )
   const timezoneMismatch = Boolean(proxyResult?.timezone && fingerprintTimezone && proxyResult.timezone !== fingerprintTimezone)
-  const networkFingerprint = {
-    ...form.getFieldValue('fingerprint'),
-    language: fingerprintLanguage,
-    acceptLanguages: fingerprintAcceptLanguages,
-    timezone: fingerprintTimezone,
-    networkIdentityMode
-  }
-  const networkIdentity = effectiveNetworkIdentity(networkFingerprint, activeProxyCheck)
-  const identityPlan = networkIdentityPlan(networkFingerprint, proxyProtocol ?? 'direct', activeProxyCheck)
 
   useEffect(() => {
     if (open) {
@@ -482,11 +488,18 @@ export function ProfileEditor({ open, profile, suggestedIndex, saving, extension
             </Typography.Text>
           )}
           <Space wrap>
-            <Button type="primary" size="small" onClick={applyRecommendedNetworkIdentity}>
+            <Button
+              type="primary"
+              size="small"
+              disabled={!proxyRecommendationPlan.canApply}
+              onClick={applyRecommendedNetworkIdentity}
+            >
               应用推荐网络身份
             </Button>
-            <Typography.Text type="secondary">
-              自动设置跟随代理、语言、Accept-Language、时区、WebRTC 防泄漏和出口变化阻止策略。
+            <Typography.Text type={proxyRecommendationPlan.canApply ? 'secondary' : 'warning'}>
+              {proxyRecommendationPlan.canApply
+                ? '自动设置跟随代理、语言、Accept-Language、时区、WebRTC 防泄漏和出口变化阻止策略。'
+                : proxyRecommendationPlan.warnings.join('；')}
             </Typography.Text>
           </Space>
           {networkIdentityMode === 'proxy' && (
