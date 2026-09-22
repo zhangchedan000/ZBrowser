@@ -148,7 +148,7 @@ export function validateProfileDraft(draft: ProfileDraft): ProfileDraft {
     color: draft.color.trim(),
     startUrls: urls,
     kernelVersion,
-    kernelFamily: kernelVersion ? kernelFamily : undefined,
+    ...(kernelVersion ? (kernelFamily ? { kernelFamily } : {}) : { kernelFamily: undefined }),
     window: {
       mode: rawWindow.mode,
       x: rawWindow.x,
