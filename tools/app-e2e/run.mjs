@@ -127,13 +127,13 @@ class CdpClient {
       this.socket.addEventListener('error', () => { clearTimeout(timer); reject(new Error('App renderer CDP connection failed')) }, { once: true })
     })
   }
-  send(method, params = {}) {
+  send(method, params = {}, timeoutMs = 30_000) {
     const id = ++this.sequence
     return new Promise((resolveCommand, reject) => {
       const timer = setTimeout(() => {
         this.pending.delete(id)
         reject(new Error(`${method}: timed out`))
-      }, 30_000)
+      }, timeoutMs)
       this.pending.set(id, {
         resolve: (value) => { clearTimeout(timer); resolveCommand(value) },
         reject: (error) => { clearTimeout(timer); reject(error) }
@@ -180,12 +180,12 @@ async function waitForRenderer(port, child) {
   throw new Error('Timed out waiting for Prism renderer')
 }
 
-async function evaluate(client, expression) {
+async function evaluate(client, expression, timeoutMs = 30_000) {
   const response = await client.send('Runtime.evaluate', {
     expression,
     awaitPromise: true,
     returnByValue: true
-  })
+  }, timeoutMs)
   if (response.exceptionDetails) {
     throw new Error(response.exceptionDetails.exception?.description ?? response.exceptionDetails.text ?? 'Renderer evaluation failed')
   }
@@ -397,6 +397,10 @@ async function main() {
   let primaryError
   try {
     first = await launchApp(options, appData)
+    // This single renderer transaction intentionally exercises the complete managed-kernel
+    // lifecycle. Packaged Windows builds can take longer than the default CDP command timeout
+    // while downloading/verifying a kernel and launching the runtime version probe; keep every
+    // assertion, but give this long-running transaction enough time to finish.
     const firstRun = await evaluate(first.client, `(async () => {
       const expectedKernelVersions = ${JSON.stringify(options.expectedKernelVersions)}
       const installKernelVersion = ${JSON.stringify(options.installKernelVersion)}
@@ -508,7 +512,7 @@ async function main() {
         runningStatuses: running.filter(profile => [a.id, updated.id].includes(profile.id)).map(profile => profile.status),
         crashHistory: await window.browserApi.profiles.crashHistory(a.id)
       }
-    })()`)
+    })()`, 120_000)
 
     const runtimeFingerprint = await probeRuntimeFingerprint(appData, firstRun.editedA.id)
     const cleanupRun = await evaluate(first.client, `(async () => {
