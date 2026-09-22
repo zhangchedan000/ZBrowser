@@ -23,6 +23,7 @@ import {
   StarOutlined,
   TagsOutlined,
   UploadOutlined,
+  UndoOutlined,
   WarningFilled
 } from '@ant-design/icons'
 import {
@@ -658,6 +659,12 @@ export default function App() {
           label: `升级内核到 ${kernelUpgrade.version}`,
           disabled: !editable
         }] : []),
+        ...(profile.kernelVersion ? [{
+          key: 'rollback-kernel-upgrade',
+          icon: <UndoOutlined />,
+          label: '回滚上次内核升级',
+          disabled: !editable
+        }] : []),
         { key: 'data', icon: <DatabaseOutlined />, label: '环境数据' },
         { key: 'diagnose', icon: <SafetyCertificateOutlined />, label: '启动诊断' },
         { key: 'crashes', icon: <WarningFilled />, label: '异常与恢复' },
@@ -673,13 +680,26 @@ export default function App() {
         if (key === 'upgrade-kernel' && kernelUpgrade) {
           Modal.confirm({
             title: `将“${profile.name}”升级到内核 ${kernelUpgrade.version}？`,
-            content: '只会升级这个环境的固定内核，不会修改其他环境，也不会改变指纹种子。已禁止降级。',
-            okText: '升级此环境',
+            content: '升级前会自动完整备份该 Profile 的浏览器数据。只升级这个环境，不修改其他环境、不改变指纹种子，并禁止降级。',
+            okText: '备份并升级',
             cancelText: '取消',
             onOk: () => withBusy(profile.id, async () => {
-              const upgraded = await window.browserApi.profiles.upgradeKernel(profile.id, kernelUpgrade.version, kernelUpgrade.family)
-              upsert(upgraded)
-              messageApi.success(`环境内核已升级到 ${kernelUpgrade.version}`)
+              const result = await window.browserApi.profiles.upgradeKernel(profile.id, kernelUpgrade.version, kernelUpgrade.family)
+              upsert(result.profile)
+              messageApi.success(`已备份 ${formatBytes(result.checkpoint.totalBytes)}，环境内核已升级到 ${kernelUpgrade.version}`)
+            })
+          })
+        }
+        if (key === 'rollback-kernel-upgrade') {
+          Modal.confirm({
+            title: `回滚“${profile.name}”上次内核升级？`,
+            content: '会恢复升级前自动备份的完整浏览器数据和原内核绑定。请确保环境已关闭。',
+            okText: '恢复升级前状态',
+            cancelText: '取消',
+            onOk: () => withBusy(profile.id, async () => {
+              const restored = await window.browserApi.profiles.rollbackKernelUpgrade(profile.id)
+              upsert(restored)
+              messageApi.success(`已回滚到内核 ${restored.kernelVersion || '自动模式'} 并恢复升级前数据`)
             })
           })
         }
