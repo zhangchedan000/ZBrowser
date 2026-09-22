@@ -93,7 +93,7 @@ async function startSiteServer() {
   const server = createServer((_request, response) => {
     response.setHeader('Cache-Control', 'no-store')
     response.setHeader('Content-Type', 'text/html; charset=utf-8')
-    response.end('<!doctype html><html><body><h1>Prism app E2E</h1><script>localStorage.setItem("prism-app-e2e","ready")</script></body></html>')
+    response.end('<!doctype html><html><body><h1>Prism app E2E</h1><input aria-label="E2E input"><button aria-label="E2E button" onclick="document.body.dataset.clicked=\'yes\'">Save</button><script>localStorage.setItem("prism-app-e2e","ready")</script></body></html>')
   })
   await new Promise((resolveListen, reject) => {
     server.once('error', reject)
@@ -303,7 +303,7 @@ async function readLastLaunch(userDataPath, id) {
   return JSON.parse(await readFile(join(userDataPath, 'vault', 'profiles', id, 'runtime', 'last-launch.json'), 'utf8'))
 }
 
-async function probeLocalApi(userDataPath) {
+async function probeLocalApi(userDataPath, profileId, pageUrl) {
   const vault = join(userDataPath, 'vault')
   const metadata = JSON.parse(await readFile(join(vault, 'local-api.json'), 'utf8'))
   const token = (await readFile(join(vault, 'local-api.token'), 'utf8')).trim()
@@ -312,20 +312,75 @@ async function probeLocalApi(userDataPath) {
   }
   if (token.length < 32) throw new Error('Local API token file is missing or invalid')
 
+  const authorization = { Authorization: 'Bearer ' + token }
+  const jsonHeaders = { ...authorization, 'Content-Type': 'application/json' }
+  const profilePath = '/api/v1/profiles/' + encodeURIComponent(profileId)
   const unauthorized = await fetch(metadata.url + '/api/v1/health', {
     signal: AbortSignal.timeout(5_000)
   })
   const authorized = await fetch(metadata.url + '/api/v1/profiles', {
-    headers: { Authorization: 'Bearer ' + token },
+    headers: authorization,
     signal: AbortSignal.timeout(5_000)
   })
   const payload = authorized.ok ? await authorized.json() : {}
   const profiles = Array.isArray(payload.profiles) ? payload.profiles : []
+
+  const opened = await fetch(metadata.url + profilePath + '/page/open', {
+    method: 'POST',
+    headers: jsonHeaders,
+    body: JSON.stringify({ url: pageUrl }),
+    signal: AbortSignal.timeout(15_000)
+  })
+  const firstSnapshotResponse = await fetch(metadata.url + profilePath + '/page/snapshot', {
+    headers: authorization,
+    signal: AbortSignal.timeout(10_000)
+  })
+  const firstSnapshot = firstSnapshotResponse.ok ? await firstSnapshotResponse.json() : {}
+  const firstElements = Array.isArray(firstSnapshot.page?.elements) ? firstSnapshot.page.elements : []
+  const textbox = firstElements.find((element) => element.role === 'textbox' && element.name === 'E2E input' && typeof element.ref === 'string')
+
+  let typeStatus = 0
+  if (textbox?.ref) {
+    const typed = await fetch(metadata.url + profilePath + '/page/type', {
+      method: 'POST',
+      headers: jsonHeaders,
+      body: JSON.stringify({ ref: textbox.ref, text: 'zbrowser-local-api' }),
+      signal: AbortSignal.timeout(10_000)
+    })
+    typeStatus = typed.status
+  }
+
+  const secondSnapshotResponse = await fetch(metadata.url + profilePath + '/page/snapshot', {
+    headers: authorization,
+    signal: AbortSignal.timeout(10_000)
+  })
+  const secondSnapshot = secondSnapshotResponse.ok ? await secondSnapshotResponse.json() : {}
+  const secondElements = Array.isArray(secondSnapshot.page?.elements) ? secondSnapshot.page.elements : []
+  const button = secondElements.find((element) => element.role === 'button' && element.name === 'E2E button' && typeof element.ref === 'string')
+
+  let clickStatus = 0
+  if (button?.ref) {
+    const clicked = await fetch(metadata.url + profilePath + '/page/click', {
+      method: 'POST',
+      headers: jsonHeaders,
+      body: JSON.stringify({ ref: button.ref }),
+      signal: AbortSignal.timeout(10_000)
+    })
+    clickStatus = clicked.status
+  }
+
   return {
     unauthorizedStatus: unauthorized.status,
     authorizedStatus: authorized.status,
     profileIds: profiles.map((profile) => profile.id).filter((id) => typeof id === 'string'),
-    profileCount: profiles.length
+    profileCount: profiles.length,
+    pageOpenStatus: opened.status,
+    pageSnapshotStatus: firstSnapshotResponse.status,
+    textboxFound: Boolean(textbox?.ref),
+    typeStatus,
+    secondSnapshotStatus: secondSnapshotResponse.status,
+    buttonFound: Boolean(button?.ref),
+    clickStatus
   }
 }
 
@@ -548,7 +603,7 @@ async function main() {
       }
     })()`, 120_000)
 
-    const localApiProbe = await probeLocalApi(appData)
+    const localApiProbe = await probeLocalApi(appData, firstRun.editedA.id, site.url)
     const runtimeFingerprint = await probeRuntimeFingerprint(appData, firstRun.editedA.id)
     const cleanupRun = await evaluate(first.client, `(async () => {
       await window.browserApi.profiles.closeAll()
@@ -643,6 +698,12 @@ async function main() {
       localApiProfileListAvailable: localApiProbe.authorizedStatus === 200
         && localApiProbe.profileIds.includes(firstRun.editedA.id)
         && localApiProbe.profileIds.includes(firstRun.updated.id),
+      localApiPageOpen: localApiProbe.pageOpenStatus === 200,
+      localApiPageSnapshot: localApiProbe.pageSnapshotStatus === 200 && localApiProbe.textboxFound === true,
+      localApiPageType: localApiProbe.typeStatus === 200,
+      localApiPageClick: localApiProbe.secondSnapshotStatus === 200
+        && localApiProbe.buttonFound === true
+        && localApiProbe.clickStatus === 200,
       runningKernelUpgradeBlocked: firstRun.runningKernelUpgradeBlocked === true,
       kernelUpgradeAutoBackupAndRollback: !options.installKernelVersion || (firstRun.upgradeFlow?.exercised === true
         && firstRun.upgradeFlow.backupCreated === true

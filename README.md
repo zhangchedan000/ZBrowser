@@ -51,6 +51,10 @@ GET  /api/v1/profiles/:id/status
 POST /api/v1/profiles/:id/start
 POST /api/v1/profiles/:id/stop
 GET  /api/v1/profiles/:id/cdp
+POST /api/v1/profiles/:id/page/open
+GET  /api/v1/profiles/:id/page/snapshot
+POST /api/v1/profiles/:id/page/type
+POST /api/v1/profiles/:id/page/click
 ```
 
 同时保留 `/api/profile/list`、`/api/profile/start`、`/api/profile/stop`、`/api/profile/status` 和 `/api/cdp/connect` 兼容入口。所有请求都必须发送：
@@ -60,6 +64,8 @@ Authorization: Bearer <local-api.token 中的 Token>
 ```
 
 Windows 环境启动后，Local API 可返回仅绑定 `127.0.0.1` 的临时 CDP 地址，可直接交给 Playwright / Puppeteer 的 CDP 连接能力。CDP 不绑定 `0.0.0.0`，也不会通过 Local API 返回代理或账号凭据。
+
+页面控制接口复用 ZBrowser 自己的 `BrowserControlSession`：`page/open` 只接受 HTTP/HTTPS，`page/snapshot` 返回有大小上限的可访问性树和短期元素引用（例如 `p1-e3`），`page/type` 与 `page/click` 使用这些引用操作当前 Profile。页面导航、输入或点击后引用会失效，自动化程序应重新调用 `page/snapshot` 获取新引用。
 
 ## Windows 构建
 
