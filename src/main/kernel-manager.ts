@@ -6,7 +6,7 @@ import { basename, dirname, extname, isAbsolute, join, relative, resolve, sep } 
 import { pipeline } from 'node:stream/promises'
 import { Readable, Transform } from 'node:stream'
 import { promisify } from 'node:util'
-import type { EngineStatus, KernelHealth, KernelInstallProgress, KernelRelease } from '../shared/types'
+import type { EngineStatus, KernelFamily, KernelHealth, KernelInstallProgress, KernelRelease } from '../shared/types'
 import { locateBrowser, locateBrowserSelection, normalizeBrowserSelection } from './browser-locator'
 import {
   collectKernelIntegrity,
@@ -135,7 +135,7 @@ export class KernelManager {
     private readonly settings: SettingsStore,
     private readonly onProgress: (progress: KernelInstallProgress) => void,
     private readonly logger?: Logger,
-    private readonly kernelUsers: (version: string) => string[] | Promise<string[]> = () => []
+    private readonly kernelUsers: (version: string, family?: KernelFamily) => string[] | Promise<string[]> = () => []
   ) {}
 
   private assertKernelEntitlement(version: string): void {
@@ -485,7 +485,8 @@ export class KernelManager {
     if (this.installingVersion === version) throw new Error('正在安装的内核不能删除')
     const manifest = await this.readManifest(version)
     if (!manifest) throw new Error('该内核尚未安装')
-    const users = await this.kernelUsers(version)
+    const family: KernelFamily = manifest.source === 'local-build' ? 'custom' : 'fingerprint-chromium'
+    const users = await this.kernelUsers(version, family)
     if (users.length) {
       const preview = users.slice(0, 3).map((name) => `“${name}”`).join('、')
       throw new Error(`该内核仍被 ${users.length} 个环境固定使用（${preview}${users.length > 3 ? '等' : ''}），请先修改这些环境`)
