@@ -2,6 +2,7 @@ import { CheckCircleFilled, CloudDownloadOutlined, DeleteOutlined, FolderOpenOut
 import { Alert, Button, List, Modal, Popconfirm, Progress, Space, Spin, Tag, Typography, message } from 'antd'
 import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import type { EngineStatus, KernelHealth, KernelInstallProgress, KernelRelease } from '../../shared/types'
+import { newerKernelVersion } from '../../shared/kernel-version'
 
 interface KernelManagerModalProps {
   open: boolean
@@ -45,8 +46,19 @@ export function KernelManagerModal({ open, engine, onClose, onEngineChanged }: K
   const [messageApi, contextHolder] = message.useMessage()
 
   const currentVersion = useMemo(
-    () => releases.find((release) => release.executable && release.executable === engine?.executable)?.version,
-    [engine?.executable, releases]
+    () => releases.find((release) => release.executable && release.executable === engine?.executable)?.version
+      ?? (engine?.fingerprintKernel ? engine.version : undefined),
+    [engine?.executable, engine?.fingerprintKernel, engine?.version, releases]
+  )
+  const upgradeVersion = useMemo(
+    () => currentVersion
+      ? newerKernelVersion(currentVersion, releases.filter((release) => release.remoteAvailable).map((release) => release.version))
+      : undefined,
+    [currentVersion, releases]
+  )
+  const upgradeRelease = useMemo(
+    () => upgradeVersion ? releases.find((release) => release.version === upgradeVersion) : undefined,
+    [releases, upgradeVersion]
   )
 
   async function refresh(): Promise<void> {
@@ -225,6 +237,20 @@ export function KernelManagerModal({ open, engine, onClose, onEngineChanged }: K
         title="可直接安装开源 Fingerprint Chromium"
         description="发行包直接来自 adryfish/fingerprint-chromium 的 GitHub Releases。ZBrowser 会校验 GitHub 提供的 SHA-256 后再安装；无需额外付费组件。"
       />
+      {upgradeVersion && upgradeRelease && (
+        <Alert
+          className="kernel-notice"
+          type="warning"
+          showIcon
+          title={`发现可升级内核 ${upgradeVersion}`}
+          description="不会静默升级已有环境。安装新版后，未固定版本的环境可跟随全局内核；已固定版本的环境仍保持原版本，需在环境编辑器中明确升级。"
+          action={
+            upgradeRelease.installed
+              ? <Button onClick={() => void activate(upgradeVersion)}>切换到新版</Button>
+              : <Button type="primary" loading={installing === upgradeVersion} disabled={Boolean(installing)} onClick={() => void install(upgradeVersion)}>安装新版</Button>
+          }
+        />
+      )}
 
       <div className="kernel-toolbar">
         <div>
