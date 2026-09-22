@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { compareKernelVersions, isKernelDowngrade, latestKernelVersion, newerKernelVersion, validKernelVersion } from './kernel-version'
+import { compareKernelVersions, isKernelDowngrade, kernelFamilyForRelease, kernelReleaseMatchesPin, latestKernelVersion, newerCompatibleKernelVersion, newerKernelVersion, validKernelVersion } from './kernel-version'
 
 describe('kernel version ordering', () => {
   it('compares all four Chromium version segments numerically', () => {
@@ -21,6 +21,23 @@ describe('kernel version ordering', () => {
     expect(newerKernelVersion('144.0.7559.132', ['144.0.7559.99', '148.0.7778.215'])).toBe('148.0.7778.215')
     expect(newerKernelVersion('148.0.7778.215', ['144.0.7559.132', '148.0.7778.215'])).toBeUndefined()
     expect(newerKernelVersion('', ['148.0.7778.215'])).toBeUndefined()
+  })
+
+  it('matches pinned kernel family and only proposes compatible installed upgrades', () => {
+    const releases = [
+      { version: '144.0.7559.132', origin: 'release' as const, executable: 'C:/release-144/chrome.exe' },
+      { version: '148.0.7778.215', origin: 'release' as const, executable: 'C:/release-148/chrome.exe' },
+      { version: '149.0.1.1', origin: 'local-build' as const, executable: 'C:/custom-149/chrome.exe' },
+      { version: '150.0.1.1', origin: 'release' as const, executable: undefined }
+    ]
+
+    expect(kernelFamilyForRelease(releases[0])).toBe('fingerprint-chromium')
+    expect(kernelFamilyForRelease(releases[2])).toBe('custom')
+    expect(kernelReleaseMatchesPin(releases[0], '144.0.7559.132', 'fingerprint-chromium')).toBe(true)
+    expect(kernelReleaseMatchesPin(releases[0], '144.0.7559.132', 'custom')).toBe(false)
+    expect(kernelReleaseMatchesPin(releases[3], '150.0.1.1', 'fingerprint-chromium')).toBe(false)
+    expect(newerCompatibleKernelVersion('144.0.7559.132', 'fingerprint-chromium', releases)).toBe('148.0.7778.215')
+    expect(newerCompatibleKernelVersion('149.0.1.1', 'custom', releases)).toBeUndefined()
   })
 
   it('rejects malformed versions', () => {
