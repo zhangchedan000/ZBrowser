@@ -29,7 +29,14 @@ describe('MCP stdio message handler', () => {
       id: 1,
       result: {
         supportedVersions: [MODERN_PROTOCOL_VERSION],
-        capabilities: { tools: {} }
+        capabilities: { tools: {} },
+        resultType: 'complete',
+        _meta: {
+          'io.modelcontextprotocol/serverInfo': {
+            name: 'zbrowser',
+            version: '0.2.0-beta.3'
+          }
+        }
       }
     })
     expect(JSON.stringify(response)).not.toContain('Bearer')

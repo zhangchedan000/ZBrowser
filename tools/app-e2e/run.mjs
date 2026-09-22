@@ -258,7 +258,10 @@ async function probeMcpStdio(options, userDataPath, expectedProfileId) {
     if (!cleanExit) child.kill('SIGKILL')
     return {
       modernDiscovery: Array.isArray(discover?.result?.supportedVersions)
-        && discover.result.supportedVersions.includes('2026-07-28'),
+        && discover.result.supportedVersions.includes('2026-07-28')
+        && discover.result.resultType === 'complete'
+        && tools?.result?.resultType === 'complete'
+        && profiles?.result?.resultType === 'complete',
       toolNames,
       profileIds,
       expectedProfileVisible: profileIds.includes(expectedProfileId),
