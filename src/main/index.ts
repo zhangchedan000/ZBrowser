@@ -94,9 +94,21 @@ app.whenReady().then(async () => {
   if (purgedTrashCount) logger.info('已自动清理环境回收站', { count: purgedTrashCount })
   logger.info('ZBrowser 已启动', { version: app.getVersion(), platform: process.platform, arch: process.arch })
 
-  launcher = new BrowserLauncher(profiles, settings, (profile) => {
-    mainWindow?.webContents.send('profiles:changed', publicProfile(profile))
-  }, extensions, logger)
+  launcher = new BrowserLauncher(
+    profiles,
+    settings,
+    (profile) => {
+      mainWindow?.webContents.send('profiles:changed', publicProfile(profile))
+    },
+    extensions,
+    logger,
+    undefined,
+    undefined,
+    3,
+    undefined,
+    5 * 60_000,
+    proxyPool
+  )
   await launcher.initialize()
   const kernels = new ManagedKernelManager(
     vaultPath,

@@ -132,6 +132,62 @@ describe('ProfileStore', () => {
     expect(reopened.get(profile.id).fingerprint.seed).toBe(profile.fingerprint.seed)
   })
 
+
+  it('defaults new environments to account mode and prevents two account profiles from sharing a proxy identity', async () => {
+    const repository = await store()
+    const firstDraft = defaultProfileDraft()
+    firstDraft.proxy = { protocol: 'http', host: 'proxy.example.com', port: 8080, username: 'account-a', password: 'one' }
+    const first = await repository.create(firstDraft)
+    expect(first.environmentType).toBe('account')
+
+    const secondDraft = defaultProfileDraft()
+    secondDraft.proxy = { protocol: 'http', host: 'proxy.example.com', port: 8080, username: 'account-a', password: 'two' }
+    await expect(repository.create(secondDraft)).rejects.toThrow('一号一代理')
+
+    secondDraft.environmentType = 'temporary'
+    await expect(repository.create(secondDraft)).resolves.toMatchObject({ environmentType: 'temporary' })
+  })
+
+  it('blocks account environments that resolve to an exit IP already used by another account environment', async () => {
+    const repository = await store()
+    const firstDraft = defaultProfileDraft()
+    firstDraft.proxy = { protocol: 'http', host: 'one.example.com', port: 8080, username: 'a', password: 'one' }
+    const secondDraft = defaultProfileDraft()
+    secondDraft.proxy = { protocol: 'http', host: 'two.example.com', port: 8080, username: 'b', password: 'two' }
+    const first = await repository.create(firstDraft)
+    const second = await repository.create(secondDraft)
+    const checkedAt = new Date().toISOString()
+    await repository.setProxyCheck(first.id, { ok: true, ip: '203.0.113.44', latencyMs: 30, checkedAt })
+    await expect(repository.setProxyCheck(second.id, {
+      ok: true,
+      ip: '203.0.113.44',
+      latencyMs: 40,
+      checkedAt
+    })).rejects.toThrow('实际出口 IP')
+  })
+
+  it('keeps a proxy-pool binding when an account profile is edited without retyping the stored password', async () => {
+    const repository = await store()
+    const draft = defaultProfileDraft()
+    draft.proxy = { protocol: 'http', host: 'proxy.example.com', port: 8080, username: 'user', password: 'secret' }
+    const created = await repository.create(draft)
+    await repository.assignProxy(created.id, draft.proxy, {
+      ok: true,
+      ip: '203.0.113.55',
+      latencyMs: 50,
+      checkedAt: new Date().toISOString(),
+      countryCode: 'US',
+      timezone: 'America/Los_Angeles',
+      latitude: 34.05,
+      longitude: -118.24,
+      geoConfidence: 'consensus'
+    }, '11111111-1111-1111-1111-111111111111')
+    const publicDraft = publicProfile(repository.get(created.id))
+    publicDraft.name = 'renamed'
+    await repository.update(created.id, publicDraft)
+    expect(repository.get(created.id).proxyPoolEntryId).toBe('11111111-1111-1111-1111-111111111111')
+  })
+
   it('preserves, replaces or clears a stored proxy password without exposing a marker on disk', async () => {
     const repository = await store()
     const draft = defaultProfileDraft()

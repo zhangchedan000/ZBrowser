@@ -104,7 +104,8 @@ export class BrowserLauncher {
     private readonly proxyTester: ProxyTester = testProxy,
     private readonly maxConcurrentLaunches = 3,
     private readonly browserSpawner: typeof spawn = spawn,
-    private readonly proxyMonitorIntervalMs = 5 * 60_000
+    private readonly proxyMonitorIntervalMs = 5 * 60_000,
+    private readonly proxyPoolRecorder?: { recordResult(id: string, result: ProxyTestResult): Promise<unknown> }
   ) {
     if (!Number.isInteger(maxConcurrentLaunches) || maxConcurrentLaunches < 1 || maxConcurrentLaunches > 20) {
       throw new Error('浏览器并发启动数必须在 1 到 20 之间')
@@ -586,6 +587,7 @@ export class BrowserLauncher {
   async testProfileProxy(id: string): Promise<BrowserProfile> {
     const testedProfile = this.profiles.get(id)
     const result = await this.proxyTester(testedProfile.proxy)
+    await this.recordProxyPoolResult(testedProfile, result)
     const current = this.profiles.get(id)
     if (!sameProxyIdentity(testedProfile.proxy, current.proxy) || testedProfile.proxy.password !== current.proxy.password) {
       throw new Error('检测期间代理配置已变更，本次结果未保存')
@@ -1014,6 +1016,17 @@ export class BrowserLauncher {
     await rename(temporary, path)
   }
 
+  private async recordProxyPoolResult(profile: BrowserProfile, result: ProxyTestResult): Promise<void> {
+    if (!profile.proxyPoolEntryId || !this.proxyPoolRecorder) return
+    await this.proxyPoolRecorder.recordResult(profile.proxyPoolEntryId, result).catch((error) => {
+      this.logger?.error('同步代理池健康状态失败', {
+        profileId: profile.id,
+        proxyPoolEntryId: profile.proxyPoolEntryId,
+        error: error instanceof Error ? error.message : String(error)
+      })
+    })
+  }
+
   private async guardProfileAvailable(id: string): Promise<void> {
     await this.profiles.assertProfileDataIdentity(id)
     let process
@@ -1035,6 +1048,7 @@ export class BrowserLauncher {
 
   private async refreshProxyForLaunch(profile: BrowserProfile, allowGeoConflict: boolean): Promise<BrowserProfile> {
     const result = await this.proxyTester(profile.proxy)
+    await this.recordProxyPoolResult(profile, result)
     const current = this.profiles.get(profile.id)
     if (!sameProxyIdentity(profile.proxy, current.proxy) || profile.proxy.password !== current.proxy.password) {
       throw new Error('启动检测期间代理配置已变更，请重新启动环境')
@@ -1118,6 +1132,7 @@ export class BrowserLauncher {
       const current = this.profiles.get(id)
       if (!sameProxyIdentity(proxy, current.proxy) || proxy.password !== current.proxy.password) return
       const result = await this.proxyTester(proxy)
+      await this.recordProxyPoolResult(current, result)
       const latest = this.profiles.get(id)
       if (!sameProxyIdentity(proxy, latest.proxy) || proxy.password !== latest.proxy.password) return
       const updated = await this.profiles.setProxyCheck(

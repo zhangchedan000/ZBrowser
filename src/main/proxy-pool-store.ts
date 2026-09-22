@@ -236,6 +236,11 @@ export class ProxyPoolStore {
     if (!sameProxyIdentity(startedProxy, current.proxy) || startedProxy.password !== current.proxy.password) {
       throw new Error('检测期间代理配置已变更，本次结果未保存')
     }
+    return this.recordResult(id, result)
+  }
+
+  async recordResult(id: string, result: ProxyTestResult): Promise<ProxyPoolEntry> {
+    const current = this.internal(id)
     const now = new Date().toISOString()
     const ok = result.ok === true
     const stats: StoredStats = {

@@ -340,7 +340,8 @@ export class ProfileStore {
       createdAt: current.createdAt,
       updatedAt: new Date().toISOString(),
       status: current.status,
-      proxyPoolEntryId: sameProxyIdentity(draft.proxy, current.proxy) && draft.proxy.password === current.proxy.password
+      proxyPoolEntryId: sameProxyIdentity(draft.proxy, current.proxy)
+        && (draft.proxy.password === current.proxy.password || keepStoredPassword)
         ? current.proxyPoolEntryId
         : undefined
     }
@@ -431,7 +432,11 @@ export class ProfileStore {
       proxy: (source.environmentType ?? 'account') === 'account'
         ? { protocol: 'direct', host: '', username: '', password: '' }
         : { ...source.proxy },
-      fingerprint: refreshSeededGpuIdentity({ ...source.fingerprint, seed })
+      fingerprint: refreshSeededGpuIdentity({
+        ...source.fingerprint,
+        seed,
+        ...((source.environmentType ?? 'account') === 'account' ? { networkIdentityMode: 'manual' as const } : {})
+      })
     })
   }
 
