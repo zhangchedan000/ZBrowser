@@ -204,6 +204,10 @@ async function probeMcpStdio(options, userDataPath, expectedProfileId) {
   let args
   let env
   if (process.platform === 'win32') {
+    // Windows GUI-subsystem Electron processes do not provide a reliable piped
+    // stdin/stdout contract. Exercise the exact MCP implementation through
+    // Electron's supported Node mode instead, while the desktop app owns the
+    // Local API and profile state in the original user-data directory.
     const entry = join(userDataPath, 'mcp-stdio-e2e.cjs')
     await build({
       stdin: {
@@ -279,7 +283,12 @@ async function probeMcpStdio(options, userDataPath, expectedProfileId) {
     const discover = await receive()
     send({ jsonrpc: '2.0', id: 2, method: 'tools/list', params: { _meta: meta } })
     const tools = await receive()
-    send({ jsonrpc: '2.0', id: 3, method: 'tools/call', params: { name: 'profiles_list', arguments: {}, _meta: meta } })
+    send({
+      jsonrpc: '2.0',
+      id: 3,
+      method: 'tools/call',
+      params: { name: 'profiles_list', arguments: {}, _meta: meta }
+    })
     const profiles = await receive()
 
     const token = (await readFile(join(userDataPath, 'vault', 'local-api.token'), 'utf8')).trim()
@@ -342,6 +351,7 @@ async function launchAppOnce(options, userDataPath) {
         appReady = await evaluate(client, 'Boolean(window.browserApi?.engine) && document.readyState === "complete"')
         if (appReady) break
       } catch {
+        // Packaged Electron may still be navigating the renderer target.
       }
       await delay(100)
     }
@@ -421,44 +431,79 @@ async function probeLocalApi(userDataPath, profileId, pageUrl) {
   const vault = join(userDataPath, 'vault')
   const metadata = JSON.parse(await readFile(join(vault, 'local-api.json'), 'utf8'))
   const token = (await readFile(join(vault, 'local-api.token'), 'utf8')).trim()
-  if (!metadata?.url || !/^http:\/\/127\.0\.0\.1:\d+$/.test(metadata.url)) throw new Error('Local API metadata did not expose a loopback URL')
+  if (!metadata?.url || !/^http:\/\/127\.0\.0\.1:\d+$/.test(metadata.url)) {
+    throw new Error('Local API metadata did not expose a loopback URL')
+  }
   if (token.length < 32) throw new Error('Local API token file is missing or invalid')
+
   const authorization = { Authorization: 'Bearer ' + token }
   const jsonHeaders = { ...authorization, 'Content-Type': 'application/json' }
   const profilePath = '/api/v1/profiles/' + encodeURIComponent(profileId)
-  const unauthorized = await fetch(metadata.url + '/api/v1/health', { signal: AbortSignal.timeout(5_000) })
-  const authorized = await fetch(metadata.url + '/api/v1/profiles', { headers: authorization, signal: AbortSignal.timeout(5_000) })
+  const unauthorized = await fetch(metadata.url + '/api/v1/health', {
+    signal: AbortSignal.timeout(5_000)
+  })
+  const authorized = await fetch(metadata.url + '/api/v1/profiles', {
+    headers: authorization,
+    signal: AbortSignal.timeout(5_000)
+  })
   const payload = authorized.ok ? await authorized.json() : {}
   const profiles = Array.isArray(payload.profiles) ? payload.profiles : []
+
   const opened = await fetch(metadata.url + profilePath + '/page/open', {
-    method: 'POST', headers: jsonHeaders, body: JSON.stringify({ url: pageUrl }), signal: AbortSignal.timeout(45_000)
+    method: 'POST',
+    headers: jsonHeaders,
+    body: JSON.stringify({ url: pageUrl }),
+    // The application may spend up to 5s waiting for Windows loopback CDP,
+    // then up to 20s on a CDP command and 15s waiting for document readiness.
+    // Keep the harness deadline outside that application-side failure budget so
+    // packaged CI reports the real page-control result instead of aborting first.
+    signal: AbortSignal.timeout(45_000)
   })
-  const firstSnapshotResponse = await fetch(metadata.url + profilePath + '/page/snapshot', { headers: authorization, signal: AbortSignal.timeout(10_000) })
+  const firstSnapshotResponse = await fetch(metadata.url + profilePath + '/page/snapshot', {
+    headers: authorization,
+    signal: AbortSignal.timeout(10_000)
+  })
   const firstSnapshot = firstSnapshotResponse.ok ? await firstSnapshotResponse.json() : {}
   const firstElements = Array.isArray(firstSnapshot.page?.elements) ? firstSnapshot.page.elements : []
   const textbox = firstElements.find((element) => element.role === 'textbox' && element.name === 'E2E input' && typeof element.ref === 'string')
+
   let typeStatus = 0
   if (textbox?.ref) {
     const typed = await fetch(metadata.url + profilePath + '/page/type', {
-      method: 'POST', headers: jsonHeaders, body: JSON.stringify({ ref: textbox.ref, text: 'zbrowser-local-api' }), signal: AbortSignal.timeout(10_000)
+      method: 'POST',
+      headers: jsonHeaders,
+      body: JSON.stringify({ ref: textbox.ref, text: 'zbrowser-local-api' }),
+      signal: AbortSignal.timeout(10_000)
     })
     typeStatus = typed.status
   }
-  const secondSnapshotResponse = await fetch(metadata.url + profilePath + '/page/snapshot', { headers: authorization, signal: AbortSignal.timeout(10_000) })
+
+  const secondSnapshotResponse = await fetch(metadata.url + profilePath + '/page/snapshot', {
+    headers: authorization,
+    signal: AbortSignal.timeout(10_000)
+  })
   const secondSnapshot = secondSnapshotResponse.ok ? await secondSnapshotResponse.json() : {}
   const secondElements = Array.isArray(secondSnapshot.page?.elements) ? secondSnapshot.page.elements : []
   const button = secondElements.find((element) => element.role === 'button' && element.name === 'E2E button' && typeof element.ref === 'string')
+
   let clickStatus = 0
   if (button?.ref) {
     const clicked = await fetch(metadata.url + profilePath + '/page/click', {
-      method: 'POST', headers: jsonHeaders, body: JSON.stringify({ ref: button.ref }), signal: AbortSignal.timeout(10_000)
+      method: 'POST',
+      headers: jsonHeaders,
+      body: JSON.stringify({ ref: button.ref }),
+      signal: AbortSignal.timeout(10_000)
     })
     clickStatus = clicked.status
   }
+
   const launchDiagnosticResponse = await fetch(metadata.url + profilePath + '/diagnostics/launch', {
-    method: 'POST', headers: authorization, signal: AbortSignal.timeout(15_000)
+    method: 'POST',
+    headers: authorization,
+    signal: AbortSignal.timeout(15_000)
   })
   const launchDiagnostic = launchDiagnosticResponse.ok ? await launchDiagnosticResponse.json() : {}
+
   return {
     unauthorizedStatus: unauthorized.status,
     authorizedStatus: authorized.status,
@@ -473,7 +518,9 @@ async function probeLocalApi(userDataPath, profileId, pageUrl) {
     clickStatus,
     launchDiagnosticStatus: launchDiagnosticResponse.status,
     launchDiagnosticProfileId: launchDiagnostic.profileId,
-    launchDiagnosticChecks: Array.isArray(launchDiagnostic.report?.checks) ? launchDiagnostic.report.checks.length : 0
+    launchDiagnosticChecks: Array.isArray(launchDiagnostic.report?.checks)
+      ? launchDiagnostic.report.checks.length
+      : 0
   }
 }
 
@@ -488,13 +535,16 @@ async function connectProfilePage(userDataPath, profileId) {
       const response = await fetch(`http://127.0.0.1:${port}/json/list`, { signal: AbortSignal.timeout(1000) })
       if (!response.ok) throw new Error(`DevTools HTTP ${response.status}`)
       const targets = await response.json()
-      const target = targets.find((item) => item.type === 'page' && item.webSocketDebuggerUrl && /^https?:/i.test(item.url)) ?? targets.find((item) => item.type === 'page' && item.webSocketDebuggerUrl)
+      const target = targets.find((item) => item.type === 'page' && item.webSocketDebuggerUrl && /^https?:/i.test(item.url))
+        ?? targets.find((item) => item.type === 'page' && item.webSocketDebuggerUrl)
       if (target) {
         const client = new CdpClient(target.webSocketDebuggerUrl)
         await client.open()
         return client
       }
-    } catch {}
+    } catch {
+      // Fingerprint Chromium is still starting.
+    }
     await delay(100)
   }
   throw new Error(`Timed out waiting for profile browser CDP: ${profileId}`)
@@ -505,19 +555,41 @@ async function probeRuntimeFingerprint(userDataPath, profileId) {
   try {
     return await evaluate(client, `(async () => {
       const uaData = navigator.userAgentData
-      const highEntropy = uaData?.getHighEntropyValues ? await uaData.getHighEntropyValues(['architecture', 'bitness', 'platformVersion', 'fullVersionList']) : {}
+      const highEntropy = uaData?.getHighEntropyValues
+        ? await uaData.getHighEntropyValues(['architecture', 'bitness', 'platformVersion', 'fullVersionList'])
+        : {}
       return {
         userAgent: navigator.userAgent,
         hardwareConcurrency: navigator.hardwareConcurrency,
         deviceMemory: navigator.deviceMemory,
         devicePixelRatio: window.devicePixelRatio,
-        window: { outerWidth: window.outerWidth, outerHeight: window.outerHeight, innerWidth: window.innerWidth, innerHeight: window.innerHeight },
-        screen: { width: screen.width, height: screen.height, availWidth: screen.availWidth, availHeight: screen.availHeight, colorDepth: screen.colorDepth, pixelDepth: screen.pixelDepth },
+        window: {
+          outerWidth: window.outerWidth,
+          outerHeight: window.outerHeight,
+          innerWidth: window.innerWidth,
+          innerHeight: window.innerHeight
+        },
+        screen: {
+          width: screen.width,
+          height: screen.height,
+          availWidth: screen.availWidth,
+          availHeight: screen.availHeight,
+          colorDepth: screen.colorDepth,
+          pixelDepth: screen.pixelDepth
+        },
         platform: navigator.platform,
         language: navigator.language,
         languages: navigator.languages,
         timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
-        uaData: uaData ? { platform: uaData.platform, mobile: uaData.mobile, brands: uaData.brands, architecture: highEntropy.architecture, bitness: highEntropy.bitness, platformVersion: highEntropy.platformVersion, fullVersionList: highEntropy.fullVersionList } : null
+        uaData: uaData ? {
+          platform: uaData.platform,
+          mobile: uaData.mobile,
+          brands: uaData.brands,
+          architecture: highEntropy.architecture,
+          bitness: highEntropy.bitness,
+          platformVersion: highEntropy.platformVersion,
+          fullVersionList: highEntropy.fullVersionList
+        } : null
       }
     })()`)
   } finally {
@@ -533,7 +605,12 @@ async function main() {
   const appData = join(root, 'app-data')
   const vault = join(appData, 'vault')
   await mkdir(vault, { recursive: true })
-  await writeFile(join(vault, 'settings.json'), JSON.stringify({ browserExecutable: options.browser, fingerprintKernel: Boolean(options.browser), enginePreference: 'auto', recycleRetentionDays: 0 }, null, 2))
+  await writeFile(join(vault, 'settings.json'), JSON.stringify({
+    browserExecutable: options.browser,
+    fingerprintKernel: Boolean(options.browser),
+    enginePreference: 'auto',
+    recycleRetentionDays: 0
+  }, null, 2))
   const site = await startSiteServer()
   const syntheticKernelVersion = options.installKernelVersion ? syntheticUpgradeVersion(options.installKernelVersion) : ''
   const previousKernelVersion = options.installKernelVersion ? syntheticPreviousVersion(options.installKernelVersion) : ''
@@ -542,6 +619,10 @@ async function main() {
   let primaryError
   try {
     first = await launchApp(options, appData)
+    // This single renderer transaction intentionally exercises the complete managed-kernel
+    // lifecycle. Packaged Windows builds can take longer than the default CDP command timeout
+    // while downloading/verifying a kernel and launching the runtime version probe; keep every
+    // assertion, but give this long-running transaction enough time to finish.
     const firstRun = await evaluate(first.client, `(async () => {
       const expectedKernelVersions = ${JSON.stringify(options.expectedKernelVersions)}
       const installKernelVersion = ${JSON.stringify(options.installKernelVersion)}
@@ -551,7 +632,9 @@ async function main() {
       let remoteCatalog = []
       if (installKernelVersion) {
         remoteCatalog = await window.browserApi.engine.releases()
-        if (!remoteCatalog.some(kernel => kernel.version === installKernelVersion)) throw new Error('Requested managed kernel is not present in the release catalog: ' + installKernelVersion)
+        if (!remoteCatalog.some(kernel => kernel.version === installKernelVersion)) {
+          throw new Error('Requested managed kernel is not present in the release catalog: ' + installKernelVersion)
+        }
         managedKernelInstall = await window.browserApi.engine.install(installKernelVersion)
         const health = await window.browserApi.engine.verify(installKernelVersion)
         if (health.status === 'corrupt') throw new Error('Managed kernel failed integrity verification: ' + health.message)
@@ -564,7 +647,12 @@ async function main() {
         communityKernelActivated = selected.version === expectedKernelVersions[0]
       }
       if (expectedKernelVersions[1]) {
-        try { await window.browserApi.engine.activate(expectedKernelVersions[1]); proKernelLockedWithoutLicense = false } catch { proKernelLockedWithoutLicense = true }
+        try {
+          await window.browserApi.engine.activate(expectedKernelVersions[1])
+          proKernelLockedWithoutLicense = false
+        } catch {
+          proKernelLockedWithoutLicense = true
+        }
       }
       const engineStatus = await window.browserApi.engine.status()
       let upgradeFlow = { exercised: false, backupCreated: false, runtimeVersionDiagnosed: false, runtimeFingerprintDiagnosed: false, rollbackRestored: false, checkpointCleared: false }
@@ -581,10 +669,36 @@ async function main() {
         const cleared = await window.browserApi.profiles.kernelUpgradeCheckpoint(upgradeProbe.id)
         upgradeFlow = {
           exercised: true,
-          backupCreated: Boolean(checkpoint && upgradedResult.checkpoint?.fromVersion === previousKernelVersion && checkpoint.fromVersion === previousKernelVersion && checkpoint.toVersion === installKernelVersion),
-          runtimeVersionDiagnosed: runtimeDiagnostic.ready && runtimeDiagnostic.checks.some(check => check.key === 'runtime-user-agent-version' && check.status === 'pass') && runtimeDiagnostic.checks.some(check => check.key === 'runtime-ua-ch-version' && check.status === 'pass'),
-          runtimeFingerprintDiagnosed: runtimeFingerprintDiagnostic.ready && Boolean(runtimeFingerprintDiagnostic.snapshot) && runtimeFingerprintDiagnostic.snapshot?.webgl?.available === true && Boolean(runtimeFingerprintDiagnostic.snapshot?.webgl?.unmaskedRenderer || runtimeFingerprintDiagnostic.snapshot?.webgl?.renderer) && Boolean(runtimeFingerprintDiagnostic.snapshot?.webgl?.unmaskedVendor || runtimeFingerprintDiagnostic.snapshot?.webgl?.vendor) && runtimeFingerprintDiagnostic.checks.some(check => check.key === 'runtime-webgl-renderer') && Boolean(runtimeFingerprintDiagnostic.snapshot?.systemGpu?.glRenderer || runtimeFingerprintDiagnostic.snapshot?.systemGpu?.devices?.length) && runtimeFingerprintDiagnostic.checks.some(check => check.key === 'runtime-system-gpu') && runtimeFingerprintDiagnostic.checks.some(check => check.key === 'runtime-language' && check.status === 'pass') && runtimeFingerprintDiagnostic.checks.some(check => check.key === 'runtime-timezone' && check.status === 'pass') && runtimeFingerprintDiagnostic.checks.some(check => check.key === 'runtime-user-agent-version' && check.status === 'pass'),
-          rollbackRestored: upgradedResult.profile?.kernelVersion === installKernelVersion && rolledBack.kernelVersion === previousKernelVersion && rolledBack.kernelFamily === 'fingerprint-chromium',
+          backupCreated: Boolean(checkpoint
+            && upgradedResult.checkpoint?.fromVersion === previousKernelVersion
+            && checkpoint.fromVersion === previousKernelVersion
+            && checkpoint.toVersion === installKernelVersion),
+          runtimeVersionDiagnosed: runtimeDiagnostic.ready
+            && runtimeDiagnostic.checks.some(check => check.key === 'runtime-user-agent-version' && check.status === 'pass')
+            && runtimeDiagnostic.checks.some(check => check.key === 'runtime-ua-ch-version' && check.status === 'pass'),
+          runtimeFingerprintDiagnosed: runtimeFingerprintDiagnostic.ready
+            && Boolean(runtimeFingerprintDiagnostic.snapshot)
+            && runtimeFingerprintDiagnostic.snapshot?.webgl?.available === true
+            && Boolean(
+              runtimeFingerprintDiagnostic.snapshot?.webgl?.unmaskedRenderer
+              || runtimeFingerprintDiagnostic.snapshot?.webgl?.renderer
+            )
+            && Boolean(
+              runtimeFingerprintDiagnostic.snapshot?.webgl?.unmaskedVendor
+              || runtimeFingerprintDiagnostic.snapshot?.webgl?.vendor
+            )
+            && runtimeFingerprintDiagnostic.checks.some(check => check.key === 'runtime-webgl-renderer')
+            && Boolean(
+              runtimeFingerprintDiagnostic.snapshot?.systemGpu?.glRenderer
+              || runtimeFingerprintDiagnostic.snapshot?.systemGpu?.devices?.length
+            )
+            && runtimeFingerprintDiagnostic.checks.some(check => check.key === 'runtime-system-gpu')
+            && runtimeFingerprintDiagnostic.checks.some(check => check.key === 'runtime-language' && check.status === 'pass')
+            && runtimeFingerprintDiagnostic.checks.some(check => check.key === 'runtime-timezone' && check.status === 'pass')
+            && runtimeFingerprintDiagnostic.checks.some(check => check.key === 'runtime-user-agent-version' && check.status === 'pass'),
+          rollbackRestored: upgradedResult.profile?.kernelVersion === installKernelVersion
+            && rolledBack.kernelVersion === previousKernelVersion
+            && rolledBack.kernelFamily === 'fingerprint-chromium',
           checkpointCleared: cleared === null,
           upgradedVersion: upgradedResult.profile?.kernelVersion,
           rolledBackVersion: rolledBack.kernelVersion,
@@ -597,75 +711,224 @@ async function main() {
       const a = await window.browserApi.profiles.create(${JSON.stringify(draft('E2E 环境 A', 100001, site.url))})
       const b = await window.browserApi.profiles.create(${JSON.stringify(draft('E2E 环境 B', 200002, site.url))})
       const copy = await window.browserApi.profiles.duplicate(a.id)
-      const editedFingerprint = { ...a.fingerprint, seed: 345678901, hardwareProfileId: 'windows-11-rtx4070', gpuBucket: 34, renderIdentityVersion: 4, platform: 'windows', platformVersion: '10.0.0', brand: 'Chrome', brandVersion: '', hardwareConcurrency: 16, language: 'en-US', acceptLanguages: 'en-US,en', timezone: 'America/New_York', webrtcPolicy: 'proxy_only', networkIdentityMode: 'manual', proxyExitPolicy: 'block', screenWidth: 2560, screenHeight: 1440, disabledSpoofing: ['canvas', 'audio'] }
-      const editedA = await window.browserApi.profiles.update(a.id, { ...a, name: 'E2E 环境 A 指纹已修改', fingerprint: editedFingerprint })
+      const editedFingerprint = {
+        ...a.fingerprint,
+        seed: 345678901,
+        hardwareProfileId: 'windows-11-rtx4070',
+        gpuBucket: 34,
+        renderIdentityVersion: 4,
+        platform: 'windows',
+        platformVersion: '10.0.0',
+        brand: 'Chrome',
+        brandVersion: '',
+        hardwareConcurrency: 16,
+        language: 'en-US',
+        acceptLanguages: 'en-US,en',
+        timezone: 'America/New_York',
+        webrtcPolicy: 'proxy_only',
+        networkIdentityMode: 'manual',
+        proxyExitPolicy: 'block',
+        screenWidth: 2560,
+        screenHeight: 1440,
+        disabledSpoofing: ['canvas', 'audio']
+      }
+      const editedA = await window.browserApi.profiles.update(a.id, {
+        ...a,
+        name: 'E2E 环境 A 指纹已修改',
+        fingerprint: editedFingerprint
+      })
       const updated = await window.browserApi.profiles.update(b.id, { ...b, name: 'E2E 环境 B 已编辑' })
-      const launched = await Promise.all([window.browserApi.profiles.launch(editedA.id), window.browserApi.profiles.launch(updated.id)])
+      const launched = await Promise.all([
+        window.browserApi.profiles.launch(editedA.id),
+        window.browserApi.profiles.launch(updated.id)
+      ])
       await new Promise(resolve => setTimeout(resolve, 1500))
       const running = await window.browserApi.profiles.list()
       let runningKernelUpgradeBlocked = false
-      try { await window.browserApi.profiles.upgradeKernel(editedA.id, syntheticKernelVersion || '999.0.0.1', 'fingerprint-chromium') } catch (error) { runningKernelUpgradeBlocked = String(error?.message || error).includes('请先关闭浏览器环境再升级内核') }
-      return { a, editedA, updated, copy, kernelCatalog, remoteCatalog, managedKernelInstall, communityKernelActivated, proKernelLockedWithoutLicense, engineStatus, upgradeFlow, runningKernelUpgradeBlocked, launchedStatuses: launched.map(profile => profile.status), runningStatuses: running.filter(profile => [a.id, updated.id].includes(profile.id)).map(profile => profile.status), crashHistory: await window.browserApi.profiles.crashHistory(a.id) }
+      try {
+        await window.browserApi.profiles.upgradeKernel(editedA.id, syntheticKernelVersion || '999.0.0.1', 'fingerprint-chromium')
+      } catch (error) {
+        runningKernelUpgradeBlocked = String(error?.message || error).includes('请先关闭浏览器环境再升级内核')
+      }
+      return {
+        a, editedA, updated, copy, kernelCatalog, remoteCatalog, managedKernelInstall, communityKernelActivated, proKernelLockedWithoutLicense,
+        engineStatus, upgradeFlow, runningKernelUpgradeBlocked,
+        launchedStatuses: launched.map(profile => profile.status),
+        runningStatuses: running.filter(profile => [a.id, updated.id].includes(profile.id)).map(profile => profile.status),
+        crashHistory: await window.browserApi.profiles.crashHistory(a.id)
+      }
     })()`, 120_000)
+
     const localApiProbe = await probeLocalApi(appData, firstRun.editedA.id, site.url)
     const mcpProbe = await probeMcpStdio(options, appData, firstRun.editedA.id)
     const runtimeFingerprint = await probeRuntimeFingerprint(appData, firstRun.editedA.id)
-    const cleanupRun = await evaluate(first.client, `(async () => { await window.browserApi.profiles.closeAll(); const closed = await window.browserApi.profiles.list(); await window.browserApi.profiles.remove(${JSON.stringify(firstRun.copy.id)}); return { closedStatuses: closed.filter(profile => [${JSON.stringify(firstRun.a.id)}, ${JSON.stringify(firstRun.updated.id)}].includes(profile.id)).map(profile => profile.status), remaining: (await window.browserApi.profiles.list()).map(profile => ({ id: profile.id, name: profile.name, seed: profile.fingerprint.seed })), trash: await window.browserApi.profiles.trash() } })()`)
+    const cleanupRun = await evaluate(first.client, `(async () => {
+      await window.browserApi.profiles.closeAll()
+      const closed = await window.browserApi.profiles.list()
+      await window.browserApi.profiles.remove(${JSON.stringify(firstRun.copy.id)})
+      return {
+        closedStatuses: closed.filter(profile => [${JSON.stringify(firstRun.a.id)}, ${JSON.stringify(firstRun.updated.id)}].includes(profile.id)).map(profile => profile.status),
+        remaining: (await window.browserApi.profiles.list()).map(profile => ({ id: profile.id, name: profile.name, seed: profile.fingerprint.seed })),
+        trash: await window.browserApi.profiles.trash()
+      }
+    })()`)
     Object.assign(firstRun, cleanupRun)
     await quitApp(first)
     first = undefined
+
     const editedLaunch = await readLastLaunch(appData, firstRun.editedA.id)
+
     second = await launchApp(options, appData)
-    const secondRun = await evaluate(second.client, `(async () => ({ profiles: (await window.browserApi.profiles.list()).map(profile => ({ id: profile.id, name: profile.name, seed: profile.fingerprint.seed, status: profile.status })), recovery: await window.browserApi.diagnostics.sessionHealth() }))()`)
+    const secondRun = await evaluate(second.client, `(async () => ({
+      profiles: (await window.browserApi.profiles.list()).map(profile => ({
+        id: profile.id,
+        name: profile.name,
+        seed: profile.fingerprint.seed,
+        status: profile.status
+      })),
+      recovery: await window.browserApi.diagnostics.sessionHealth()
+    }))()`)
     await quitApp(second)
     second = undefined
+
     const owners = await Promise.all(secondRun.profiles.map((profile) => readOwner(appData, profile.id)))
-    const runtimeBaseFingerprintVisible = runtimeFingerprint.hardwareConcurrency === 16 && runtimeFingerprint.devicePixelRatio === 1 && runtimeFingerprint.screen.colorDepth === 24 && runtimeFingerprint.screen.pixelDepth === 24 && runtimeFingerprint.platform === 'Win32' && runtimeFingerprint.language === 'en-US' && runtimeFingerprint.timezone === 'America/New_York'
-    const runtimeCustomKernelHardwareFingerprintVisible = runtimeFingerprint.deviceMemory === 8 && runtimeFingerprint.screen.width === 2560 && runtimeFingerprint.screen.height === 1440 && runtimeFingerprint.uaData?.platform === 'Windows' && runtimeFingerprint.uaData?.architecture === 'x86' && runtimeFingerprint.uaData?.bitness === '64'
+    const runtimeBaseFingerprintVisible = runtimeFingerprint.hardwareConcurrency === 16
+      && runtimeFingerprint.devicePixelRatio === 1
+      && runtimeFingerprint.screen.colorDepth === 24
+      && runtimeFingerprint.screen.pixelDepth === 24
+      && runtimeFingerprint.platform === 'Win32'
+      && runtimeFingerprint.language === 'en-US'
+      && runtimeFingerprint.timezone === 'America/New_York'
+    const runtimeCustomKernelHardwareFingerprintVisible = runtimeFingerprint.deviceMemory === 8
+      && runtimeFingerprint.screen.width === 2560
+      && runtimeFingerprint.screen.height === 1440
+      && runtimeFingerprint.uaData?.platform === 'Windows'
+      && runtimeFingerprint.uaData?.architecture === 'x86'
+      && runtimeFingerprint.uaData?.bitness === '64'
     const runtimeKernelVersion = firstRun.engineStatus?.fingerprintKernel ? firstRun.engineStatus.version : undefined
     const runtimeKernelMajor = runtimeKernelVersion?.split('.')[0]
-    const runtimeUserAgentKernelVersionSynced = !runtimeKernelMajor || new RegExp(`(?:Chrome|Chromium)/${runtimeKernelMajor}\\.`).test(runtimeFingerprint.userAgent ?? '')
+    const runtimeUserAgentKernelVersionSynced = !runtimeKernelMajor
+      || new RegExp(`(?:Chrome|Chromium)/${runtimeKernelMajor}\\.`).test(runtimeFingerprint.userAgent ?? '')
     const runtimeUaChExposed = Boolean(runtimeFingerprint.uaData)
-    const runtimeUaChFullVersionSynced = !runtimeKernelVersion || !runtimeUaChExposed || Boolean(runtimeFingerprint.uaData?.fullVersionList?.some((item) => item.version === runtimeKernelVersion))
+    const runtimeUaChFullVersionSynced = !runtimeKernelVersion
+      || !runtimeUaChExposed
+      || Boolean(runtimeFingerprint.uaData?.fullVersionList?.some((item) => item.version === runtimeKernelVersion))
     const checks = {
       createdIndependentProfiles: firstRun.a.id !== firstRun.updated.id,
-      duplicatedWithNewIdentityAndSeed: firstRun.copy.id !== firstRun.a.id && firstRun.copy.fingerprint.seed !== firstRun.a.fingerprint.seed,
+      duplicatedWithNewIdentityAndSeed: firstRun.copy.id !== firstRun.a.id
+        && firstRun.copy.fingerprint.seed !== firstRun.a.fingerprint.seed,
       editApplied: firstRun.updated.name === 'E2E 环境 B 已编辑',
-      fingerprintEditPersisted: firstRun.editedA.name === 'E2E 环境 A 指纹已修改' && firstRun.editedA.fingerprint.seed === 345678901 && firstRun.editedA.fingerprint.hardwareProfileId === 'windows-11-rtx4070' && firstRun.editedA.fingerprint.hardwareConcurrency === 16 && firstRun.editedA.fingerprint.screenWidth === 2560 && firstRun.editedA.fingerprint.screenHeight === 1440 && firstRun.editedA.fingerprint.language === 'en-US' && firstRun.editedA.fingerprint.acceptLanguages === 'en-US,en' && firstRun.editedA.fingerprint.timezone === 'America/New_York' && firstRun.editedA.fingerprint.webrtcPolicy === 'proxy_only' && firstRun.editedA.fingerprint.disabledSpoofing.includes('canvas') && firstRun.editedA.fingerprint.disabledSpoofing.includes('audio'),
-      runtimeHardwareFingerprintVisible: runtimeBaseFingerprintVisible && (!options.requireCustomKernelSurfaces || runtimeCustomKernelHardwareFingerprintVisible),
-      fingerprintEditReachedLaunchArgs: Array.isArray(editedLaunch.args) && editedLaunch.args.includes('--fingerprint-platform=windows') && editedLaunch.args.includes('--fingerprint-platform-version=10.0.0') && editedLaunch.args.includes('--fingerprint-hardware-concurrency=16') && editedLaunch.args.includes('--fingerprint-screen-width=2560') && editedLaunch.args.includes('--fingerprint-screen-height=1440') && editedLaunch.args.includes('--fingerprint-device-scale-factor=1') && editedLaunch.args.includes('--window-size=1200,800') && editedLaunch.args.includes('--fingerprint-language=en-US') && editedLaunch.args.includes('--lang=en-US') && editedLaunch.args.includes('--accept-lang=en-US,en') && editedLaunch.args.includes('--timezone=America/New_York') && editedLaunch.args.includes('--fingerprint-render-identity=v4') && editedLaunch.args.includes('--disable-spoofing=canvas,audio') && editedLaunch.args.includes('--disable-non-proxied-udp') && editedLaunch.args.includes('--webrtc-ip-handling-policy=disable_non_proxied_udp') && (!runtimeKernelVersion || editedLaunch.args.includes(`--fingerprint-brand-version=${runtimeKernelVersion}`)),
+      fingerprintEditPersisted: firstRun.editedA.name === 'E2E 环境 A 指纹已修改'
+        && firstRun.editedA.fingerprint.seed === 345678901
+        && firstRun.editedA.fingerprint.hardwareProfileId === 'windows-11-rtx4070'
+        && firstRun.editedA.fingerprint.hardwareConcurrency === 16
+        && firstRun.editedA.fingerprint.screenWidth === 2560
+        && firstRun.editedA.fingerprint.screenHeight === 1440
+        && firstRun.editedA.fingerprint.language === 'en-US'
+        && firstRun.editedA.fingerprint.acceptLanguages === 'en-US,en'
+        && firstRun.editedA.fingerprint.timezone === 'America/New_York'
+        && firstRun.editedA.fingerprint.webrtcPolicy === 'proxy_only'
+        && firstRun.editedA.fingerprint.disabledSpoofing.includes('canvas')
+        && firstRun.editedA.fingerprint.disabledSpoofing.includes('audio'),
+      runtimeHardwareFingerprintVisible: runtimeBaseFingerprintVisible
+        && (!options.requireCustomKernelSurfaces || runtimeCustomKernelHardwareFingerprintVisible),
+      fingerprintEditReachedLaunchArgs: Array.isArray(editedLaunch.args)
+        && editedLaunch.args.includes('--fingerprint-platform=windows')
+        && editedLaunch.args.includes('--fingerprint-platform-version=10.0.0')
+        && editedLaunch.args.includes('--fingerprint-hardware-concurrency=16')
+        && editedLaunch.args.includes('--fingerprint-screen-width=2560')
+        && editedLaunch.args.includes('--fingerprint-screen-height=1440')
+        && editedLaunch.args.includes('--fingerprint-device-scale-factor=1')
+        && editedLaunch.args.includes('--window-size=1200,800')
+        && editedLaunch.args.includes('--fingerprint-language=en-US')
+        && editedLaunch.args.includes('--lang=en-US')
+        && editedLaunch.args.includes('--accept-lang=en-US,en')
+        && editedLaunch.args.includes('--timezone=America/New_York')
+        && editedLaunch.args.includes('--fingerprint-render-identity=v4')
+        && editedLaunch.args.includes('--disable-spoofing=canvas,audio')
+        && editedLaunch.args.includes('--disable-non-proxied-udp')
+        && editedLaunch.args.includes('--webrtc-ip-handling-policy=disable_non_proxied_udp')
+        && (!runtimeKernelVersion || editedLaunch.args.includes(`--fingerprint-brand-version=${runtimeKernelVersion}`)),
       runtimeUserAgentKernelVersionSynced,
       runtimeUaChFullVersionSynced,
       localApiRequiresBearerAuth: localApiProbe.unauthorizedStatus === 401,
-      localApiProfileListAvailable: localApiProbe.authorizedStatus === 200 && localApiProbe.profileIds.includes(firstRun.editedA.id) && localApiProbe.profileIds.includes(firstRun.updated.id),
+      localApiProfileListAvailable: localApiProbe.authorizedStatus === 200
+        && localApiProbe.profileIds.includes(firstRun.editedA.id)
+        && localApiProbe.profileIds.includes(firstRun.updated.id),
       localApiPageOpen: localApiProbe.pageOpenStatus === 200,
       localApiPageSnapshot: localApiProbe.pageSnapshotStatus === 200 && localApiProbe.textboxFound === true,
       localApiPageType: localApiProbe.typeStatus === 200,
-      localApiPageClick: localApiProbe.secondSnapshotStatus === 200 && localApiProbe.buttonFound === true && localApiProbe.clickStatus === 200,
-      localApiLaunchDiagnostic: localApiProbe.launchDiagnosticStatus === 200 && localApiProbe.launchDiagnosticProfileId === firstRun.editedA.id && localApiProbe.launchDiagnosticChecks > 0,
+      localApiPageClick: localApiProbe.secondSnapshotStatus === 200
+        && localApiProbe.buttonFound === true
+        && localApiProbe.clickStatus === 200,
+      localApiLaunchDiagnostic: localApiProbe.launchDiagnosticStatus === 200
+        && localApiProbe.launchDiagnosticProfileId === firstRun.editedA.id
+        && localApiProbe.launchDiagnosticChecks > 0,
       mcpStdioModernDiscovery: mcpProbe.modernDiscovery === true,
-      mcpStdioToolsAvailable: mcpProbe.toolNames.includes('profiles_list') && mcpProbe.toolNames.includes('profile_status') && mcpProbe.toolNames.includes('page_snapshot') && mcpProbe.toolNames.includes('page_click'),
+      mcpStdioToolsAvailable: mcpProbe.toolNames.includes('profiles_list')
+        && mcpProbe.toolNames.includes('profile_status')
+        && mcpProbe.toolNames.includes('page_snapshot')
+        && mcpProbe.toolNames.includes('page_click'),
       mcpStdioLocalApiBridge: mcpProbe.expectedProfileVisible === true,
       mcpStdioSecretsHidden: mcpProbe.tokenExposed === false && mcpProbe.localTokenPathExposed === false,
       mcpStdioCleanExit: mcpProbe.cleanExit === true,
       runningKernelUpgradeBlocked: firstRun.runningKernelUpgradeBlocked === true,
-      kernelUpgradeAutoBackupAndRollback: !options.installKernelVersion || (firstRun.upgradeFlow?.exercised === true && firstRun.upgradeFlow.backupCreated === true && firstRun.upgradeFlow.rollbackRestored === true && firstRun.upgradeFlow.checkpointCleared === true),
+      kernelUpgradeAutoBackupAndRollback: !options.installKernelVersion || (firstRun.upgradeFlow?.exercised === true
+        && firstRun.upgradeFlow.backupCreated === true
+        && firstRun.upgradeFlow.rollbackRestored === true
+        && firstRun.upgradeFlow.checkpointCleared === true),
       kernelUpgradeRuntimeVersionDiagnosed: !options.installKernelVersion || firstRun.upgradeFlow?.runtimeVersionDiagnosed === true,
       kernelUpgradeRuntimeFingerprintDiagnosed: !options.installKernelVersion || firstRun.upgradeFlow?.runtimeFingerprintDiagnosed === true,
-      realBrowsersStarted: firstRun.launchedStatuses.every((status) => status === 'running') && firstRun.runningStatuses.every((status) => status === 'running'),
+      realBrowsersStarted: firstRun.launchedStatuses.every((status) => status === 'running')
+        && firstRun.runningStatuses.every((status) => status === 'running'),
       allBrowsersClosed: firstRun.closedStatuses.every((status) => status === 'closed'),
       crashHistoryApiAvailable: Array.isArray(firstRun.crashHistory),
       deletedProfileMovedToTrash: firstRun.trash.some((item) => item.profileId === firstRun.copy.id),
       cleanRestartDetected: secondRun.recovery.previousUnclean === false,
-      restartPersistence: secondRun.profiles.length === 2 && secondRun.profiles.some((profile) => profile.name === 'E2E 环境 A 指纹已修改' && profile.seed === 345678901) && secondRun.profiles.some((profile) => profile.name === 'E2E 环境 B 已编辑' && profile.seed === 200002) && secondRun.profiles.every((profile) => profile.status === 'closed'),
+      restartPersistence: secondRun.profiles.length === 2
+        && secondRun.profiles.some((profile) => profile.name === 'E2E 环境 A 指纹已修改' && profile.seed === 345678901)
+        && secondRun.profiles.some((profile) => profile.name === 'E2E 环境 B 已编辑' && profile.seed === 200002)
+        && secondRun.profiles.every((profile) => profile.status === 'closed'),
       ownerMarkersMatch: owners.every((owner, index) => owner.profileId === secondRun.profiles[index].id),
-      bundledKernelCatalogVisible: options.expectedKernelVersions.every((version) => firstRun.kernelCatalog.some((kernel) => kernel.version === version && kernel.origin === 'bundled')),
-      managedKernelInstalled: !options.installKernelVersion || (firstRun.managedKernelInstall?.version === options.installKernelVersion && firstRun.kernelCatalog.some(kernel => kernel.version === options.installKernelVersion && kernel.installed)),
-      managedKernelCatalogAvailable: !options.installKernelVersion || firstRun.remoteCatalog.some(kernel => kernel.version === options.installKernelVersion),
+      bundledKernelCatalogVisible: options.expectedKernelVersions.every((version) => firstRun.kernelCatalog
+        .some((kernel) => kernel.version === version && kernel.origin === 'bundled')),
+      managedKernelInstalled: !options.installKernelVersion
+        || (firstRun.managedKernelInstall?.version === options.installKernelVersion
+          && firstRun.kernelCatalog.some(kernel => kernel.version === options.installKernelVersion && kernel.installed)),
+      managedKernelCatalogAvailable: !options.installKernelVersion
+        || firstRun.remoteCatalog.some(kernel => kernel.version === options.installKernelVersion),
       communityKernelActivated: firstRun.communityKernelActivated,
       proKernelLockedWithoutLicense: firstRun.proKernelLockedWithoutLicense
     }
-    const report = { schemaVersion: 1, tool: { name: 'app-e2e', version: APP_E2E_TOOL_VERSION, cleanupContract: 'windows-lock-retry-backoff-v1' }, checkedAt: new Date().toISOString(), app: options.app, appMode: options.packaged ? 'packaged' : 'development-runtime', browser: options.browser || `managed:${options.installKernelVersion}`, requireCustomKernelSurfaces: options.requireCustomKernelSurfaces, runtimeFingerprint, runtimeSurfaceDiagnostics: { baseFingerprintVisible: runtimeBaseFingerprintVisible, customKernelHardwareFingerprintVisible: runtimeCustomKernelHardwareFingerprintVisible, expectedKernelVersion: runtimeKernelVersion, userAgentKernelVersionSynced: runtimeUserAgentKernelVersionSynced, uaChExposed: runtimeUaChExposed, uaChFullVersionSynced: runtimeUaChFullVersionSynced, uaChStatus: runtimeUaChExposed ? 'exposed-and-checked' : 'not-exposed-by-runtime' }, localApiDiagnostics: localApiProbe, mcpDiagnostics: mcpProbe, kernelUpgradeDiagnostics: firstRun.upgradeFlow, checks, passed: Object.values(checks).every(Boolean), retainedDataPath: options.keepData ? root : undefined }
+    const report = {
+      schemaVersion: 1,
+      tool: {
+        name: 'app-e2e',
+        version: APP_E2E_TOOL_VERSION,
+        cleanupContract: 'windows-lock-retry-backoff-v1'
+      },
+      checkedAt: new Date().toISOString(),
+      app: options.app,
+      appMode: options.packaged ? 'packaged' : 'development-runtime',
+      browser: options.browser || `managed:${options.installKernelVersion}`,
+      requireCustomKernelSurfaces: options.requireCustomKernelSurfaces,
+      runtimeFingerprint,
+      runtimeSurfaceDiagnostics: {
+        baseFingerprintVisible: runtimeBaseFingerprintVisible,
+        customKernelHardwareFingerprintVisible: runtimeCustomKernelHardwareFingerprintVisible,
+        expectedKernelVersion: runtimeKernelVersion,
+        userAgentKernelVersionSynced: runtimeUserAgentKernelVersionSynced,
+        uaChExposed: runtimeUaChExposed,
+        uaChFullVersionSynced: runtimeUaChFullVersionSynced,
+        uaChStatus: runtimeUaChExposed ? 'exposed-and-checked' : 'not-exposed-by-runtime'
+      },
+      localApiDiagnostics: localApiProbe,
+      mcpDiagnostics: mcpProbe,
+      kernelUpgradeDiagnostics: firstRun.upgradeFlow,
+      checks,
+      passed: Object.values(checks).every(Boolean),
+      retainedDataPath: options.keepData ? root : undefined
+    }
     await mkdir(dirname(options.output), { recursive: true })
     await writeFile(options.output, `${JSON.stringify(report, null, 2)}\n`)
     console.log(`Prism app E2E: ${report.passed ? 'PASS' : 'FAIL'}`)
@@ -681,7 +944,9 @@ async function main() {
     if (second) await quitApp(second).catch(() => second.child.kill('SIGKILL'))
     await site.close()
     if (!options.keepData) {
-      try { await removeTemporaryTree(root) } catch (error) {
+      try {
+        await removeTemporaryTree(root)
+      } catch (error) {
         if (!primaryError) throw error
         console.error(`App E2E temporary-data cleanup also failed: ${error instanceof Error ? error.message : String(error)}`)
       }
