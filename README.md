@@ -69,7 +69,11 @@ ZBrowser 的“浏览器内核”页面支持：
 - 在线读取 `adryfish/fingerprint-chromium` 的 GitHub Releases。
 - Windows x64 下载、断点续传、SHA-256 校验、安装和完整性检查。
 - 内核切换、回滚、本地构建导入和移除。
-- Chromium `144.0.7559.132` 标记为当前“推荐兼容”。
-- 高于 144 的开源版本标记为“新版实验”，安装前会提示先在测试环境验证 Canvas、WebGL、GPU、Audio、WebRTC、语言与时区一致性。
+- Profile 固定的是 Chromium 主版本 + 内核系列；同一主版本内会自动选择不低于当前下限的最高已安装补丁。
+- 自动补丁升级不会降级，也不会跨主版本；跨主版本必须由用户明确升级。
+- 同主版本新补丁只有在浏览器实际成功启动后才会推进该 Profile 的版本下限。
+- 批量升级默认逐个执行，可先升级 1 个环境做运行时诊断；失败立即暂停并可从升级前备份回滚。
+- 升级后的运行时诊断会核对 `navigator.userAgent` 与 UA-CH `fullVersionList` 是否与实际内核版本一致。
+- 内核升级备份只保留最近 1 份，并排除可重新生成的 Chromium Cache；正常使用进入 7 天保留期后自动清理。
 
 ZBrowser 不使用或绕过 Prism Pro 内核授权。开源内核的第三方许可说明见 `THIRD_PARTY_NOTICES.md`。
