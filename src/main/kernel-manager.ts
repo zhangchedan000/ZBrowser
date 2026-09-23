@@ -20,7 +20,7 @@ import type { Logger } from './app-logger'
 import type { AppSettings } from '../shared/types'
 
 const execFileAsync = promisify(execFile)
-const RELEASES_URL = 'https://api.github.com/repos/adryfish/fingerprint-chromium/releases?per_page=10'
+const RELEASES_URL = 'https://api.github.com/repos/adryfish/fingerprint-chromium/releases?per_page=100'
 
 const FALLBACK_RELEASES: GithubRelease[] = [
   {
@@ -177,10 +177,10 @@ export class KernelManager {
       })
       if (!response.ok) throw new Error(`获取内核版本失败（GitHub HTTP ${response.status}）`)
       releases = await response.json() as GithubRelease[]
-      // GitHub's first page can legitimately omit older pinned kernels that are
-      // still supported by ZBrowser. Merge in our verified built-in entries so
-      // a successful-but-truncated remote catalog cannot make a locked version
-      // disappear from install/repair flows.
+      // Request GitHub's maximum release page size so the Kernel Manager exposes the
+      // complete upstream catalog while it remains below 100 releases. Merge in
+      // verified built-in entries so pinned kernels remain repairable if the
+      // remote catalog is temporarily incomplete.
       const byVersion = new Map(FALLBACK_RELEASES.map((release) => [release.tag_name, release]))
       for (const release of releases) byVersion.set(release.tag_name, release)
       releases = [...byVersion.values()]
