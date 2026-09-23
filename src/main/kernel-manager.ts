@@ -20,7 +20,9 @@ import type { Logger } from './app-logger'
 import type { AppSettings } from '../shared/types'
 
 const execFileAsync = promisify(execFile)
-const RELEASES_URL = 'https://api.github.com/repos/adryfish/fingerprint-chromium/releases?per_page=100'
+const RELEASES_URL = 'https://api.github.com/repos/adryfish/fingerprint-chromium/releases'
+const RELEASES_PAGE_SIZE = 100
+const MAX_RELEASE_PAGES = 100
 
 const FALLBACK_RELEASES: GithubRelease[] = [
   {
@@ -171,16 +173,22 @@ export class KernelManager {
     const installed = await this.installedManifests()
     let releases: GithubRelease[]
     try {
-      const response = await fetch(RELEASES_URL, {
-        headers: { accept: 'application/vnd.github+json', 'user-agent': 'ZBrowser/0.2' },
-        signal: AbortSignal.timeout(15_000)
-      })
-      if (!response.ok) throw new Error(`获取内核版本失败（GitHub HTTP ${response.status}）`)
-      releases = await response.json() as GithubRelease[]
-      // Request GitHub's maximum release page size so the Kernel Manager exposes the
-      // complete upstream catalog while it remains below 100 releases. Merge in
-      // verified built-in entries so pinned kernels remain repairable if the
-      // remote catalog is temporarily incomplete.
+      releases = []
+      for (let page = 1; page <= MAX_RELEASE_PAGES; page += 1) {
+        const response = await fetch(`${RELEASES_URL}?per_page=${RELEASES_PAGE_SIZE}&page=${page}`, {
+          headers: { accept: 'application/vnd.github+json', 'user-agent': 'ZBrowser/0.2' },
+          signal: AbortSignal.timeout(15_000)
+        })
+        if (!response.ok) throw new Error(`获取内核版本失败（GitHub HTTP ${response.status}）`)
+        const pageReleases = await response.json() as GithubRelease[]
+        if (!Array.isArray(pageReleases)) throw new Error('获取内核版本失败（GitHub 返回格式无效）')
+        releases.push(...pageReleases)
+        if (pageReleases.length < RELEASES_PAGE_SIZE) break
+        if (page === MAX_RELEASE_PAGES) throw new Error('获取内核版本失败（远程版本目录页数异常）')
+      }
+      // Fetch every GitHub release page so the Kernel Manager never silently truncates
+      // the upstream catalog. Merge in verified built-in entries so pinned kernels
+      // remain repairable if the remote catalog is temporarily incomplete.
       const byVersion = new Map(FALLBACK_RELEASES.map((release) => [release.tag_name, release]))
       for (const release of releases) byVersion.set(release.tag_name, release)
       releases = [...byVersion.values()]
