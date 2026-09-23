@@ -222,6 +222,13 @@ export function ProfileEditor({ open, profile, suggestedIndex, saving, extension
     await form.validateFields()
     const values = form.getFieldsValue(true) as EditorValues
     const color = typeof values.color === 'string' ? values.color : values.color.toHexString()
+    const selectedKernel = values.kernelVersion
+      ? kernels.find((kernel) => kernelReleaseMatchesPin(kernel, values.kernelVersion, values.kernelFamily))
+        ?? kernels.find((kernel) => kernelReleaseMatchesPin(kernel, values.kernelVersion))
+      : undefined
+    const selectedKernelFamily = values.kernelVersion
+      ? values.kernelFamily ?? (selectedKernel ? kernelFamilyForRelease(selectedKernel) : undefined)
+      : undefined
     await onSave({
       name: values.name,
       note: values.note,
@@ -230,7 +237,7 @@ export function ProfileEditor({ open, profile, suggestedIndex, saving, extension
       color,
       startUrls: values.startUrlsText.split(/\r?\n/).map((line) => line.trim()).filter(Boolean),
       kernelVersion: values.kernelVersion,
-      kernelFamily: values.kernelFamily,
+      kernelFamily: selectedKernelFamily,
       environmentType: values.environmentType ?? 'account',
       window: values.window,
       proxy: values.proxy,
@@ -295,7 +302,7 @@ export function ProfileEditor({ open, profile, suggestedIndex, saving, extension
           message={`固定的 ${kernelMajorVersion(kernelVersion) ?? '?'} 系列当前没有可用内核`}
           description={kernelFamily
             ? `需要 ${kernelFamily} 系列、版本不低于 ${kernelVersion} 的同主版本内核；不会自动降级或跨主版本。`
-            : '旧环境尚未固定内核系列，只会继续寻找原来的精确版本；保存一次环境配置即可锁定系列。'}
+            : '旧环境尚未固定内核系列，只会继续寻找原来的精确版本；请先恢复该精确版本，再保存环境配置锁定系列。'}
         />
       )}
       {kernelVersion && resolvedPinnedKernel && automaticPatchVersion && automaticPatchVersion !== kernelVersion && (
