@@ -472,6 +472,9 @@ export interface FingerprintRepairPlan {
   sections: IdentityConfigSection[]
   changes: FingerprintRepairChange[]
   warnings: string[]
+  diagnosisSummary?: string
+  diagnosedIssueKeys?: string[]
+  protectedUserOverrides?: number
   blockedReason?: string
 }
 

@@ -32,6 +32,11 @@ import {
 import type { Logger } from './app-logger'
 import type { ProfileStore } from './profile-store'
 import type { FingerprintRepairStateStore } from './fingerprint-repair-state'
+import { IdentityBaselineStore } from './identity-baseline-store'
+import { IdentityHealthHistoryStore } from './identity-health-history'
+import { buildIdentityDriftIntelligence } from '../shared/identity-drift-health'
+import { summarizeIdentityHealthTrend } from '../shared/identity-health-trend'
+import type { IdentityDriftReport } from '../shared/identity-baseline-model'
 
 interface FingerprintRuntimeVerifier {
   diagnoseFingerprintRuntime(id: string): Promise<FingerprintRuntimeDiagnosticReport>
@@ -175,6 +180,170 @@ function scopedRuntimeVerify(
   })
 }
 
+interface DiagnosisRepairScope {
+  constrained: boolean
+  targets: Set<string>
+  issueKeys: string[]
+  protectedUserOverrides: number
+  warnings: string[]
+}
+
+function repairTargetKey(section: IdentityConfigSection, key: string): string {
+  return `${section}:${key}`
+}
+
+function diagnosisRepairScope(
+  report: FingerprintRuntimeDiagnosticReport,
+  profile: BrowserProfile
+): DiagnosisRepairScope {
+  const diagnosis = report.identityDiagnosis
+  if (!diagnosis) {
+    return {
+      constrained: false,
+      targets: new Set(),
+      issueKeys: [],
+      protectedUserOverrides: 0,
+      warnings: []
+    }
+  }
+
+  const provenance = normalizeIdentityConfigProvenance(profile.identityConfigProvenance)
+  const targets = new Set<string>()
+  const issueKeys = new Set<string>()
+  const protectedTargets = new Set<string>()
+  const warnings: string[] = []
+
+  if (diagnosis.issues.length) {
+    for (const issue of diagnosis.issues) {
+      issueKeys.add(issue.key)
+      if (issue.repairPolicy === 'suggest_only') {
+        for (const reference of issue.configReferences) {
+          protectedTargets.add(repairTargetKey(reference.section, reference.key))
+        }
+        continue
+      }
+
+      for (const reference of issue.configReferences) {
+        const source = identityConfigSource(provenance, reference.section, reference.key)
+        if (source === 'user') {
+          protectedTargets.add(repairTargetKey(reference.section, reference.key))
+          continue
+        }
+        targets.add(repairTargetKey(reference.section, reference.key))
+      }
+    }
+  } else {
+    for (const check of report.checks) {
+      if (check.status === 'pass') continue
+      const target = diagnosticConfigTarget(check.key)
+      if (!target) continue
+      issueKeys.add(check.key)
+      for (const key of target.keys) {
+        const source = identityConfigSource(provenance, target.section, key)
+        if (source === 'user') {
+          protectedTargets.add(repairTargetKey(target.section, key))
+          continue
+        }
+        targets.add(repairTargetKey(target.section, key))
+      }
+    }
+  }
+
+  const hardwareTargets = HARDWARE_IDENTITY_FIELDS.filter((field) =>
+    targets.has(repairTargetKey(identitySectionForFingerprintField(field), field))
+  )
+  if (hardwareTargets.length) {
+    const protectedHardware = HARDWARE_IDENTITY_FIELDS.filter((field) =>
+      identityConfigSource(provenance, identitySectionForFingerprintField(field), field) === 'user'
+    )
+    if (protectedHardware.length) {
+      for (const field of HARDWARE_IDENTITY_FIELDS) {
+        targets.delete(repairTargetKey(identitySectionForFingerprintField(field), field))
+      }
+      warnings.push(`硬件身份包含用户手动配置（${protectedHardware.join(', ')}），AI 不会执行可能破坏 Persona 一致性的部分修复`)
+    } else {
+      for (const field of HARDWARE_IDENTITY_FIELDS) {
+        targets.add(repairTargetKey(identitySectionForFingerprintField(field), field))
+      }
+    }
+  }
+
+  if (protectedTargets.size) {
+    warnings.push(`诊断中有 ${protectedTargets.size} 个用户手动配置目标仅提供建议，不会由 AI 覆盖`)
+  }
+
+  return {
+    constrained: true,
+    targets,
+    issueKeys: [...issueKeys],
+    protectedUserOverrides: protectedTargets.size,
+    warnings
+  }
+}
+
+function filterChangesToDiagnosis(
+  changes: FingerprintRepairChange[],
+  scope: DiagnosisRepairScope
+): FingerprintRepairChange[] {
+  if (!scope.constrained) return changes
+  return changes.filter((change) => scope.targets.has(repairTargetKey(change.section, change.field)))
+}
+
+async function promoteVerifiedBaseline(
+  profiles: ProfileStore,
+  profile: BrowserProfile,
+  report: FingerprintRuntimeDiagnosticReport
+): Promise<FingerprintRuntimeDiagnosticReport> {
+  if (!report.identitySnapshot) return report
+
+  const baseline = await new IdentityBaselineStore(profiles.vaultPath).create(
+    profile.id,
+    report.identitySnapshot,
+    normalizeIdentityConfigProvenance(profile.identityConfigProvenance)
+  )
+  const generatedAt = new Date().toISOString()
+  const noDrift: IdentityDriftReport = {
+    profileId: profile.id,
+    baselineId: baseline.id,
+    driftDetected: false,
+    severity: 'low',
+    confidence: 1,
+    changes: [],
+    generatedAt
+  }
+  const intelligence = buildIdentityDriftIntelligence(
+    noDrift,
+    report.identitySnapshot,
+    profile.identityConfigProvenance
+  )
+  const identityHealthTrend = summarizeIdentityHealthTrend(
+    await new IdentityHealthHistoryStore(profiles.vaultPath).record(profile.id, {
+      checkedAt: report.identityCapturedAt ?? report.checkedAt,
+      baselineId: baseline.id,
+      score: intelligence.health.score,
+      risk: intelligence.health.risk,
+      driftDetected: false,
+      driftSeverity: 'low',
+      changeCount: 0
+    })
+  )
+
+  return {
+    ...report,
+    identityBaseline: {
+      id: baseline.id,
+      version: baseline.version,
+      status: baseline.status,
+      lastVerifiedAt: baseline.lastVerifiedAt
+    },
+    identityBaselineCreated: true,
+    identityDrift: noDrift,
+    identityHealth: intelligence.health,
+    identityDiagnosis: intelligence.diagnosis,
+    identityHealthTrend
+  }
+}
+
 export class FingerprintRepairExecutor {
   private readonly pendingPlans = new Map<string, PendingRepairPlan>()
 
@@ -228,13 +397,17 @@ export class FingerprintRepairExecutor {
       }
     }
 
+    const diagnosisReport = await this.verifier.diagnoseFingerprintRuntime(profileId)
+    const scope = diagnosisRepairScope(diagnosisReport, current)
     const generated = this.generateIdentity(this.identityRequest(current))
     const nextFingerprint = applyAIIdentityConfigToFingerprint(
       current.fingerprint,
       generated,
       current.identityConfigProvenance
     )
-    const changes = repairChanges(current, nextFingerprint)
+    const generatedChanges = repairChanges(current, nextFingerprint)
+    const changes = filterChangesToDiagnosis(generatedChanges, scope)
+    const warnings = [...new Set([...generated.warnings, ...scope.warnings])]
 
     if (!changes.length) {
       return {
@@ -242,7 +415,10 @@ export class FingerprintRepairExecutor {
         status: 'no_changes',
         sections: [],
         changes: [],
-        warnings: generated.warnings
+        warnings,
+        diagnosisSummary: diagnosisReport.identityDiagnosis?.summary,
+        diagnosedIssueKeys: scope.issueKeys,
+        protectedUserOverrides: scope.protectedUserOverrides
       }
     }
 
@@ -255,7 +431,7 @@ export class FingerprintRepairExecutor {
         status: 'blocked',
         sections: [],
         changes: [],
-        warnings: generated.warnings,
+        warnings,
         blockedReason: 'AI 硬件修复缺少完整 Hardware Persona，已阻止孤立硬件参数覆盖'
       }
     }
@@ -267,7 +443,10 @@ export class FingerprintRepairExecutor {
       status: 'ready',
       sections,
       changes,
-      warnings: generated.warnings
+      warnings,
+      diagnosisSummary: diagnosisReport.identityDiagnosis?.summary,
+      diagnosedIssueKeys: scope.issueKeys,
+      protectedUserOverrides: scope.protectedUserOverrides
     }
     this.pendingPlans.set(publicPlan.planId, { publicPlan, nextFingerprint })
     return publicPlan
@@ -406,9 +585,26 @@ export class FingerprintRepairExecutor {
       }
 
       const verified = this.profiles.get(profileId)
-      await this.audit(auditId, profileId, workflow.id, 'verified', changedFields, '所选区域 Runtime Verify 通过，AI 身份修复已完成')
+      const verifiedReport = await promoteVerifiedBaseline(this.profiles, verified, report)
+      const baselineVersion = verifiedReport.identityBaseline?.version
+      await this.audit(
+        auditId,
+        profileId,
+        workflow.id,
+        'verified',
+        changedFields,
+        baselineVersion
+          ? `所选区域 Runtime Verify 通过，AI 身份修复已完成；Identity Baseline 已升级到 v${baselineVersion}`
+          : '所选区域 Runtime Verify 通过，AI 身份修复已完成'
+      )
       await this.state.clearCheckpoint(profileId)
-      this.logger?.info('AI 指纹修复已完成', { profileId, auditId, selectedSections, changedFields })
+      this.logger?.info('AI 指纹修复已完成', {
+        profileId,
+        auditId,
+        selectedSections,
+        changedFields,
+        baselineVersion
+      })
       return {
         status: 'completed',
         auditId,
@@ -416,7 +612,7 @@ export class FingerprintRepairExecutor {
         message: report.ready
           ? 'AI 身份修复已应用并通过 Runtime Verify'
           : '所选 AI 修复区域已通过 Runtime Verify；其他未选区域仍存在待处理项',
-        report,
+        report: verifiedReport,
         profile: verified
       }
     } catch (error) {

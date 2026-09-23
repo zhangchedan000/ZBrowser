@@ -6,6 +6,8 @@ import { defaultProfileDraft } from '../shared/defaults'
 import { emptyIdentityConfigProvenance, markFingerprintConfigSources } from '../shared/identity-config-provenance'
 import type { AIIdentityGenerationResult } from '../shared/identity-ai-generator'
 import type { FingerprintRuntimeDiagnosticReport } from '../shared/types'
+import type { IdentityBaselineSnapshot } from '../shared/identity-baseline-model'
+import { IdentityBaselineStore } from './identity-baseline-store'
 import { FingerprintRepairExecutor } from './fingerprint-repair-executor'
 import { FingerprintRepairStateStore } from './fingerprint-repair-state'
 import { ProfileStore } from './profile-store'
@@ -242,4 +244,165 @@ describe('FingerprintRepairExecutor', () => {
     expect(await state.checkpoint(profile.id)).toBeNull()
     expect((await state.history(profile.id)).at(-1)?.phase).toBe('rolled_back')
   })
+
+  it('scopes an AI repair plan to diagnosed actionable fields and excludes unrelated generated changes', async () => {
+    const vault = await mkdtemp(join(tmpdir(), 'zbrowser-repair-'))
+    temporaryPaths.push(vault)
+    const profiles = new ProfileStore(vault)
+    await profiles.initialize()
+
+    const draft = defaultProfileDraft()
+    draft.fingerprint.language = 'de-DE'
+    draft.fingerprint.brand = 'Chrome'
+    const profile = await profiles.create(draft)
+    const state = new FingerprintRepairStateStore(profiles)
+    const executor = new FingerprintRepairExecutor(
+      profiles,
+      {
+        diagnoseFingerprintRuntime: async (id) => ({
+          profileId: id,
+          checkedAt: new Date().toISOString(),
+          ready: false,
+          identityDiagnosis: {
+            summary: 'Fingerprint Health score 75, risk medium',
+            risks: ['locale: language drift'],
+            suggestedActions: ['检查时区、语言和地区设置一致性'],
+            requiresUserConfirmation: true,
+            protectedUserOverrides: 0,
+            issues: [{
+              component: 'locale',
+              key: 'identity-drift:locale.language',
+              evidence: 'locale.language changed from baseline',
+              configReferences: [{ section: 'locale', key: 'language', source: 'ai' }],
+              repairPolicy: 'confirm_apply'
+            }]
+          },
+          checks: []
+        })
+      },
+      state,
+      undefined,
+      () => generatedIdentity()
+    )
+
+    const plan = await executor.plan(profile.id)
+
+    expect(plan.status).toBe('ready')
+    expect(plan.diagnosedIssueKeys).toEqual(['identity-drift:locale.language'])
+    expect(plan.changes.map((change) => change.field)).toEqual(['language'])
+    expect(plan.changes.some((change) => change.field === 'brand')).toBe(false)
+    expect(plan.diagnosisSummary).toContain('risk medium')
+  })
+
+  it('keeps user-owned diagnosis issues suggest-only and out of the executable plan', async () => {
+    const vault = await mkdtemp(join(tmpdir(), 'zbrowser-repair-'))
+    temporaryPaths.push(vault)
+    const profiles = new ProfileStore(vault)
+    await profiles.initialize()
+
+    const draft = defaultProfileDraft()
+    draft.fingerprint.timezone = 'America/Los_Angeles'
+    draft.identityConfigProvenance = markFingerprintConfigSources(
+      emptyIdentityConfigProvenance(),
+      ['timezone'],
+      'user'
+    )
+    const profile = await profiles.create(draft)
+    const state = new FingerprintRepairStateStore(profiles)
+    const executor = new FingerprintRepairExecutor(
+      profiles,
+      {
+        diagnoseFingerprintRuntime: async (id) => ({
+          profileId: id,
+          checkedAt: new Date().toISOString(),
+          ready: false,
+          identityDiagnosis: {
+            summary: 'Fingerprint Health score 75, risk medium',
+            risks: ['locale: timezone drift'],
+            suggestedActions: ['检查时区、语言和地区设置一致性'],
+            requiresUserConfirmation: true,
+            protectedUserOverrides: 1,
+            issues: [{
+              component: 'locale',
+              key: 'identity-drift:locale.timezone',
+              evidence: 'locale.timezone changed from baseline',
+              configReferences: [{ section: 'locale', key: 'timezone', source: 'user' }],
+              repairPolicy: 'suggest_only'
+            }]
+          },
+          checks: []
+        })
+      },
+      state,
+      undefined,
+      () => generatedIdentity()
+    )
+
+    const plan = await executor.plan(profile.id)
+
+    expect(plan.status).toBe('no_changes')
+    expect(plan.protectedUserOverrides).toBe(1)
+    expect(plan.warnings.join(' ')).toContain('不会由 AI 覆盖')
+    expect(plan.changes).toEqual([])
+  })
+
+  it('promotes a verified repaired runtime into the next baseline version', async () => {
+    const vault = await mkdtemp(join(tmpdir(), 'zbrowser-repair-'))
+    temporaryPaths.push(vault)
+    const profiles = new ProfileStore(vault)
+    await profiles.initialize()
+
+    const draft = defaultProfileDraft()
+    draft.fingerprint.language = 'fr-FR'
+    const profile = await profiles.create(draft)
+    const snapshot = (language: string): IdentityBaselineSnapshot => ({
+      browser: { userAgent: 'Chrome/144.0.7559.132', platform: 'Win32' },
+      hardware: { hardwareConcurrency: 8, deviceMemory: 8 },
+      gpu: { webgl: { unmaskedVendor: 'NVIDIA Corporation', unmaskedRenderer: 'NVIDIA GeForce RTX 4060' } },
+      rendering: { fonts: { detected: ['Segoe UI'] } },
+      network: { ip: '203.0.113.10', countryCode: 'US' },
+      locale: { language, timezone: 'America/New_York' }
+    })
+    const baselines = new IdentityBaselineStore(profiles.vaultPath)
+    const original = await baselines.create(
+      profile.id,
+      snapshot('fr-FR'),
+      emptyIdentityConfigProvenance()
+    )
+
+    let calls = 0
+    const executor = new FingerprintRepairExecutor(
+      profiles,
+      {
+        diagnoseFingerprintRuntime: async (id) => {
+          calls += 1
+          if (calls === 1) return readyReport(id, true)
+          return {
+            ...readyReport(id, true),
+            identityCapturedAt: new Date().toISOString(),
+            identitySnapshot: snapshot('en-US')
+          }
+        }
+      },
+      new FingerprintRepairStateStore(profiles),
+      undefined,
+      () => generatedIdentity()
+    )
+
+    const plan = await executor.plan(profile.id)
+    const result = await executor.execute(profile.id, true, plan.planId, ['locale'])
+    const current = await baselines.get(profile.id)
+    const history = await baselines.history(profile.id)
+
+    expect(result.status).toBe('completed')
+    expect(current?.version).toBe(2)
+    expect(current?.status).toBe('active')
+    expect(current?.id).not.toBe(original.id)
+    expect(result.report.identityBaseline?.version).toBe(2)
+    expect(result.report.identityDrift?.driftDetected).toBe(false)
+    expect(result.report.identityHealth?.score).toBe(100)
+    expect(history.at(-1)?.id).toBe(original.id)
+    expect(history.at(-1)?.status).toBe('replaced')
+  })
+
 })
