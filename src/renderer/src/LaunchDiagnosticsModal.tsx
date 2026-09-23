@@ -170,7 +170,7 @@ export function LaunchDiagnosticsModal({
             />
           )}
 
-          <Divider orientation="start">AI 修复计划</Divider>
+          <Divider titlePlacement="start">AI 修复计划</Divider>
           {planLoading && <Spin size="small" />}
           {planError && (
             <Alert type="warning" showIcon title="无法生成 AI 修复计划" description={planError} />
@@ -240,7 +240,7 @@ export function LaunchDiagnosticsModal({
             </Space>
           )}
 
-          <Divider orientation="start">诊断明细</Divider>
+          <Divider titlePlacement="start">诊断明细</Divider>
           <List
             className="diagnostics-list"
             dataSource={report.checks}
@@ -282,7 +282,7 @@ export function LaunchDiagnosticsModal({
             }}
           />
 
-          <Divider orientation="start">AI 修复审计</Divider>
+          <Divider titlePlacement="start">AI 修复审计</Divider>
           {repairHistory.length === 0 ? (
             <Typography.Text type="secondary">暂无 AI 修复执行记录。</Typography.Text>
           ) : (
