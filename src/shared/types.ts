@@ -437,6 +437,14 @@ export interface FingerprintRuntimeDiagnosticReport {
   snapshot?: RuntimeFingerprintSnapshot
   identityCapturedAt?: string
   identitySnapshot?: import('./identity-baseline-model').IdentityBaselineSnapshot
+  identityBaseline?: {
+    id: string
+    version: number
+    status: import('./identity-baseline-model').IdentityBaselineStatus
+    lastVerifiedAt: string
+  }
+  identityBaselineCreated?: boolean
+  identityDrift?: import('./identity-baseline-model').IdentityDriftReport
   checks: LaunchDiagnosticCheck[]
 }
 

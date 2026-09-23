@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto'
-import { appendFile, mkdir, readFile, writeFile } from 'node:fs/promises'
+import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import type { IdentityBaseline, IdentityBaselineSnapshot } from '../shared/identity-baseline-model'
 import type { IdentityConfigProvenance } from '../shared/types'
@@ -76,6 +76,17 @@ export class IdentityBaselineStore {
     if (!data.current) return null
     data.current.status = 'stale'
     data.current.updatedAt = new Date().toISOString()
+    await this.write(profileId, data)
+    return data.current
+  }
+
+  async markVerified(profileId: string): Promise<IdentityBaseline | null> {
+    const data = await this.read(profileId)
+    if (!data.current) return null
+    const now = new Date().toISOString()
+    data.current.status = 'active'
+    data.current.lastVerifiedAt = now
+    data.current.updatedAt = now
     await this.write(profileId, data)
     return data.current
   }

@@ -21,6 +21,8 @@ import { sameProxyIdentity } from './profile-secrets'
 import { BrowserControlSession, PipeCdpTransport, WebSocketCdpTransport } from './browser-control-session'
 import { buildRuntimeFingerprintChecks } from '../shared/runtime-fingerprint-diagnostics'
 import { buildRuntimeIdentitySnapshot } from '../shared/runtime-identity-snapshot'
+import { IdentityBaselineStore } from './identity-baseline-store'
+import { evaluateRuntimeIdentity } from './identity-drift-runtime'
 import type { Readable, Writable } from 'node:stream'
 
 type ProxyTester = (config: ProxyConfig) => Promise<ProxyTestResult>
@@ -969,13 +971,31 @@ export class BrowserLauncher {
         engine,
         network: current.proxyCheck
       })
+      const ready = !checks.some((check) => check.status === 'error')
+      const identityState = await evaluateRuntimeIdentity(
+        new IdentityBaselineStore(this.profiles.vaultPath),
+        id,
+        identity.snapshot,
+        current.identityConfigProvenance,
+        { allowCreateBaseline: ready }
+      )
       return {
         profileId: id,
         checkedAt: identity.capturedAt,
-        ready: !checks.some((check) => check.status === 'error'),
+        ready,
         snapshot,
         identityCapturedAt: identity.capturedAt,
         identitySnapshot: identity.snapshot,
+        identityBaseline: identityState.baseline
+          ? {
+              id: identityState.baseline.id,
+              version: identityState.baseline.version,
+              status: identityState.baseline.status,
+              lastVerifiedAt: identityState.baseline.lastVerifiedAt
+            }
+          : undefined,
+        identityBaselineCreated: identityState.baselineCreated,
+        identityDrift: identityState.drift,
         checks
       }
     } catch (error) {
