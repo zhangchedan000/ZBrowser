@@ -31,6 +31,8 @@ import { selectBestProxyPoolEntry } from './proxy-pool-selection'
 import type { FingerprintRepairExecutor } from './fingerprint-repair-executor'
 import type { FingerprintRepairStateStore } from './fingerprint-repair-state'
 import { IdentityHealthHistoryStore } from './identity-health-history'
+import { IdentityBaselineStore } from './identity-baseline-store'
+import { identityRelevantProfileChanged } from './identity-baseline-lifecycle'
 import { summarizeIdentityProfileHealth } from '../shared/identity-profile-health'
 
 interface IpcDependencies {
@@ -58,6 +60,20 @@ export function registerIpc({
   fingerprintRepair, fingerprintRepairState
 }: IpcDependencies): void {
   const identityHealthHistory = new IdentityHealthHistoryStore(profiles.vaultPath)
+  const identityBaselines = new IdentityBaselineStore(profiles.vaultPath)
+
+  async function noteIdentityTransition(
+    profileId: string,
+    reason: 'user_config' | 'kernel_upgrade' | 'kernel_rollback' | 'proxy_reassignment'
+  ): Promise<void> {
+    await identityBaselines.requestReplacement(profileId, reason).catch((error) => {
+      logger.error('记录 Identity Baseline 合法换代失败', {
+        profileId,
+        reason,
+        error: error instanceof Error ? error.message : String(error)
+      })
+    })
+  }
 
   async function identityHealthSummary(profileId: string) {
     profiles.get(profileId)
@@ -96,7 +112,13 @@ export function registerIpc({
   ipcMain.handle('profiles:identity-health', (_event, id: string) => identityHealthSummary(id))
   ipcMain.handle('profiles:identity-health-all', () => identityHealthSummaries())
   ipcMain.handle('profiles:create', async (_event, draft: ProfileDraft) => publicProfile(await profiles.create(await pinKernelFamily(draft))))
-  ipcMain.handle('profiles:update', async (_event, id: string, draft: ProfileDraft) => publicProfile(await profiles.update(id, await pinKernelFamily(draft))))
+  ipcMain.handle('profiles:update', async (_event, id: string, draft: ProfileDraft) => {
+    const current = profiles.get(id)
+    const pinned = await pinKernelFamily(draft)
+    const profile = await profiles.update(id, pinned)
+    if (identityRelevantProfileChanged(current, profile)) await noteIdentityTransition(id, 'user_config')
+    return publicProfile(profile)
+  })
   ipcMain.handle('profiles:upgrade-kernel', async (_event, id: string, version: string, family: unknown) => {
     if (typeof version !== 'string' || !/^\d+(?:\.\d+){3}$/.test(version.trim())) throw new Error('目标内核版本号无效')
     if (family !== 'fingerprint-chromium' && family !== 'custom') throw new Error('目标内核系列无效')
@@ -136,10 +158,15 @@ export function registerIpc({
       fingerprint: { ...current.fingerprint, disabledSpoofing: [...current.fingerprint.disabledSpoofing] }
     }
     const profile = await profiles.update(id, await pinKernelFamily(draft))
+    await noteIdentityTransition(id, 'kernel_upgrade')
     return { profile: publicProfile(profile), checkpoint }
   })
   ipcMain.handle('profiles:kernel-upgrade-checkpoint', (_event, id: string) => backups.kernelUpgradeCheckpoint(id))
-  ipcMain.handle('profiles:rollback-kernel-upgrade', async (_event, id: string) => publicProfile(await backups.rollbackKernelUpgrade(id)))
+  ipcMain.handle('profiles:rollback-kernel-upgrade', async (_event, id: string) => {
+    const profile = await backups.rollbackKernelUpgrade(id)
+    await noteIdentityTransition(id, 'kernel_rollback')
+    return publicProfile(profile)
+  })
   ipcMain.handle('profiles:duplicate', async (_event, id: string) => publicProfile(await profiles.duplicate(id)))
   ipcMain.handle('profiles:export-config', async (_event, id: string) => {
     const profile = profiles.get(id)
@@ -521,7 +548,9 @@ export function registerIpc({
     }
     const check = proxyPool.check(proxyId)
     if (!check) throw new Error('代理尚未检测')
-    return publicProfile(await profiles.assignProxy(profileId, proxyPool.proxyConfig(proxyId), check, proxyId))
+    const profile = await profiles.assignProxy(profileId, proxyPool.proxyConfig(proxyId), check, proxyId)
+    await noteIdentityTransition(profileId, 'proxy_reassignment')
+    return publicProfile(profile)
   })
   ipcMain.handle('proxy-pool:assign-best', async (_event, profileId: string) => {
     const profile = profiles.get(profileId)
@@ -532,7 +561,9 @@ export function registerIpc({
     if (!candidate) throw new Error('代理池中没有 24 小时内检测通过的可用代理')
     const check = proxyPool.check(candidate.id)
     if (!check) throw new Error('最佳代理缺少检测结果')
-    return publicProfile(await profiles.assignProxy(profileId, proxyPool.proxyConfig(candidate.id), check, candidate.id))
+    const assigned = await profiles.assignProxy(profileId, proxyPool.proxyConfig(candidate.id), check, candidate.id)
+    await noteIdentityTransition(profileId, 'proxy_reassignment')
+    return publicProfile(assigned)
   })
   ipcMain.handle('proxy:test', (_event, config, profileId?: string) => {
     const validated = validateProxyConfig(config)

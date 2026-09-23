@@ -118,4 +118,56 @@ describe('runtime identity drift monitoring', () => {
     expect(recovered.drift?.driftDetected).toBe(false)
     expect(recovered.baseline?.status).toBe('active')
   })
+
+  it('treats an explicit identity change as a pending baseline replacement instead of anomalous drift', async () => {
+    const repository = await store()
+    const first = await evaluateRuntimeIdentity(
+      repository,
+      'profile-1',
+      snapshot(),
+      emptyIdentityConfigProvenance()
+    )
+
+    const request = await repository.requestReplacement('profile-1', 'user_config')
+    expect(request?.reasons).toEqual(['user_config'])
+    expect((await repository.get('profile-1'))?.status).toBe('stale')
+
+    const blocked = await evaluateRuntimeIdentity(
+      repository,
+      'profile-1',
+      {
+        ...snapshot(),
+        locale: { language: 'en-GB', timezone: 'Europe/London' }
+      },
+      emptyIdentityConfigProvenance(),
+      { allowCreateBaseline: false }
+    )
+
+    expect(blocked.baselineCreated).toBe(false)
+    expect(blocked.baselineReplaced).toBe(false)
+    expect(blocked.replacementRequest?.reasons).toContain('user_config')
+    expect(blocked.drift).toBeUndefined()
+    expect((await repository.get('profile-1'))?.id).toBe(first.baseline?.id)
+
+    const accepted = await evaluateRuntimeIdentity(
+      repository,
+      'profile-1',
+      {
+        ...snapshot(),
+        locale: { language: 'en-GB', timezone: 'Europe/London' }
+      },
+      emptyIdentityConfigProvenance(),
+      { allowCreateBaseline: true }
+    )
+
+    expect(accepted.baselineCreated).toBe(true)
+    expect(accepted.baselineReplaced).toBe(true)
+    expect(accepted.baseline?.version).toBe(2)
+    expect(accepted.baseline?.status).toBe('active')
+    expect(await repository.pendingReplacement('profile-1')).toBeNull()
+    const history = await repository.history('profile-1')
+    expect(history.at(-1)?.id).toBe(first.baseline?.id)
+    expect(history.at(-1)?.status).toBe('replaced')
+  })
+
 })

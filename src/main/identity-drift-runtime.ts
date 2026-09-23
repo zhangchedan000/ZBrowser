@@ -2,12 +2,14 @@ import type { IdentityBaseline, IdentityBaselineSnapshot, IdentityDriftReport } 
 import { compareIdentityBaseline } from '../shared/identity-drift-engine'
 import { normalizeIdentityConfigProvenance } from '../shared/identity-config-provenance'
 import type { IdentityConfigProvenance } from '../shared/types'
-import type { IdentityBaselineStore } from './identity-baseline-store'
+import type { IdentityBaselineReplacementRequest, IdentityBaselineStore } from './identity-baseline-store'
 
 export interface RuntimeIdentityEvaluation {
   baseline?: IdentityBaseline
   baselineCreated: boolean
   drift?: IdentityDriftReport
+  replacementRequest?: IdentityBaselineReplacementRequest
+  baselineReplaced?: boolean
 }
 
 export interface RuntimeIdentityEvaluationOptions {
@@ -29,6 +31,7 @@ export async function evaluateRuntimeIdentity(
   options: RuntimeIdentityEvaluationOptions = {}
 ): Promise<RuntimeIdentityEvaluation> {
   let baseline = await store.get(profileId)
+  const replacementRequest = await store.pendingReplacement(profileId)
 
   if (!baseline) {
     if (options.allowCreateBaseline === false) {
@@ -42,6 +45,29 @@ export async function evaluateRuntimeIdentity(
     return {
       baseline,
       baselineCreated: true
+    }
+  }
+
+  if (replacementRequest) {
+    if (options.allowCreateBaseline === false) {
+      return {
+        baseline,
+        baselineCreated: false,
+        replacementRequest,
+        baselineReplaced: false
+      }
+    }
+
+    baseline = await store.create(
+      profileId,
+      snapshot,
+      normalizeIdentityConfigProvenance(provenance)
+    )
+    return {
+      baseline,
+      baselineCreated: true,
+      replacementRequest,
+      baselineReplaced: true
     }
   }
 
