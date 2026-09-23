@@ -1212,6 +1212,7 @@ export class BrowserLauncher {
     try {
       const snapshot = await (await this.controlSession(id)).runtimeFingerprintSnapshot()
       const report = await this.evaluateRuntimeFingerprintSnapshot(id, snapshot, engine, true)
+      this.onChanged(this.profiles.get(id))
       if (!report.identityDrift?.driftDetected) return
 
       const details = {

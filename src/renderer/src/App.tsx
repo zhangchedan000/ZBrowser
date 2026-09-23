@@ -48,7 +48,7 @@ import {
   type TableColumnsType
 } from 'antd'
 import { useEffect, useMemo, useState } from 'react'
-import type { AppRecoveryStatus, AppUpdateStatus, BrowserCrashRecord, BrowserExtension, BrowserProfileView, EngineStatus, IdentityConfigSection, KernelRelease, LaunchDiagnosticReport, ProfileDraft, ProfileLaunchOptions, ProfileStoreHealth, StorageOverview } from '../../shared/types'
+import type { AppRecoveryStatus, AppUpdateStatus, BrowserCrashRecord, BrowserExtension, BrowserProfileView, EngineStatus, FingerprintRuntimeDiagnosticReport, IdentityConfigSection, IdentityProfileHealthSummary, KernelRelease, ProfileDraft, ProfileLaunchOptions, ProfileStoreHealth, StorageOverview } from '../../shared/types'
 import { ProfileEditor } from './ProfileEditor'
 import { KernelManagerModal } from './KernelManagerModal'
 import { ProfileDataModal } from './ProfileDataModal'
@@ -110,6 +110,21 @@ function formatBytes(bytes: number): string {
   return `${(bytes / 1024 / 1024 / 1024).toFixed(2)} GB`
 }
 
+const identityHealthView = {
+  healthy: { color: 'success', text: 'Healthy' },
+  attention: { color: 'warning', text: 'Attention' },
+  critical: { color: 'error', text: 'Critical' },
+  unknown: { color: 'default', text: '未检测' }
+} as const
+
+function identityHealthTrendText(summary?: IdentityProfileHealthSummary): string | undefined {
+  const direction = summary?.trend?.direction
+  if (direction === 'improving') return '↗ 改善'
+  if (direction === 'degrading') return '↘ 恶化'
+  if (direction === 'stable') return '→ 稳定'
+  return undefined
+}
+
 export default function App() {
   const [profiles, setProfiles] = useState<BrowserProfileView[]>([])
   const [engine, setEngine] = useState<EngineStatus | null>(null)
@@ -142,7 +157,8 @@ export default function App() {
   const [profileStorageHealth, setProfileStorageHealth] = useState<ProfileStoreHealth | null>(null)
   const [appRecoveryStatus, setAppRecoveryStatus] = useState<AppRecoveryStatus | null>(null)
   const [diagnosticProfile, setDiagnosticProfile] = useState<BrowserProfileView>()
-  const [diagnosticReport, setDiagnosticReport] = useState<LaunchDiagnosticReport>()
+  const [diagnosticReport, setDiagnosticReport] = useState<FingerprintRuntimeDiagnosticReport>()
+  const [identityHealthByProfile, setIdentityHealthByProfile] = useState<Record<string, IdentityProfileHealthSummary>>({})
   const [repairingDiagnostic, setRepairingDiagnostic] = useState(false)
   const [crashProfile, setCrashProfile] = useState<BrowserProfileView>()
   const [crashRecords, setCrashRecords] = useState<BrowserCrashRecord[]>([])
@@ -169,9 +185,10 @@ export default function App() {
       window.browserApi.engine.installed(),
       window.browserApi.engine.bundled(),
       window.browserApi.diagnostics.sessionHealth(),
-      window.browserApi.updates.status()
+      window.browserApi.updates.status(),
+      window.browserApi.profiles.identityHealthAll()
     ])
-      .then(([items, engineStatus, extensionItems, storageHealth, installedKernels, bundled, recoveryStatus, applicationUpdate]) => {
+      .then(([items, engineStatus, extensionItems, storageHealth, installedKernels, bundled, recoveryStatus, applicationUpdate, identityHealth]) => {
         setProfiles(items)
         setEngine(engineStatus)
         setExtensions(extensionItems)
@@ -180,6 +197,7 @@ export default function App() {
         setBundledEngine(bundled)
         setAppRecoveryStatus(recoveryStatus)
         setUpdateStatus(applicationUpdate)
+        setIdentityHealthByProfile(identityHealth)
       })
       .catch((error) => messageApi.error(humanError(error)))
       .finally(() => setLoading(false))
@@ -188,6 +206,9 @@ export default function App() {
 
     const removeProfileListener = window.browserApi.profiles.onChanged((changed) => {
       setProfiles((current) => current.map((profile) => profile.id === changed.id ? changed : profile))
+      void window.browserApi.profiles.identityHealth(changed.id)
+        .then((health) => setIdentityHealthByProfile((current) => ({ ...current, [changed.id]: health })))
+        .catch(() => undefined)
     })
     const removeUpdateListener = window.browserApi.updates.onChanged(setUpdateStatus)
     return () => {
@@ -203,7 +224,10 @@ export default function App() {
       if (favoritesOnly && !profile.favorite) return false
       if (selectedStatus === 'closed' && profile.status !== 'closed') return false
       if (selectedStatus === 'running' && !['starting', 'running', 'stopping'].includes(profile.status)) return false
-      if (selectedStatus === 'attention' && !['orphaned', 'error'].includes(profile.status)) return false
+      if (selectedStatus === 'attention') {
+        const identityState = identityHealthByProfile[profile.id]?.state
+        if (!['orphaned', 'error'].includes(profile.status) && identityState !== 'attention' && identityState !== 'critical') return false
+      }
       if (!normalized) return true
       return [String(profile.serialNumber), profile.name, profile.note, profile.group, ...profile.tags, profile.proxy.host, profile.fingerprint.timezone]
         .some((value) => value.toLowerCase().includes(normalized))
@@ -215,7 +239,7 @@ export default function App() {
       if (sortMode === 'created') return second.createdAt.localeCompare(first.createdAt)
       return second.updatedAt.localeCompare(first.updatedAt)
     })
-  }, [profiles, query, selectedGroup, selectedStatus, sortMode, favoritesOnly])
+  }, [profiles, query, selectedGroup, selectedStatus, sortMode, favoritesOnly, identityHealthByProfile])
 
   const groupOptions = useMemo(() => {
     const counts = new Map<string, number>()
@@ -648,6 +672,8 @@ export default function App() {
       const report = await window.browserApi.profiles.diagnoseFingerprintRuntime(profile.id)
       setDiagnosticProfile(profile)
       setDiagnosticReport(report)
+      const health = await window.browserApi.profiles.identityHealth(profile.id)
+      setIdentityHealthByProfile((current) => ({ ...current, [profile.id]: health }))
     })
   }
 
@@ -658,6 +684,8 @@ export default function App() {
       const result = await window.browserApi.profiles.repairFingerprintIdentity(diagnosticProfile.id, true, planId, sections)
       upsert(result.profile)
       setDiagnosticProfile(result.profile)
+      const health = await window.browserApi.profiles.identityHealth(result.profile.id)
+      setIdentityHealthByProfile((current) => ({ ...current, [result.profile.id]: health }))
       if (result.status === 'completed') {
         setDiagnosticReport(result.report)
         messageApi.success(result.message)
@@ -891,6 +919,36 @@ export default function App() {
       width: 100,
       sorter: profileTableSorters.status,
       render: (_value, profile) => statusTag(profile)
+    },
+    {
+      title: '身份健康',
+      key: 'identityHealth',
+      width: 150,
+      render: (_value, profile) => {
+        const health = identityHealthByProfile[profile.id] ?? { state: 'unknown' as const }
+        const view = identityHealthView[health.state]
+        const trend = identityHealthTrendText(health)
+        const detail = health.checkedAt
+          ? [
+              `Health ${health.score ?? '-'}`,
+              health.risk ? `Risk ${health.risk}` : undefined,
+              health.driftDetected ? `Drift ${health.driftSeverity ?? 'detected'} · ${health.changeCount ?? 0} changes` : 'No drift',
+              trend,
+              new Date(health.checkedAt).toLocaleString()
+            ].filter(Boolean).join(' · ')
+          : '尚未建立身份健康记录；运行环境或执行身份诊断后会生成。'
+        return (
+          <Tooltip title={detail}>
+            <Tag
+              color={view.color}
+              style={{ cursor: 'pointer' }}
+              onClick={() => void runDiagnostics(profile)}
+            >
+              {view.text}{health.score === undefined ? '' : ` · ${health.score}`}{trend ? ` · ${trend}` : ''}
+            </Tag>
+          </Tooltip>
+        )
+      }
     },
     {
       title: '代理',
@@ -1211,7 +1269,7 @@ export default function App() {
                   onChange: (keys) => setSelectedIds(keys.map(String))
                 }}
                 pagination={profiles.length > 12 ? { pageSize: 12 } : false}
-                scroll={{ x: 1240 }}
+                scroll={{ x: 1390 }}
                 locale={{
                   emptyText: (
                     <Empty description="还没有浏览器环境">

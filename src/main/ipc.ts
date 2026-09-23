@@ -30,6 +30,8 @@ import { createStoredZip, diagnosticProfileSummary, redactDiagnosticText } from 
 import { selectBestProxyPoolEntry } from './proxy-pool-selection'
 import type { FingerprintRepairExecutor } from './fingerprint-repair-executor'
 import type { FingerprintRepairStateStore } from './fingerprint-repair-state'
+import { IdentityHealthHistoryStore } from './identity-health-history'
+import { summarizeIdentityProfileHealth } from '../shared/identity-profile-health'
 
 interface IpcDependencies {
   profiles: ProfileStore
@@ -55,6 +57,21 @@ export function registerIpc({
   workspaceMigration, appSession, updater, environmentChecks, localApi, proxyPool,
   fingerprintRepair, fingerprintRepairState
 }: IpcDependencies): void {
+  const identityHealthHistory = new IdentityHealthHistoryStore(profiles.vaultPath)
+
+  async function identityHealthSummary(profileId: string) {
+    profiles.get(profileId)
+    return summarizeIdentityProfileHealth(await identityHealthHistory.list(profileId))
+  }
+
+  async function identityHealthSummaries() {
+    const entries = await Promise.all(profiles.list().map(async (profile) => [
+      profile.id,
+      await identityHealthSummary(profile.id)
+    ] as const))
+    return Object.fromEntries(entries)
+  }
+
   async function pinKernelFamily(draft: ProfileDraft): Promise<ProfileDraft> {
     const version = draft.kernelVersion.trim()
     if (!version) return { ...draft, kernelFamily: undefined }
@@ -76,6 +93,8 @@ export function registerIpc({
 
   ipcMain.handle('profiles:list', () => profiles.list().map(publicProfile))
   ipcMain.handle('profiles:storage-health', () => profiles.storageHealth())
+  ipcMain.handle('profiles:identity-health', (_event, id: string) => identityHealthSummary(id))
+  ipcMain.handle('profiles:identity-health-all', () => identityHealthSummaries())
   ipcMain.handle('profiles:create', async (_event, draft: ProfileDraft) => publicProfile(await profiles.create(await pinKernelFamily(draft))))
   ipcMain.handle('profiles:update', async (_event, id: string, draft: ProfileDraft) => publicProfile(await profiles.update(id, await pinKernelFamily(draft))))
   ipcMain.handle('profiles:upgrade-kernel', async (_event, id: string, version: string, family: unknown) => {

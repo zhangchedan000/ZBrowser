@@ -496,6 +496,9 @@ export interface FingerprintRepairExecutionSummary {
   report: FingerprintRuntimeDiagnosticReport
 }
 
+export type IdentityProfileHealthState = import('./identity-profile-health').IdentityProfileHealthState
+export type IdentityProfileHealthSummary = import('./identity-profile-health').IdentityProfileHealthSummary
+
 export interface AppRecoveryStatus {
   previousUnclean: boolean
   previousStartedAt?: string
@@ -558,6 +561,8 @@ export interface BrowserApi {
     importBatchCsv: () => Promise<BrowserProfileView[] | null>
     exportBatchTemplate: () => Promise<string | null>
     storageHealth: () => Promise<ProfileStoreHealth>
+    identityHealth: (id: string) => Promise<IdentityProfileHealthSummary>
+    identityHealthAll: () => Promise<Record<string, IdentityProfileHealthSummary>>
     storageInfo: (id: string) => Promise<ProfileStorageInfo>
     storageOverview: () => Promise<StorageOverview>
     openDataFolder: (id: string) => Promise<void>

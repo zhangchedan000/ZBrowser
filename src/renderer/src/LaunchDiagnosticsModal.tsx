@@ -13,12 +13,12 @@ import type {
   FingerprintRepairPlan,
   IdentityConfigSection,
   IdentityConfigSource,
-  LaunchDiagnosticReport
+  FingerprintRuntimeDiagnosticReport
 } from '../../shared/types'
 
 interface LaunchDiagnosticsModalProps {
   profile?: BrowserProfileView
-  report?: LaunchDiagnosticReport
+  report?: FingerprintRuntimeDiagnosticReport
   open: boolean
   repairing?: boolean
   onRepair?: (planId: string, sections: IdentityConfigSection[]) => Promise<void> | void
@@ -130,8 +130,9 @@ export function LaunchDiagnosticsModal({
   const signals = report
     ? diagnosticChecksToHealthSignals(report.checks, profile?.identityConfigProvenance)
     : []
-  const health = report ? buildFingerprintHealthModel(signals) : undefined
-  const diagnosis = health ? buildAIDiagnosisContext(health) : undefined
+  const fallbackHealth = report ? buildFingerprintHealthModel(signals) : undefined
+  const health = report?.identityHealth ?? fallbackHealth
+  const diagnosis = report?.identityDiagnosis ?? (health ? buildAIDiagnosisContext(health) : undefined)
   const proposals = diagnosis ? buildRepairProposals(diagnosis) : []
   const proposalByKey = new Map(proposals.filter((proposal) => proposal.signalKey).map((proposal) => [proposal.signalKey!, proposal]))
   const signalByKey = new Map(signals.map((signal) => [signal.key, signal]))
@@ -143,7 +144,7 @@ export function LaunchDiagnosticsModal({
   }
 
   return (
-    <Modal open={open} title={`启动诊断${profile ? ` · ${profile.name}` : ''}`} footer={null} onCancel={onClose} destroyOnHidden width={860}>
+    <Modal open={open} title={`身份健康诊断${profile ? ` · ${profile.name}` : ''}`} footer={null} onCancel={onClose} destroyOnHidden width={900}>
       {report && health && diagnosis && (
         <>
           <Alert
@@ -155,10 +156,37 @@ export function LaunchDiagnosticsModal({
 
           <Space wrap style={{ marginTop: 12, marginBottom: 4 }}>
             <Tag color={riskView[health.risk].color}>健康分 {health.score} · {riskView[health.risk].text}</Tag>
+            {report.identityBaseline && (
+              <Tag color={report.identityBaseline.status === 'active' ? 'blue' : 'warning'}>
+                Baseline v{report.identityBaseline.version} · {report.identityBaseline.status}
+              </Tag>
+            )}
+            {report.identityDrift?.driftDetected && (
+              <Tag color={report.identityDrift.severity === 'critical' ? 'error' : report.identityDrift.severity === 'high' ? 'volcano' : 'warning'}>
+                Drift {report.identityDrift.severity} · {report.identityDrift.changes.length} 项
+              </Tag>
+            )}
+            {report.identityHealthTrend && (
+              <Tag>
+                趋势 {report.identityHealthTrend.direction === 'improving'
+                  ? '↗ 改善'
+                  : report.identityHealthTrend.direction === 'degrading'
+                    ? '↘ 恶化'
+                    : report.identityHealthTrend.direction === 'stable'
+                      ? '→ 稳定'
+                      : '首次记录'}
+              </Tag>
+            )}
             {diagnosis.protectedUserOverrides > 0 && (
               <Tag color="magenta">手动配置保护 {diagnosis.protectedUserOverrides} 项</Tag>
             )}
           </Space>
+
+          {report.identityDiagnosis?.summary && (
+            <Typography.Paragraph type="secondary" style={{ marginTop: 6, marginBottom: 0 }}>
+              {report.identityDiagnosis.summary}
+            </Typography.Paragraph>
+          )
 
           {diagnosis.protectedUserOverrides > 0 && (
             <Alert
