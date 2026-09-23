@@ -10,7 +10,7 @@ import { basename, dirname, join, resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
 
 const delay = (milliseconds) => new Promise((resolveDelay) => setTimeout(resolveDelay, milliseconds))
-const APP_E2E_TOOL_VERSION = 5
+const APP_E2E_TOOL_VERSION = 6
 const RETRYABLE_CLEANUP_CODES = new Set(['EBUSY', 'EPERM', 'ENOTEMPTY'])
 
 function cleanupRetryDelay(attempt) {
@@ -759,6 +759,9 @@ async function main() {
       }
     })()`, 120_000)
 
+    const kernelRegistry = options.installKernelVersion
+      ? JSON.parse(await readFile(join(vault, 'kernels', 'kernel-registry.json'), 'utf8'))
+      : { schemaVersion: 1, kernels: [] }
     const localApiProbe = await probeLocalApi(appData, firstRun.editedA.id, site.url)
     const mcpProbe = await probeMcpStdio(options, appData, firstRun.editedA.id)
     const runtimeFingerprint = await probeRuntimeFingerprint(appData, firstRun.editedA.id)
@@ -897,6 +900,17 @@ async function main() {
           && firstRun.kernelCatalog.some(kernel => kernel.version === options.installKernelVersion && kernel.installed)),
       managedKernelCatalogAvailable: !options.installKernelVersion
         || firstRun.remoteCatalog.some(kernel => kernel.version === options.installKernelVersion),
+      managedKernelRegistrySynced: !options.installKernelVersion
+        || (kernelRegistry?.schemaVersion === 1
+          && Array.isArray(kernelRegistry.kernels)
+          && kernelRegistry.kernels.some((record) => record.family === 'fingerprint-chromium'
+            && record.version === options.installKernelVersion
+            && record.enabled === true
+            && typeof record.executablePath === 'string'
+            && record.executablePath.length > 0
+            && typeof record.sha256 === 'string'
+            && firstRun.kernelCatalog.some((kernel) => kernel.version === options.installKernelVersion
+              && kernel.sha256 === record.sha256))),
       communityKernelActivated: firstRun.communityKernelActivated,
       proKernelLockedWithoutLicense: firstRun.proKernelLockedWithoutLicense
     }
@@ -925,6 +939,7 @@ async function main() {
       localApiDiagnostics: localApiProbe,
       mcpDiagnostics: mcpProbe,
       kernelUpgradeDiagnostics: firstRun.upgradeFlow,
+      kernelRegistryDiagnostics: options.installKernelVersion ? kernelRegistry : undefined,
       checks,
       passed: Object.values(checks).every(Boolean),
       retainedDataPath: options.keepData ? root : undefined
