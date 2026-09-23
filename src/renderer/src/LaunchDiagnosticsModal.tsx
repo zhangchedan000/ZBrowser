@@ -186,7 +186,7 @@ export function LaunchDiagnosticsModal({
             <Typography.Paragraph type="secondary" style={{ marginTop: 6, marginBottom: 0 }}>
               {report.identityDiagnosis.summary}
             </Typography.Paragraph>
-          )
+          )}
 
           {diagnosis.protectedUserOverrides > 0 && (
             <Alert
