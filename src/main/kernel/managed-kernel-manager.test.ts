@@ -1,7 +1,8 @@
 import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
+import { KernelManager } from '../kernel-manager'
 import { SettingsStore } from '../settings-store'
 import { KernelRegistry } from './kernel-registry'
 import { ManagedKernelManager } from './managed-kernel-manager'
@@ -119,5 +120,53 @@ describe('ManagedKernelManager registry synchronization', () => {
     await manager.initialize()
     records = await registry.list()
     expect(records.map((record) => record.id)).toEqual([`fingerprint-chromium-${releaseVersion}`])
+  })
+
+  it('keeps same-version custom builds separate from upstream releases', async () => {
+    const vaultPath = await temporaryVault()
+    const version = '144.0.7559.132'
+    const settings = new SettingsStore(vaultPath)
+    const registry = new KernelRegistry(join(vaultPath, 'kernels'))
+    const manager = new ManagedKernelManager(vaultPath, settings, () => undefined, undefined, () => [], registry)
+    const localBuild = {
+      version,
+      publishedAt: '2026-09-21T00:00:00.000Z',
+      assetName: 'local-build-win32-x64',
+      downloadUrl: '',
+      size: 0,
+      sha256: 'b'.repeat(64),
+      installed: true,
+      remoteAvailable: false,
+      origin: 'local-build' as const,
+      executable: join(vaultPath, 'kernels', version, 'browser', 'chrome.exe')
+    }
+    const upstream = {
+      version,
+      publishedAt: '2026-02-01T00:00:00.000Z',
+      assetName: 'ungoogled-chromium.zip',
+      downloadUrl: 'https://github.com/adryfish/fingerprint-chromium/releases/download/144.0.7559.132/ungoogled-chromium.zip',
+      size: 100_000_000,
+      sha256: 'a'.repeat(64),
+      installed: true,
+      remoteAvailable: true,
+      origin: 'local-build' as const,
+      executable: localBuild.executable
+    }
+    const installedSpy = vi.spyOn(KernelManager.prototype, 'installed').mockResolvedValue([localBuild])
+    const releasesSpy = vi.spyOn(KernelManager.prototype, 'releases').mockResolvedValue([upstream])
+    const installSpy = vi.spyOn(KernelManager.prototype, 'install')
+
+    try {
+      await expect(manager.releases()).resolves.toEqual([
+        expect.objectContaining({ version, origin: 'release', installed: false, remoteAvailable: true, executable: undefined }),
+        localBuild
+      ])
+      await expect(manager.install(version)).rejects.toThrow('自定义本地构建')
+      expect(installSpy).not.toHaveBeenCalled()
+    } finally {
+      installedSpy.mockRestore()
+      releasesSpy.mockRestore()
+      installSpy.mockRestore()
+    }
   })
 })

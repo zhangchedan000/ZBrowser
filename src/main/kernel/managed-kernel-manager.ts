@@ -1,5 +1,5 @@
 import { resolve } from 'node:path'
-import type { AppSettings, EngineStatus } from '../../shared/types'
+import type { AppSettings, EngineStatus, KernelRelease } from '../../shared/types'
 import type { Logger } from '../app-logger'
 import { KernelManager } from '../kernel-manager'
 import type { SettingsStore } from '../settings-store'
@@ -21,7 +21,31 @@ export class ManagedKernelManager extends KernelManager {
     await this.syncRegistry()
   }
 
+  override async releases(): Promise<KernelRelease[]> {
+    const [catalog, installed] = await Promise.all([super.releases(), super.installed()])
+    const localBuilds = new Map(
+      installed
+        .filter((release) => release.origin === 'local-build')
+        .map((release) => [release.version, release] as const)
+    )
+    const normalized: KernelRelease[] = []
+    for (const release of catalog) {
+      const localBuild = localBuilds.get(release.version)
+      if (release.remoteAvailable && release.origin === 'local-build' && localBuild) {
+        normalized.push({ ...release, installed: false, origin: 'release', executable: undefined })
+        normalized.push(localBuild)
+      } else {
+        normalized.push(release)
+      }
+    }
+    return normalized
+  }
+
   override async install(version: string): Promise<EngineStatus> {
+    const existing = (await super.installed()).find((release) => release.version === version)
+    if (existing?.origin === 'local-build') {
+      throw new Error(`版本 ${version} 已安装为自定义本地构建；为避免内核系列混用，请先移除该自定义内核，再安装 Fingerprint Chromium`)
+    }
     const engine = await super.install(version)
     await this.syncRegistry()
     return engine
