@@ -111,6 +111,8 @@ async function main() {
     if (!apiReady) throw new Error('Renderer API did not become ready')
 
     const checks = await cdp.evaluate(`(async () => {
+      const releases = await window.browserApi.engine.releases()
+      const catalogRelease = releases.find((release) => release.version === '144.0.7559.132')
       const entry = document.querySelector('button.engine-card')
       if (!entry) return { entryVisible: false, modalVisible: false, controlsVisible: false }
       entry.click()
@@ -142,6 +144,10 @@ async function main() {
         entryVisible: true,
         modalVisible: text.includes('浏览器内核') && text.includes('Fingerprint Chromium'),
         controlsVisible: text.includes('刷新版本') && text.includes('导入本地构建'),
+        catalogReleaseAvailable: Boolean(catalogRelease?.remoteAvailable),
+        catalogSha256Valid: /^[a-f\\d]{64}$/i.test(catalogRelease?.sha256 ?? ''),
+        catalogReleaseVisible: text.includes('Chromium 144.0.7559.132') && text.includes('开源发行版'),
+        installStateVisible: catalogRelease?.installed ? text.includes('已安装') : text.includes('下载并安装'),
         automationEntryVisible: Boolean(automationEntry),
         automationModalVisible: automationText.includes('本机自动化 API 正在运行'),
         automationLoopbackVisible: automationText.includes('127.0.0.1'),
