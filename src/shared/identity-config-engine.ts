@@ -40,17 +40,18 @@ export function resolveIdentityConfig(
       ...Object.keys(ai[section] ?? {}),
       ...Object.keys(user[section] ?? {})
     ])
+    const resolved: Record<string, IdentityConfigValue> = {}
 
-    return Object.fromEntries(
-      [...keys].map((key) => [
-        key,
-        resolveIdentityConfigValue([
-          defaults[section][key],
-          ai[section]?.[key],
-          user[section]?.[key]
-        ])
+    for (const key of keys) {
+      const value = resolveIdentityConfigValue([
+        defaults[section][key],
+        ai[section]?.[key],
+        user[section]?.[key]
       ])
-    )
+      if (value) resolved[key] = value
+    }
+
+    return resolved
   }
 
   return {
