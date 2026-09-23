@@ -439,6 +439,28 @@ export interface FingerprintRuntimeDiagnosticReport {
 }
 
 export type FingerprintRepairAuditPhase = 'backup' | 'applied' | 'verified' | 'rolled_back' | 'failed'
+export type FingerprintRepairPlanStatus = 'ready' | 'no_changes' | 'blocked'
+
+export interface FingerprintRepairChange {
+  section: IdentityConfigSection
+  field: string
+  source: IdentityConfigSource
+  before: unknown
+  after: unknown
+}
+
+export interface FingerprintRepairPlan {
+  planId: string
+  profileId: string
+  profileUpdatedAt: string
+  generatedAt: string
+  expiresAt: string
+  status: FingerprintRepairPlanStatus
+  sections: IdentityConfigSection[]
+  changes: FingerprintRepairChange[]
+  warnings: string[]
+  blockedReason?: string
+}
 
 export interface FingerprintRepairAuditRecord {
   auditId: string
@@ -544,7 +566,8 @@ export interface BrowserApi {
     diagnose: (id: string) => Promise<LaunchDiagnosticReport>
     diagnoseKernelRuntime: (id: string) => Promise<LaunchDiagnosticReport>
     diagnoseFingerprintRuntime: (id: string) => Promise<FingerprintRuntimeDiagnosticReport>
-    repairFingerprintIdentity: (id: string, approvedByUser: boolean) => Promise<FingerprintRepairExecutionSummary & { profile: BrowserProfileView }>
+    planFingerprintRepair: (id: string) => Promise<FingerprintRepairPlan>
+    repairFingerprintIdentity: (id: string, approvedByUser: boolean, planId: string, sections: IdentityConfigSection[]) => Promise<FingerprintRepairExecutionSummary & { profile: BrowserProfileView }>
     fingerprintRepairHistory: (id: string) => Promise<FingerprintRepairAuditRecord[]>
     crashHistory: (id: string) => Promise<BrowserCrashRecord[]>
     environmentCheckHistory: (id: string) => Promise<EnvironmentCheckRecord[]>

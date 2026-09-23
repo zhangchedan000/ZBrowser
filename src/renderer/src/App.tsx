@@ -48,7 +48,7 @@ import {
   type TableColumnsType
 } from 'antd'
 import { useEffect, useMemo, useState } from 'react'
-import type { AppRecoveryStatus, AppUpdateStatus, BrowserCrashRecord, BrowserExtension, BrowserProfileView, EngineStatus, KernelRelease, LaunchDiagnosticReport, ProfileDraft, ProfileLaunchOptions, ProfileStoreHealth, StorageOverview } from '../../shared/types'
+import type { AppRecoveryStatus, AppUpdateStatus, BrowserCrashRecord, BrowserExtension, BrowserProfileView, EngineStatus, IdentityConfigSection, KernelRelease, LaunchDiagnosticReport, ProfileDraft, ProfileLaunchOptions, ProfileStoreHealth, StorageOverview } from '../../shared/types'
 import { ProfileEditor } from './ProfileEditor'
 import { KernelManagerModal } from './KernelManagerModal'
 import { ProfileDataModal } from './ProfileDataModal'
@@ -651,11 +651,11 @@ export default function App() {
     })
   }
 
-  async function repairDiagnosticIdentity(): Promise<void> {
+  async function repairDiagnosticIdentity(planId: string, sections: IdentityConfigSection[]): Promise<void> {
     if (!diagnosticProfile) return
     setRepairingDiagnostic(true)
     try {
-      const result = await window.browserApi.profiles.repairFingerprintIdentity(diagnosticProfile.id, true)
+      const result = await window.browserApi.profiles.repairFingerprintIdentity(diagnosticProfile.id, true, planId, sections)
       upsert(result.profile)
       setDiagnosticProfile(result.profile)
       if (result.status === 'completed') {
@@ -1297,7 +1297,7 @@ export default function App() {
         profile={diagnosticProfile}
         report={diagnosticReport}
         repairing={repairingDiagnostic}
-        onRepair={() => repairDiagnosticIdentity()}
+        onRepair={(planId, sections) => repairDiagnosticIdentity(planId, sections)}
         onClose={() => { setDiagnosticProfile(undefined); setDiagnosticReport(undefined) }}
       />
       <CrashHistoryModal

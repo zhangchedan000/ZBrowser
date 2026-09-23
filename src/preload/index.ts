@@ -39,7 +39,9 @@ const api: BrowserApi = {
     diagnose: (id: string) => ipcRenderer.invoke('profiles:diagnose', id),
     diagnoseKernelRuntime: (id: string) => ipcRenderer.invoke('profiles:diagnose-kernel-runtime', id),
     diagnoseFingerprintRuntime: (id: string) => ipcRenderer.invoke('profiles:diagnose-fingerprint-runtime', id),
-    repairFingerprintIdentity: (id: string, approvedByUser: boolean) => ipcRenderer.invoke('profiles:repair-fingerprint-identity', id, approvedByUser),
+    planFingerprintRepair: (id: string) => ipcRenderer.invoke('profiles:plan-fingerprint-repair', id),
+    repairFingerprintIdentity: (id: string, approvedByUser: boolean, planId: string, sections) =>
+      ipcRenderer.invoke('profiles:repair-fingerprint-identity', id, approvedByUser, planId, sections),
     fingerprintRepairHistory: (id: string) => ipcRenderer.invoke('profiles:fingerprint-repair-history', id),
     crashHistory: (id: string) => ipcRenderer.invoke('profiles:crash-history', id),
     environmentCheckHistory: (id: string) => ipcRenderer.invoke('profiles:environment-check-history', id),

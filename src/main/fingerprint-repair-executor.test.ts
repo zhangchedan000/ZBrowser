@@ -28,7 +28,10 @@ function generatedIdentity(): AIIdentityGenerationResult {
         acceptLanguages: { value: 'en-US,en', source: 'ai' },
         timezone: { value: 'America/New_York', source: 'ai' }
       },
-      browser: {}
+      browser: {
+        brand: { value: 'Edge', source: 'ai' },
+        brandVersion: { value: '144.0.0.0', source: 'ai' }
+      }
     },
     warnings: [],
     networkReadiness: 'manual'
@@ -78,13 +81,20 @@ describe('FingerprintRepairExecutor', () => {
       () => generatedIdentity()
     )
 
-    const result = await executor.execute(profile.id, true)
+    const plan = await executor.plan(profile.id)
+    expect(plan.status).toBe('ready')
+    expect(plan.sections).toContain('locale')
+    expect(plan.sections).toContain('browser')
+    expect(plan.changes.some((change) => change.field === 'timezone')).toBe(false)
+
+    const result = await executor.execute(profile.id, true, plan.planId, ['locale'])
     const saved = profiles.get(profile.id)
     const history = await state.history(profile.id)
 
     expect(result.status).toBe('completed')
     expect(verifiedProfileId).toBe(profile.id)
     expect(saved.fingerprint.language).toBe('en-US')
+    expect(saved.fingerprint.brand).toBe('Chrome')
     expect(saved.fingerprint.timezone).toBe('America/Los_Angeles')
     expect(saved.identityConfigProvenance?.locale.timezone).toBe('user')
     expect(saved.identityConfigProvenance?.locale.language).toBe('ai')
@@ -114,7 +124,8 @@ describe('FingerprintRepairExecutor', () => {
       () => generatedIdentity()
     )
 
-    const result = await executor.execute(profile.id, true)
+    const plan = await executor.plan(profile.id)
+    const result = await executor.execute(profile.id, true, plan.planId, ['locale'])
     const restored = profiles.get(profile.id)
     const history = await state.history(profile.id)
 
@@ -139,8 +150,49 @@ describe('FingerprintRepairExecutor', () => {
       () => generatedIdentity()
     )
 
-    await expect(executor.execute(profile.id, false)).rejects.toThrow('明确确认')
+    const plan = await executor.plan(profile.id)
+    await expect(executor.execute(profile.id, false, plan.planId, plan.sections)).rejects.toThrow('明确确认')
     expect(await state.checkpoint(profile.id)).toBeNull()
+  })
+
+  it('rejects a stale preview when the profile changes before confirmation', async () => {
+    const vault = await mkdtemp(join(tmpdir(), 'zbrowser-repair-'))
+    temporaryPaths.push(vault)
+    const profiles = new ProfileStore(vault)
+    await profiles.initialize()
+    const profile = await profiles.create(defaultProfileDraft())
+    const state = new FingerprintRepairStateStore(profiles)
+    const executor = new FingerprintRepairExecutor(
+      profiles,
+      { diagnoseFingerprintRuntime: async (id) => readyReport(id, true) },
+      state,
+      undefined,
+      () => generatedIdentity()
+    )
+
+    const plan = await executor.plan(profile.id)
+    const draft = defaultProfileDraft()
+    draft.name = profile.name
+    draft.note = 'changed after preview'
+    draft.group = profile.group
+    draft.tags = [...profile.tags]
+    draft.extensionIds = [...profile.extensionIds]
+    draft.color = profile.color
+    draft.startUrls = [...profile.startUrls]
+    draft.kernelVersion = profile.kernelVersion
+    draft.kernelFamily = profile.kernelFamily
+    draft.window = { ...profile.window }
+    draft.proxy = { ...profile.proxy }
+    draft.environmentType = profile.environmentType
+    draft.identityConfigProvenance = profile.identityConfigProvenance
+    draft.fingerprint = {
+      ...profile.fingerprint,
+      disabledSpoofing: [...profile.fingerprint.disabledSpoofing]
+    }
+    await profiles.update(profile.id, draft)
+
+    await expect(executor.execute(profile.id, true, plan.planId, ['locale']))
+      .rejects.toThrow('重新生成 AI 修复计划')
   })
 
   it('recovers a persisted repair checkpoint after an interrupted process', async () => {

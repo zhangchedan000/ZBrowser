@@ -1,7 +1,7 @@
 import { app, BrowserWindow, dialog, ipcMain, shell } from 'electron'
 import { lstat, readFile, stat, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
-import type { ProfileDraft, ProxyPoolEntry, ProxyPoolEntryInput } from '../shared/types'
+import type { IdentityConfigSection, ProfileDraft, ProxyPoolEntry, ProxyPoolEntryInput } from '../shared/types'
 import { compareKernelVersions, kernelFamilyForRelease } from '../shared/kernel-version'
 import type { KernelManager } from './kernel-manager'
 import { listBundledBrowsers, locateBrowser, locateBrowserForProfile, locateBundledBrowser, normalizeBrowserSelection } from './browser-locator'
@@ -346,9 +346,21 @@ export function registerIpc({
   ipcMain.handle('profiles:diagnose', (_event, id: string) => launcher.diagnose(id))
   ipcMain.handle('profiles:diagnose-kernel-runtime', (_event, id: string) => launcher.diagnoseKernelRuntime(id))
   ipcMain.handle('profiles:diagnose-fingerprint-runtime', (_event, id: string) => launcher.diagnoseFingerprintRuntime(id))
-  ipcMain.handle('profiles:repair-fingerprint-identity', async (_event, id: string, approvedByUser: unknown) => {
+  ipcMain.handle('profiles:plan-fingerprint-repair', (_event, id: string) => fingerprintRepair.plan(id))
+  ipcMain.handle('profiles:repair-fingerprint-identity', async (
+    _event,
+    id: string,
+    approvedByUser: unknown,
+    planId: unknown,
+    sections: unknown
+  ) => {
     if (approvedByUser !== true) throw new Error('AI 修复必须由用户明确确认后才能执行')
-    const result = await fingerprintRepair.execute(id, true)
+    if (typeof planId !== 'string' || !planId.trim()) throw new Error('AI 修复计划标识无效')
+    const validSections: IdentityConfigSection[] = ['fingerprint', 'network', 'locale', 'browser']
+    if (!Array.isArray(sections) || !sections.every((section) => validSections.includes(section as IdentityConfigSection))) {
+      throw new Error('AI 修复区域无效')
+    }
+    const result = await fingerprintRepair.execute(id, true, planId, sections as IdentityConfigSection[])
     return { ...result, profile: publicProfile(result.profile) }
   })
   ipcMain.handle('profiles:fingerprint-repair-history', (_event, id: string) => fingerprintRepairState.history(id))

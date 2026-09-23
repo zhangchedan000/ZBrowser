@@ -2,13 +2,14 @@ import { randomUUID } from 'node:crypto'
 import type {
   BrowserProfile,
   FingerprintRepairAuditPhase,
+  FingerprintRepairChange,
   FingerprintRepairExecutionSummary,
+  FingerprintRepairPlan,
   FingerprintRuntimeDiagnosticReport,
   IdentityConfigSection,
   ProfileDraft
 } from '../shared/types'
 import {
-  applyAIIdentityConfigProvenance,
   applyAIIdentityConfigToFingerprint,
   generateAIIdentityConfig,
   type AIIdentityGenerationRequest,
@@ -18,8 +19,10 @@ import {
   HARDWARE_IDENTITY_FIELDS,
   identityConfigSource,
   identitySectionForFingerprintField,
+  markIdentityConfigFields,
   normalizeIdentityConfigProvenance
 } from '../shared/identity-config-provenance'
+import { diagnosticConfigTarget } from '../shared/fingerprint-health-adapter'
 import {
   approveRepairWorkflow,
   createRepairWorkflow,
@@ -39,6 +42,14 @@ type IdentityGenerator = (request: AIIdentityGenerationRequest) => AIIdentityGen
 interface FingerprintRepairExecutionResultInternal extends FingerprintRepairExecutionSummary {
   profile: BrowserProfile
 }
+
+interface PendingRepairPlan {
+  publicPlan: FingerprintRepairPlan
+  nextFingerprint: BrowserProfile['fingerprint']
+}
+
+const PLAN_TTL_MS = 10 * 60 * 1000
+const VALID_SECTIONS = new Set<IdentityConfigSection>(['fingerprint', 'network', 'locale', 'browser'])
 
 function profileDraft(profile: BrowserProfile): ProfileDraft {
   return {
@@ -62,11 +73,31 @@ function profileDraft(profile: BrowserProfile): ProfileDraft {
   }
 }
 
+function fingerprintRecord(value: BrowserProfile['fingerprint']): Record<string, unknown> {
+  return value as unknown as Record<string, unknown>
+}
+
 function changedFingerprintFields(before: BrowserProfile['fingerprint'], after: BrowserProfile['fingerprint']): string[] {
-  const beforeRecord = before as unknown as Record<string, unknown>
-  const afterRecord = after as unknown as Record<string, unknown>
+  const beforeRecord = fingerprintRecord(before)
+  const afterRecord = fingerprintRecord(after)
   const keys = new Set([...Object.keys(beforeRecord), ...Object.keys(afterRecord)])
   return [...keys].filter((key) => JSON.stringify(beforeRecord[key]) !== JSON.stringify(afterRecord[key])).sort()
+}
+
+function repairChanges(profile: BrowserProfile, nextFingerprint: BrowserProfile['fingerprint']): FingerprintRepairChange[] {
+  const provenance = normalizeIdentityConfigProvenance(profile.identityConfigProvenance)
+  const before = fingerprintRecord(profile.fingerprint)
+  const after = fingerprintRecord(nextFingerprint)
+  return changedFingerprintFields(profile.fingerprint, nextFingerprint).map((field) => {
+    const section = identitySectionForFingerprintField(field)
+    return {
+      section,
+      field,
+      source: identityConfigSource(provenance, section, field),
+      before: before[field],
+      after: after[field]
+    }
+  })
 }
 
 function componentForSection(section: IdentityConfigSection): RepairAction['component'] {
@@ -76,12 +107,11 @@ function componentForSection(section: IdentityConfigSection): RepairAction['comp
   return 'hardware'
 }
 
-function repairActions(profile: BrowserProfile, changedFields: string[]): RepairAction[] {
+function repairActions(profile: BrowserProfile, changes: FingerprintRepairChange[]): RepairAction[] {
   const provenance = normalizeIdentityConfigProvenance(profile.identityConfigProvenance)
   const grouped = new Map<IdentityConfigSection, string[]>()
-  for (const key of changedFields) {
-    const section = identitySectionForFingerprintField(key)
-    grouped.set(section, [...(grouped.get(section) ?? []), key])
+  for (const change of changes) {
+    grouped.set(change.section, [...(grouped.get(change.section) ?? []), change.field])
   }
   return [...grouped.entries()].map(([section, keys]) => ({
     id: `identity-${section}`,
@@ -94,17 +124,60 @@ function repairActions(profile: BrowserProfile, changedFields: string[]): Repair
   }))
 }
 
-function assertNoUserOverrideChanged(profile: BrowserProfile, changedFields: string[]): void {
+function assertNoUserOverrideChanged(profile: BrowserProfile, changes: FingerprintRepairChange[]): void {
   const provenance = normalizeIdentityConfigProvenance(profile.identityConfigProvenance)
-  for (const key of changedFields) {
-    const section = identitySectionForFingerprintField(key)
-    if (identityConfigSource(provenance, section, key) === 'user') {
-      throw new Error(`AI 修复被手动配置保护阻止：${section}.${key}`)
+  for (const change of changes) {
+    if (identityConfigSource(provenance, change.section, change.field) === 'user') {
+      throw new Error(`AI 修复被手动配置保护阻止：${change.section}.${change.field}`)
     }
   }
 }
 
+function applySelectedChanges(
+  current: BrowserProfile['fingerprint'],
+  planned: BrowserProfile['fingerprint'],
+  changes: FingerprintRepairChange[]
+): BrowserProfile['fingerprint'] {
+  const next: BrowserProfile['fingerprint'] = {
+    ...current,
+    disabledSpoofing: [...current.disabledSpoofing]
+  }
+  const target = fingerprintRecord(next)
+  const source = fingerprintRecord(planned)
+  for (const change of changes) {
+    if (source[change.field] === undefined) delete target[change.field]
+    else target[change.field] = source[change.field]
+  }
+  if (Array.isArray(next.disabledSpoofing)) next.disabledSpoofing = [...next.disabledSpoofing]
+  return next
+}
+
+function selectedProvenance(profile: BrowserProfile, changes: FingerprintRepairChange[]) {
+  let provenance = normalizeIdentityConfigProvenance(profile.identityConfigProvenance)
+  for (const change of changes) {
+    provenance = markIdentityConfigFields(provenance, change.section, [change.field], 'ai', true)
+  }
+  return provenance
+}
+
+function scopedRuntimeVerify(
+  report: FingerprintRuntimeDiagnosticReport,
+  selectedSections: IdentityConfigSection[]
+): boolean {
+  if (report.ready) return true
+  if (!report.snapshot) return false
+  const selected = new Set(selectedSections)
+  return !report.checks.some((check) => {
+    if (check.status !== 'error') return false
+    const target = diagnosticConfigTarget(check.key)
+    if (!target) return true
+    return selected.has(target.section)
+  })
+}
+
 export class FingerprintRepairExecutor {
+  private readonly pendingPlans = new Map<string, PendingRepairPlan>()
+
   constructor(
     private readonly profiles: ProfileStore,
     private readonly verifier: FingerprintRuntimeVerifier,
@@ -112,6 +185,93 @@ export class FingerprintRepairExecutor {
     private readonly logger?: Logger,
     private readonly generateIdentity: IdentityGenerator = generateAIIdentityConfig
   ) {}
+
+  private prunePlans(): void {
+    const now = Date.now()
+    for (const [id, plan] of this.pendingPlans.entries()) {
+      if (Date.parse(plan.publicPlan.expiresAt) <= now) this.pendingPlans.delete(id)
+    }
+  }
+
+  private identityRequest(profile: BrowserProfile): AIIdentityGenerationRequest {
+    return {
+      baseFingerprint: profile.fingerprint,
+      platform: profile.fingerprint.platform,
+      proxyProtocol: profile.proxy.protocol,
+      proxyCheck: profile.proxyCheck,
+      countryCode: profile.proxyCheck?.countryCode,
+      networkMode: profile.proxy.protocol === 'direct' ? 'manual' : 'proxy'
+    }
+  }
+
+  async plan(profileId: string): Promise<FingerprintRepairPlan> {
+    this.prunePlans()
+    const current = this.profiles.get(profileId)
+    const generatedAt = new Date()
+    const expiresAt = new Date(generatedAt.getTime() + PLAN_TTL_MS)
+    const base = {
+      planId: randomUUID(),
+      profileId,
+      profileUpdatedAt: current.updatedAt,
+      generatedAt: generatedAt.toISOString(),
+      expiresAt: expiresAt.toISOString()
+    }
+
+    if (current.status !== 'closed' && current.status !== 'error') {
+      return {
+        ...base,
+        status: 'blocked',
+        sections: [],
+        changes: [],
+        warnings: [],
+        blockedReason: '请先关闭浏览器环境再生成 AI 修复计划'
+      }
+    }
+
+    const generated = this.generateIdentity(this.identityRequest(current))
+    const nextFingerprint = applyAIIdentityConfigToFingerprint(
+      current.fingerprint,
+      generated,
+      current.identityConfigProvenance
+    )
+    const changes = repairChanges(current, nextFingerprint)
+
+    if (!changes.length) {
+      return {
+        ...base,
+        status: 'no_changes',
+        sections: [],
+        changes: [],
+        warnings: generated.warnings
+      }
+    }
+
+    const hardwareChanges = changes.filter((change) =>
+      HARDWARE_IDENTITY_FIELDS.includes(change.field as (typeof HARDWARE_IDENTITY_FIELDS)[number])
+    )
+    if (hardwareChanges.length && !generated.personaId && current.fingerprint.hardwareProfileId !== 'legacy-custom') {
+      return {
+        ...base,
+        status: 'blocked',
+        sections: [],
+        changes: [],
+        warnings: generated.warnings,
+        blockedReason: 'AI 硬件修复缺少完整 Hardware Persona，已阻止孤立硬件参数覆盖'
+      }
+    }
+
+    assertNoUserOverrideChanged(current, changes)
+    const sections = [...new Set(changes.map((change) => change.section))]
+    const publicPlan: FingerprintRepairPlan = {
+      ...base,
+      status: 'ready',
+      sections,
+      changes,
+      warnings: generated.warnings
+    }
+    this.pendingPlans.set(publicPlan.planId, { publicPlan, nextFingerprint })
+    return publicPlan
+  }
 
   private async audit(
     auditId: string,
@@ -182,57 +342,59 @@ export class FingerprintRepairExecutor {
     return recovered
   }
 
-  async execute(profileId: string, approvedByUser: boolean): Promise<FingerprintRepairExecutionResultInternal> {
+  async execute(
+    profileId: string,
+    approvedByUser: boolean,
+    planId: string,
+    requestedSections: IdentityConfigSection[]
+  ): Promise<FingerprintRepairExecutionResultInternal> {
     if (!approvedByUser) throw new Error('AI 修复必须由用户明确确认后才能执行')
+    this.prunePlans()
+    const pending = this.pendingPlans.get(planId)
+    if (!pending || pending.publicPlan.profileId !== profileId) throw new Error('AI 修复计划已过期，请重新预览后确认')
+    if (pending.publicPlan.status !== 'ready') throw new Error('当前 AI 修复计划不可执行')
+
     const current = this.profiles.get(profileId)
     if (current.status !== 'closed' && current.status !== 'error') throw new Error('请先关闭浏览器环境再执行 AI 修复')
+    if (current.updatedAt !== pending.publicPlan.profileUpdatedAt) {
+      this.pendingPlans.delete(planId)
+      throw new Error('环境配置已发生变化，请重新生成 AI 修复计划')
+    }
 
-    const request: AIIdentityGenerationRequest = {
-      baseFingerprint: current.fingerprint,
-      platform: current.fingerprint.platform,
-      proxyProtocol: current.proxy.protocol,
-      proxyCheck: current.proxyCheck,
-      countryCode: current.proxyCheck?.countryCode,
-      networkMode: current.proxy.protocol === 'direct' ? 'manual' : 'proxy'
+    const selectedSections = [...new Set(requestedSections)].filter((section): section is IdentityConfigSection => VALID_SECTIONS.has(section))
+    if (!selectedSections.length) throw new Error('请至少选择一个 AI 修复区域')
+    if (selectedSections.some((section) => !pending.publicPlan.sections.includes(section))) {
+      throw new Error('选择的修复区域不属于当前 AI 修复计划')
     }
-    const generated = this.generateIdentity(request)
-    const nextFingerprint = applyAIIdentityConfigToFingerprint(
-      current.fingerprint,
-      generated,
-      current.identityConfigProvenance
-    )
-    const changedFields = changedFingerprintFields(current.fingerprint, nextFingerprint)
-    if (!changedFields.length) {
-      throw new Error('当前没有可由 AI 自动修复的配置；手动配置项只提供建议，不会被覆盖')
-    }
-    const hardwareChanges = changedFields.filter((key) =>
-      HARDWARE_IDENTITY_FIELDS.includes(key as (typeof HARDWARE_IDENTITY_FIELDS)[number])
-    )
-    if (hardwareChanges.length && !generated.personaId && current.fingerprint.hardwareProfileId !== 'legacy-custom') {
-      throw new Error('AI 硬件修复缺少完整 Hardware Persona，已阻止孤立硬件参数覆盖')
-    }
-    assertNoUserOverrideChanged(current, changedFields)
 
-    const workflow = approveRepairWorkflow(createRepairWorkflow(repairActions(current, changedFields)))
+    const selectedSet = new Set(selectedSections)
+    const changes = pending.publicPlan.changes.filter((change) => selectedSet.has(change.section))
+    if (!changes.length) throw new Error('所选区域没有可执行的 AI 修复项')
+    assertNoUserOverrideChanged(current, changes)
+
+    const nextFingerprint = applySelectedChanges(current.fingerprint, pending.nextFingerprint, changes)
+    const workflow = approveRepairWorkflow(createRepairWorkflow(repairActions(current, changes)))
     if (!validateRepairSafety(workflow)) throw new Error('AI 修复安全检查未通过')
+    this.pendingPlans.delete(planId)
 
+    const changedFields = changes.map((change) => change.field)
     const auditId = randomUUID()
     await this.state.createCheckpoint(profileId, auditId, current.fingerprint, current.identityConfigProvenance)
-    await this.audit(auditId, profileId, workflow.id, 'backup', changedFields, '已创建身份配置修复前备份')
+    await this.audit(auditId, profileId, workflow.id, 'backup', changedFields, `已创建身份配置修复前备份；选择区域：${selectedSections.join(', ')}`)
 
     let applied = false
     try {
       const draft = profileDraft(current)
       draft.fingerprint = nextFingerprint
-      draft.identityConfigProvenance = applyAIIdentityConfigProvenance(current.identityConfigProvenance, generated)
+      draft.identityConfigProvenance = selectedProvenance(current, changes)
       await this.profiles.update(profileId, draft)
       applied = true
-      await this.audit(auditId, profileId, workflow.id, 'applied', changedFields, '已应用 AI 身份修复配置，等待 Runtime Verify')
+      await this.audit(auditId, profileId, workflow.id, 'applied', changedFields, '已应用所选 AI 身份修复配置，等待 Runtime Verify')
 
       const report = await this.verifier.diagnoseFingerprintRuntime(profileId)
-      if (!report.ready) {
+      if (!scopedRuntimeVerify(report, selectedSections)) {
         const restored = await this.restoreFingerprintCheckpoint(profileId, auditId, workflow.id, changedFields)
-        this.logger?.error('AI 指纹修复 Runtime Verify 未通过，已回滚', { profileId, auditId })
+        this.logger?.error('AI 指纹修复 Runtime Verify 未通过，已回滚', { profileId, auditId, selectedSections })
         return {
           status: 'rolled_back',
           auditId,
@@ -244,14 +406,16 @@ export class FingerprintRepairExecutor {
       }
 
       const verified = this.profiles.get(profileId)
-      await this.audit(auditId, profileId, workflow.id, 'verified', changedFields, 'Runtime Verify 通过，AI 身份修复已完成')
+      await this.audit(auditId, profileId, workflow.id, 'verified', changedFields, '所选区域 Runtime Verify 通过，AI 身份修复已完成')
       await this.state.clearCheckpoint(profileId)
-      this.logger?.info('AI 指纹修复已完成', { profileId, auditId, changedFields })
+      this.logger?.info('AI 指纹修复已完成', { profileId, auditId, selectedSections, changedFields })
       return {
         status: 'completed',
         auditId,
         changedFields,
-        message: 'AI 身份修复已应用并通过 Runtime Verify',
+        message: report.ready
+          ? 'AI 身份修复已应用并通过 Runtime Verify'
+          : '所选 AI 修复区域已通过 Runtime Verify；其他未选区域仍存在待处理项',
         report,
         profile: verified
       }

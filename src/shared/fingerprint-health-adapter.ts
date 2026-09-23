@@ -10,7 +10,7 @@ export interface DiagnosticCheckInput {
   expected?: unknown
 }
 
-interface ConfigTarget {
+export interface DiagnosticConfigTarget {
   section: IdentityConfigSection
   keys: string[]
 }
@@ -24,7 +24,7 @@ function resolveComponent(key: string): FingerprintHealthSignal['component'] {
   return 'browser'
 }
 
-function resolveConfigTarget(key: string): ConfigTarget | undefined {
+export function diagnosticConfigTarget(key: string): DiagnosticConfigTarget | undefined {
   switch (key) {
     case 'runtime-persona-contract':
       return { section: 'fingerprint', keys: ['hardwareProfileId', 'hardwarePersonaId'] }
@@ -71,7 +71,7 @@ function resolveReferences(
   key: string,
   provenance?: IdentityConfigProvenance
 ): FingerprintConfigReference[] {
-  const target = resolveConfigTarget(key)
+  const target = diagnosticConfigTarget(key)
   if (!target) return []
   return target.keys.map((configKey) => ({
     section: target.section,
