@@ -343,7 +343,8 @@ export function applyHardwareProfile(
       ...config,
       hardwareProfileId: id,
       gpuBucket: undefined,
-      renderIdentityVersion: undefined
+      renderIdentityVersion: undefined,
+      hardwarePersonaId: undefined
     }
   }
   const seededIdentity = profile.gpuPool?.length && options.refreshSeededGpu

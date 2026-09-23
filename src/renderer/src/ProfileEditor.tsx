@@ -21,6 +21,7 @@ import {
 import { useEffect, useMemo, useState } from 'react'
 import { defaultPlatform, defaultProfileDraft, randomSeed } from '../../shared/defaults'
 import { fingerprintVersionWarning } from '../../shared/fingerprint-consistency'
+import { applyAIIdentityConfigToFingerprint, generateAIIdentityConfig } from '../../shared/identity-ai-generator'
 import {
   applyFingerprintHardwarePersona,
   fingerprintHardwareRegionForCountry,
@@ -107,6 +108,8 @@ export function ProfileEditor({ open, profile, suggestedIndex, saving, extension
   const kernelFamily = Form.useWatch('kernelFamily', form)
   const windowMode = Form.useWatch(['window', 'mode'], form) ?? 'auto'
   const [testingProxy, setTestingProxy] = useState(false)
+  const [applyingAIIdentity, setApplyingAIIdentity] = useState(false)
+  const [aiIdentityFeedback, setAiIdentityFeedback] = useState<{ type: 'success' | 'warning'; message: string; description: string } | null>(null)
   const [proxyResult, setProxyResult] = useState<ProxyTestResult | null>(null)
   const pinnedKernel = kernels.find((kernel) => kernelReleaseMatchesPin(kernel, kernelVersion, kernelFamily))
   const effectiveKernelFamily = kernelFamily ?? (pinnedKernel ? kernelFamilyForRelease(pinnedKernel) : profile?.kernelFamily)
@@ -188,6 +191,7 @@ export function ProfileEditor({ open, profile, suggestedIndex, saving, extension
     if (open) {
       form.setFieldsValue(editorValues(profile, suggestedIndex))
       setProxyResult(null)
+      setAiIdentityFeedback(null)
     }
   }, [form, open, profile, suggestedIndex])
 
@@ -195,6 +199,71 @@ export function ProfileEditor({ open, profile, suggestedIndex, saving, extension
     const current = form.getFieldValue('fingerprint')
     const applied = applyRecommendedProxyNetworkIdentity(current, result)
     if (applied) form.setFieldValue('fingerprint', applied)
+  }
+
+  async function applyAIIdentityConfiguration(): Promise<void> {
+    try {
+      setApplyingAIIdentity(true)
+      setAiIdentityFeedback(null)
+
+      const effectiveProxyProtocol = proxyProtocol ?? 'direct'
+      let check = activeProxyCheck
+
+      if (effectiveProxyProtocol !== 'direct' && !check) {
+        await form.validateFields([['proxy', 'host'], ['proxy', 'port']])
+        check = await window.browserApi.proxy.test(form.getFieldValue('proxy'), profile?.id)
+        setProxyResult(check)
+      }
+
+      if (effectiveProxyProtocol !== 'direct' && (!check || !check.ok)) {
+        setAiIdentityFeedback({
+          type: 'warning',
+          message: 'AI 身份配置未应用',
+          description: check?.error ? `代理检测失败：${check.error}` : '请先提供可用代理，或切换为直连后使用手动网络配置。'
+        })
+        return
+      }
+
+      const current = form.getFieldValue('fingerprint')
+      const generated = generateAIIdentityConfig({
+        baseFingerprint: current,
+        platform: profile ? current.platform : hostPlatform,
+        countryCode: check?.countryCode,
+        proxyProtocol: effectiveProxyProtocol,
+        proxyCheck: check,
+        networkMode: effectiveProxyProtocol === 'direct' ? 'manual' : 'proxy'
+      })
+      const applied = applyAIIdentityConfigToFingerprint(current, generated)
+      form.setFieldValue('fingerprint', applied)
+
+      const details = [
+        generated.personaId ? `Persona ${generated.personaId}` : '保留当前硬件配置',
+        effectiveProxyProtocol === 'direct'
+          ? '网络保持手动模式，可继续修改'
+          : generated.networkReadiness === 'ready'
+            ? '网络身份已按代理出口匹配'
+            : '网络配置保持现有手动值',
+        ...generated.warnings
+      ].filter(Boolean)
+
+      setAiIdentityFeedback({
+        type: generated.warnings.length ? 'warning' : 'success',
+        message: generated.networkReadiness === 'ready' || effectiveProxyProtocol === 'direct'
+          ? 'AI 身份配置已应用'
+          : 'AI 指纹配置已应用，网络配置未自动覆盖',
+        description: details.join('；')
+      })
+    } catch (error) {
+      if (!(error && typeof error === 'object' && 'errorFields' in error)) {
+        setAiIdentityFeedback({
+          type: 'warning',
+          message: 'AI 身份配置失败',
+          description: error instanceof Error ? error.message : String(error)
+        })
+      }
+    } finally {
+      setApplyingAIIdentity(false)
+    }
   }
 
   async function testCurrentProxy(autoApply = false): Promise<void> {
@@ -459,9 +528,22 @@ export function ProfileEditor({ open, profile, suggestedIndex, saving, extension
       <Alert
         type="info"
         showIcon
-        message="推荐流程：填代理 → 检测并匹配 → 选择硬件模板 → 保存 → 环境检测"
-        description="“检测并一键匹配”会根据代理出口自动设置语言、Accept-Language、时区、WebRTC 防泄漏和出口变化策略。"
+        message="推荐流程：填代理 → AI 一键配置身份 → 手动确认/修改 → 保存 → 环境检测"
+        description="AI 会根据代理出口和当前平台推荐成套硬件 Persona、语言、Accept-Language、时区、WebRTC 和出口策略；所有配置仍可切换到手动模式继续修改。"
+        action={(
+          <Button type="primary" loading={applyingAIIdentity} onClick={() => void applyAIIdentityConfiguration()}>
+            {profile ? 'AI 重新分析配置' : 'AI 一键配置身份'}
+          </Button>
+        )}
       />
+      {aiIdentityFeedback && (
+        <Alert
+          type={aiIdentityFeedback.type}
+          showIcon
+          message={aiIdentityFeedback.message}
+          description={aiIdentityFeedback.description}
+        />
+      )}
       <Space className="proxy-test-row" wrap>
         <Button loading={testingProxy} onClick={() => void testCurrentProxy(false)}>仅检测连接</Button>
         {proxyProtocol !== 'direct' && (
@@ -587,7 +669,7 @@ export function ProfileEditor({ open, profile, suggestedIndex, saving, extension
       <Form.Item
         name={['fingerprint', 'hardwareProfileId']}
         label="硬件模板"
-        extra="请选择完整硬件组合，避免出现不合理的设备信息。"
+        extra="AI 可推荐完整硬件 Persona；也可切换“手动自定义”后修改系统、CPU 和屏幕参数。"
       >
         <Select
           options={[
@@ -596,7 +678,7 @@ export function ProfileEditor({ open, profile, suggestedIndex, saving, extension
               label: item.platform !== hostPlatform ? `${item.label} · 跨系统高风险` : item.label,
               disabled: item.platform !== hostPlatform
             })),
-            ...(hardwareProfileId === 'legacy-custom' ? [{ value: 'legacy-custom', label: '旧版自定义配置（保持原指纹）' }] : [])
+            { value: 'legacy-custom', label: hardwareProfileId === 'legacy-custom' ? '手动自定义（当前）' : '手动自定义（高级）' }
           ]}
           onChange={(id: HardwareProfileId) => {
             const current = form.getFieldValue('fingerprint')
@@ -729,7 +811,7 @@ export function ProfileEditor({ open, profile, suggestedIndex, saving, extension
           <Form.Item
             name={['fingerprint', 'networkIdentityMode']}
             label="网络身份"
-            extra="自动模式会在启动前检测代理并匹配语言、时区和位置。"
+            extra="可跟随代理自动匹配，也可随时切换“手动固定”后修改语言、时区、WebRTC 等参数。"
           >
             <Select options={[
               { value: 'proxy', label: '跟随代理出口（推荐）' },

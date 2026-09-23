@@ -6,6 +6,7 @@ import type {
   ProxyTestResult
 } from './types'
 import {
+  applyFingerprintHardwarePersona,
   fingerprintHardwareRegionForCountry,
   recommendFingerprintHardwarePersona
 } from './fingerprint-persona-engine'
@@ -42,6 +43,10 @@ function aiValue<T>(value: T): IdentityConfigValue<T> {
     source: 'ai',
     updatedAt: new Date().toISOString()
   }
+}
+
+function generatedValue<T>(value: IdentityConfigValue | undefined): T | undefined {
+  return value?.value as T | undefined
 }
 
 export function generateAIIdentityConfig(
@@ -146,5 +151,57 @@ export function generateAIIdentityConfig(
     warnings,
     personaId: persona?.id,
     networkReadiness: networkPlan.readiness
+  }
+}
+
+export function applyAIIdentityConfigToFingerprint(
+  base: FingerprintConfig,
+  generated: AIIdentityGenerationResult
+): FingerprintConfig {
+  let next = generated.personaId
+    ? applyFingerprintHardwarePersona(base, generated.personaId) ?? { ...base }
+    : { ...base }
+
+  const fingerprint = generated.config.fingerprint
+  const browser = generated.config.browser
+  const network = generated.config.network
+  const locale = generated.config.locale
+
+  const architecture = generatedValue<FingerprintConfig['architecture']>(fingerprint.architecture)
+  const bitness = generatedValue<FingerprintConfig['bitness']>(fingerprint.bitness)
+  const deviceMemoryGb = generatedValue<FingerprintConfig['deviceMemoryGb']>(fingerprint.deviceMemoryGb)
+  const devicePixelRatio = generatedValue<number>(fingerprint.devicePixelRatio)
+  const colorDepth = generatedValue<FingerprintConfig['colorDepth']>(fingerprint.colorDepth)
+  const pixelDepth = generatedValue<FingerprintConfig['pixelDepth']>(fingerprint.pixelDepth)
+
+  next = {
+    ...next,
+    platform: generatedValue<BrowserPlatform>(fingerprint.platform) ?? next.platform,
+    platformVersion: generatedValue<string>(fingerprint.platformVersion) ?? next.platformVersion,
+    hardwareConcurrency: generatedValue<number>(fingerprint.hardwareConcurrency) ?? next.hardwareConcurrency,
+    screenWidth: generatedValue<number>(fingerprint.screenWidth) ?? next.screenWidth,
+    screenHeight: generatedValue<number>(fingerprint.screenHeight) ?? next.screenHeight,
+    brand: generatedValue<FingerprintConfig['brand']>(browser.brand) ?? next.brand,
+    brandVersion: generatedValue<string>(browser.brandVersion) ?? next.brandVersion,
+    ...(architecture ? { architecture } : {}),
+    ...(bitness ? { bitness } : {}),
+    ...(deviceMemoryGb !== undefined ? { deviceMemoryGb } : {}),
+    ...(devicePixelRatio !== undefined ? { devicePixelRatio } : {}),
+    ...(colorDepth !== undefined ? { colorDepth } : {}),
+    ...(pixelDepth !== undefined ? { pixelDepth } : {})
+  }
+
+  const networkMode = generatedValue<NetworkIdentityMode>(network.networkIdentityMode) ?? next.networkIdentityMode
+  const networkCanApply = networkMode === 'manual' || generated.networkReadiness === 'ready'
+  if (!networkCanApply) return next
+
+  return {
+    ...next,
+    networkIdentityMode: networkMode,
+    proxyExitPolicy: generatedValue<FingerprintConfig['proxyExitPolicy']>(network.proxyExitPolicy) ?? next.proxyExitPolicy,
+    webrtcPolicy: generatedValue<FingerprintConfig['webrtcPolicy']>(network.webrtcPolicy) ?? next.webrtcPolicy,
+    language: generatedValue<string>(locale.language) ?? next.language,
+    acceptLanguages: generatedValue<string>(locale.acceptLanguages) ?? next.acceptLanguages,
+    timezone: generatedValue<string>(locale.timezone) ?? next.timezone
   }
 }
