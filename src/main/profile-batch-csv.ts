@@ -1,6 +1,6 @@
 import { defaultProfileDraft } from '../shared/defaults'
 import { refreshSeededGpuIdentity } from '../shared/hardware-profiles'
-import type { BrowserBrand, BrowserPlatform, ProfileDraft, ProxyProtocol, WebRtcPolicy } from '../shared/types'
+import type { BrowserBrand, BrowserPlatform, KernelFamily, ProfileDraft, ProxyProtocol, WebRtcPolicy } from '../shared/types'
 import { validateProfileDraft } from '../shared/validation'
 
 export const BATCH_PROFILE_COLUMNS = [
@@ -10,6 +10,7 @@ export const BATCH_PROFILE_COLUMNS = [
   'note',
   'start_urls',
   'kernel_version',
+  'kernel_family',
   'environment_type',
   'color',
   'proxy_protocol',
@@ -124,6 +125,7 @@ function rowDraft(values: Record<string, string>, index: number, rowNumber: numb
   const rawBrand = values.brand.trim()
   const brand = (rawBrand ? `${rawBrand[0].toUpperCase()}${rawBrand.slice(1).toLowerCase()}` : draft.fingerprint.brand) as BrowserBrand
   const webrtcPolicy = (values.webrtc_policy.trim().toLowerCase() || 'proxy_only') as WebRtcPolicy
+  const kernelFamily = values.kernel_family.trim().toLowerCase() as KernelFamily | ''
   const port = optionalInteger(values.proxy_port, 'proxy_port', rowNumber)
   const seed = optionalInteger(values.fingerprint_seed, 'fingerprint_seed', rowNumber)
   const concurrency = optionalInteger(values.hardware_concurrency, 'hardware_concurrency', rowNumber)
@@ -159,6 +161,7 @@ function rowDraft(values: Record<string, string>, index: number, rowNumber: numb
       note: values.note,
       startUrls: values.start_urls.trim() ? splitPipe(values.start_urls) : [],
       kernelVersion: values.kernel_version,
+      kernelFamily: kernelFamily || undefined,
       environmentType: values.environment_type.trim().toLowerCase() === 'temporary'
         ? 'temporary'
         : values.environment_type.trim().toLowerCase() === 'account' || !values.environment_type.trim()
@@ -218,7 +221,8 @@ export function serializeBatchProfileTemplate(): string {
     tags: '重点|广告',
     note: '单元格可包含逗号',
     start_urls: 'https://example.com|https://browserleaks.com/',
-    kernel_version: '',
+    kernel_version: '144.0.7559.132',
+    kernel_family: 'fingerprint-chromium',
     environment_type: 'account',
     color: '#5965e8',
     proxy_protocol: 'http',
