@@ -1,5 +1,6 @@
 import type { BrowserPlatform, FingerprintConfig, ProfileDraft, ProfileWindowConfig } from './types'
 import { applyHardwareProfile, defaultHardwareProfileId } from './hardware-profiles'
+import { emptyIdentityConfigProvenance } from './identity-config-provenance'
 
 export const PROFILE_COLORS = ['#5965e8', '#1d9a6c', '#d97706', '#d9506b', '#7c4dce', '#0784a8']
 
@@ -61,6 +62,7 @@ export function defaultProfileDraft(index = 1): ProfileDraft {
     startUrls: [],
     kernelVersion: '',
     environmentType: 'account',
+    identityConfigProvenance: emptyIdentityConfigProvenance(),
     window: defaultProfileWindow(),
     proxy: {
       protocol: 'direct',

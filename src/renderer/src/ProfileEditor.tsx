@@ -21,7 +21,8 @@ import {
 import { useEffect, useMemo, useState } from 'react'
 import { defaultPlatform, defaultProfileDraft, randomSeed } from '../../shared/defaults'
 import { fingerprintVersionWarning } from '../../shared/fingerprint-consistency'
-import { applyAIIdentityConfigToFingerprint, generateAIIdentityConfig } from '../../shared/identity-ai-generator'
+import { applyAIIdentityConfigProvenance, applyAIIdentityConfigToFingerprint, generateAIIdentityConfig } from '../../shared/identity-ai-generator'
+import { HARDWARE_IDENTITY_FIELDS, markFingerprintConfigSources, normalizeIdentityConfigProvenance } from '../../shared/identity-config-provenance'
 import {
   applyFingerprintHardwarePersona,
   fingerprintHardwareRegionForCountry,
@@ -38,7 +39,7 @@ import {
 } from '../../shared/hardware-profiles'
 import { applyRecommendedProxyNetworkIdentity, effectiveNetworkIdentity, networkIdentityPlan } from '../../shared/network-identity'
 import { isKernelDowngrade, kernelFamilyForRelease, kernelMajorVersion, kernelReleaseMatchesPin, latestSameMajorCompatibleKernelVersion, newerCompatibleKernelVersion } from '../../shared/kernel-version'
-import type { BrowserExtension, BrowserProfileView, EngineStatus, HardwareProfileId, KernelRelease, ProfileDraft, ProxyTestResult } from '../../shared/types'
+import type { BrowserExtension, BrowserProfileView, EngineStatus, HardwareProfileId, IdentityConfigProvenance, KernelRelease, ProfileDraft, ProxyTestResult } from '../../shared/types'
 
 interface EditorValues extends Omit<ProfileDraft, 'startUrls' | 'color'> {
   startUrlsText: string
@@ -110,6 +111,7 @@ export function ProfileEditor({ open, profile, suggestedIndex, saving, extension
   const [testingProxy, setTestingProxy] = useState(false)
   const [applyingAIIdentity, setApplyingAIIdentity] = useState(false)
   const [aiIdentityFeedback, setAiIdentityFeedback] = useState<{ type: 'success' | 'warning'; message: string; description: string } | null>(null)
+  const [identityConfigProvenance, setIdentityConfigProvenance] = useState<IdentityConfigProvenance>(() => normalizeIdentityConfigProvenance(profile?.identityConfigProvenance))
   const [proxyResult, setProxyResult] = useState<ProxyTestResult | null>(null)
   const pinnedKernel = kernels.find((kernel) => kernelReleaseMatchesPin(kernel, kernelVersion, kernelFamily))
   const effectiveKernelFamily = kernelFamily ?? (pinnedKernel ? kernelFamilyForRelease(pinnedKernel) : profile?.kernelFamily)
@@ -192,13 +194,21 @@ export function ProfileEditor({ open, profile, suggestedIndex, saving, extension
       form.setFieldsValue(editorValues(profile, suggestedIndex))
       setProxyResult(null)
       setAiIdentityFeedback(null)
+      setIdentityConfigProvenance(normalizeIdentityConfigProvenance((profile ?? defaultProfileDraft(suggestedIndex)).identityConfigProvenance))
     }
   }, [form, open, profile, suggestedIndex])
 
   function applyRecommendedNetworkIdentityFrom(result: ProxyTestResult): void {
     const current = form.getFieldValue('fingerprint')
     const applied = applyRecommendedProxyNetworkIdentity(current, result)
-    if (applied) form.setFieldValue('fingerprint', applied)
+    if (applied) {
+      form.setFieldValue('fingerprint', applied)
+      setIdentityConfigProvenance((currentProvenance) => markFingerprintConfigSources(
+        currentProvenance,
+        ['networkIdentityMode', 'proxyExitPolicy', 'webrtcPolicy', 'language', 'acceptLanguages', 'timezone'],
+        'ai'
+      ))
+    }
   }
 
   async function applyAIIdentityConfiguration(): Promise<void> {
@@ -233,8 +243,9 @@ export function ProfileEditor({ open, profile, suggestedIndex, saving, extension
         proxyCheck: check,
         networkMode: effectiveProxyProtocol === 'direct' ? 'manual' : 'proxy'
       })
-      const applied = applyAIIdentityConfigToFingerprint(current, generated)
+      const applied = applyAIIdentityConfigToFingerprint(current, generated, identityConfigProvenance)
       form.setFieldValue('fingerprint', applied)
+      setIdentityConfigProvenance((currentProvenance) => applyAIIdentityConfigProvenance(currentProvenance, generated))
 
       const details = [
         generated.personaId ? `Persona ${generated.personaId}` : '保留当前硬件配置',
@@ -308,6 +319,7 @@ export function ProfileEditor({ open, profile, suggestedIndex, saving, extension
       kernelVersion: values.kernelVersion,
       kernelFamily: selectedKernelFamily,
       environmentType: values.environmentType ?? 'account',
+      identityConfigProvenance,
       window: values.window,
       proxy: values.proxy,
       extensionIds: values.extensionIds,
@@ -579,7 +591,10 @@ export function ProfileEditor({ open, profile, suggestedIndex, saving, extension
                   : timezoneMismatch ? `与指纹时区 ${fingerprintTimezone} 不一致` : '与指纹时区一致'}
               </Typography.Text>
               {timezoneMismatch && proxyResult.geoConfidence !== 'conflict' && (
-                <Button size="small" onClick={() => form.setFieldValue(['fingerprint', 'timezone'], proxyResult.timezone)}>
+                <Button size="small" onClick={() => {
+                  form.setFieldValue(['fingerprint', 'timezone'], proxyResult.timezone)
+                  setIdentityConfigProvenance((currentProvenance) => markFingerprintConfigSources(currentProvenance, ['timezone'], 'ai'))
+                }}>
                   应用代理时区
                 </Button>
               )}
@@ -683,6 +698,11 @@ export function ProfileEditor({ open, profile, suggestedIndex, saving, extension
           onChange={(id: HardwareProfileId) => {
             const current = form.getFieldValue('fingerprint')
             form.setFieldValue('fingerprint', applyHardwareProfile(current, id, { refreshSeededGpu: true }))
+            setIdentityConfigProvenance((currentProvenance) => markFingerprintConfigSources(
+              currentProvenance,
+              HARDWARE_IDENTITY_FIELDS,
+              'user'
+            ))
           }}
         />
       </Form.Item>
@@ -754,7 +774,14 @@ export function ProfileEditor({ open, profile, suggestedIndex, saving, extension
               onClick={() => {
                 const current = form.getFieldValue('fingerprint')
                 const applied = applyFingerprintHardwarePersona(current, recommendedPersona.id)
-                if (applied) form.setFieldValue('fingerprint', applied)
+                if (applied) {
+                  form.setFieldValue('fingerprint', applied)
+                  setIdentityConfigProvenance((currentProvenance) => markFingerprintConfigSources(
+                    currentProvenance,
+                    HARDWARE_IDENTITY_FIELDS,
+                    'ai'
+                  ))
+                }
               }}
             >
               应用推荐 Persona
@@ -778,6 +805,7 @@ export function ProfileEditor({ open, profile, suggestedIndex, saving, extension
                 ...current,
                 seed: randomSeed()
               }))
+              setIdentityConfigProvenance((currentProvenance) => markFingerprintConfigSources(currentProvenance, ['seed', 'gpuBucket'], 'user'))
             }}
           >
             重新生成
@@ -924,7 +952,16 @@ export function ProfileEditor({ open, profile, suggestedIndex, saving, extension
         form={form}
         layout="vertical"
         requiredMark={false}
-        onValuesChange={(changed) => { if ('proxy' in changed) setProxyResult(null) }}
+        onValuesChange={(changed) => {
+          if ('proxy' in changed) setProxyResult(null)
+          if (changed.fingerprint && typeof changed.fingerprint === 'object') {
+            setIdentityConfigProvenance((currentProvenance) => markFingerprintConfigSources(
+              currentProvenance,
+              Object.keys(changed.fingerprint),
+              'user'
+            ))
+          }
+        }}
       >
         <Tabs
           defaultActiveKey="general"

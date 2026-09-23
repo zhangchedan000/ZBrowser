@@ -1,8 +1,9 @@
 import { describe, expect, it } from 'vitest'
 import { defaultFingerprint } from './defaults'
-import { applyAIIdentityConfigToFingerprint, generateAIIdentityConfig } from './identity-ai-generator'
+import { applyAIIdentityConfigProvenance, applyAIIdentityConfigToFingerprint, generateAIIdentityConfig } from './identity-ai-generator'
 import { resolveIdentityConfig, type IdentityConfigProfile } from './identity-config-engine'
 import { applyHardwareProfile } from './hardware-profiles'
+import { emptyIdentityConfigProvenance, markFingerprintConfigSources } from './identity-config-provenance'
 
 function windowsBase() {
   return {
@@ -139,6 +140,48 @@ describe('generateAIIdentityConfig', () => {
     expect(edited.hardwareConcurrency).toBe(12)
     expect(edited.screenWidth).toBe(1600)
     expect(edited.screenHeight).toBe(900)
+  })
+
+  it('does not overwrite persisted user locale overrides when AI is run again', () => {
+    const base = windowsBase()
+    base.timezone = 'America/Los_Angeles'
+    const provenance = markFingerprintConfigSources(emptyIdentityConfigProvenance(), ['timezone'], 'user')
+    const generated = generateAIIdentityConfig({
+      baseFingerprint: base,
+      platform: 'windows',
+      networkMode: 'proxy',
+      proxyProtocol: 'http',
+      proxyCheck: usProxyCheck()
+    })
+
+    const applied = applyAIIdentityConfigToFingerprint(base, generated, provenance)
+    const nextProvenance = applyAIIdentityConfigProvenance(provenance, generated)
+
+    expect(applied.timezone).toBe('America/Los_Angeles')
+    expect(nextProvenance.locale.timezone).toBe('user')
+    expect(nextProvenance.locale.language).toBe('ai')
+  })
+
+  it('does not replace manual hardware after the user detaches from an AI Persona', () => {
+    const base = applyHardwareProfile(windowsBase(), 'legacy-custom')
+    base.hardwareConcurrency = 12
+    base.screenWidth = 1600
+    base.screenHeight = 900
+    const provenance = markFingerprintConfigSources(emptyIdentityConfigProvenance(), ['hardwareProfileId'], 'user')
+    const generated = generateAIIdentityConfig({
+      baseFingerprint: base,
+      platform: 'windows',
+      networkMode: 'proxy',
+      proxyProtocol: 'http',
+      proxyCheck: usProxyCheck()
+    })
+
+    const applied = applyAIIdentityConfigToFingerprint(base, generated, provenance)
+
+    expect(applied.hardwareProfileId).toBe('legacy-custom')
+    expect(applied.hardwareConcurrency).toBe(12)
+    expect(applied.screenWidth).toBe(1600)
+    expect(applied.screenHeight).toBe(900)
   })
 
   it('preserves a user manual override above the AI generated value', () => {

@@ -1,4 +1,5 @@
 import type { BrowserProfile, BrowserProfileView, ProxyConfig } from '../shared/types'
+import { normalizeIdentityConfigProvenance } from '../shared/identity-config-provenance'
 import { redactSensitiveText } from './redaction'
 
 export function sameProxyIdentity(first: ProxyConfig, second: ProxyConfig): boolean {
@@ -20,6 +21,7 @@ export function publicProfile(profile: BrowserProfile): BrowserProfileView {
     tags: [...profile.tags],
     extensionIds: [...profile.extensionIds],
     startUrls: [...profile.startUrls],
+    identityConfigProvenance: normalizeIdentityConfigProvenance(profile.identityConfigProvenance),
     proxy: {
       ...profile.proxy,
       password: '',

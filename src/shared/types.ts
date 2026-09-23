@@ -17,6 +17,15 @@ export type WebRtcPolicy = 'proxy_only' | 'public_only' | 'default'
 export type NetworkIdentityMode = 'manual' | 'proxy'
 export type ProxyExitPolicy = 'warn' | 'block'
 export type ProfileEnvironmentType = 'account' | 'temporary'
+export type IdentityConfigSource = 'default' | 'ai' | 'user'
+export type IdentityConfigSection = 'fingerprint' | 'network' | 'locale' | 'browser'
+export interface IdentityConfigProvenance {
+  schemaVersion: 1
+  fingerprint: Record<string, IdentityConfigSource>
+  network: Record<string, IdentityConfigSource>
+  locale: Record<string, IdentityConfigSource>
+  browser: Record<string, IdentityConfigSource>
+}
 export type ProfileStatus = 'closed' | 'starting' | 'running' | 'stopping' | 'orphaned' | 'error'
 export interface ProfileLaunchOptions {
   allowGeoConflict?: boolean
@@ -95,6 +104,8 @@ export interface BrowserProfile {
   environmentType?: ProfileEnvironmentType
   /** Internal binding to a managed proxy-pool entry. */
   proxyPoolEntryId?: string
+  /** Field-level provenance keeps manual overrides above AI/default recommendations across restarts. */
+  identityConfigProvenance?: IdentityConfigProvenance
   fingerprint: FingerprintConfig
   createdAt: string
   updatedAt: string
@@ -113,7 +124,7 @@ export type BrowserProfileView = Omit<BrowserProfile, 'proxy'> & { proxy: Public
 
 export type ProfileDraft = Pick<
   BrowserProfile,
-  'name' | 'note' | 'group' | 'tags' | 'extensionIds' | 'color' | 'startUrls' | 'kernelVersion' | 'kernelFamily' | 'window' | 'proxy' | 'environmentType' | 'fingerprint'
+  'name' | 'note' | 'group' | 'tags' | 'extensionIds' | 'color' | 'startUrls' | 'kernelVersion' | 'kernelFamily' | 'window' | 'proxy' | 'environmentType' | 'identityConfigProvenance' | 'fingerprint'
 >
 
 export interface ProfileBatchClassification {
