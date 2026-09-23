@@ -372,7 +372,7 @@ describe('ProfileStore', () => {
       profileId: 'legacy-profile'
     })
     const migrated = JSON.parse(await readFile(repository.profilesPath, 'utf8'))
-    expect(migrated.schemaVersion).toBe(11)
+    expect(migrated.schemaVersion).toBe(12)
     expect(migrated.nextSerialNumber).toBe(2)
   })
 
@@ -429,7 +429,7 @@ describe('ProfileStore', () => {
     await recovered.initialize()
 
     expect(recovered.storageHealth().recoveryMessage).toContain('上一份备份')
-    expect(JSON.parse(await readFile(recovered.previousBackupPath, 'utf8')).schemaVersion).toBe(11)
+    expect(JSON.parse(await readFile(recovered.previousBackupPath, 'utf8')).schemaVersion).toBe(12)
   })
 
   it('refuses to replace data when the primary and both backups are invalid', async () => {
