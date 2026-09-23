@@ -438,6 +438,26 @@ export interface FingerprintRuntimeDiagnosticReport {
   checks: LaunchDiagnosticCheck[]
 }
 
+export type FingerprintRepairAuditPhase = 'backup' | 'applied' | 'verified' | 'rolled_back' | 'failed'
+
+export interface FingerprintRepairAuditRecord {
+  auditId: string
+  profileId: string
+  workflowId: string
+  phase: FingerprintRepairAuditPhase
+  changedFields: string[]
+  message: string
+  createdAt: string
+}
+
+export interface FingerprintRepairExecutionSummary {
+  status: 'completed' | 'rolled_back'
+  auditId: string
+  changedFields: string[]
+  message: string
+  report: FingerprintRuntimeDiagnosticReport
+}
+
 export interface AppRecoveryStatus {
   previousUnclean: boolean
   previousStartedAt?: string
@@ -524,6 +544,8 @@ export interface BrowserApi {
     diagnose: (id: string) => Promise<LaunchDiagnosticReport>
     diagnoseKernelRuntime: (id: string) => Promise<LaunchDiagnosticReport>
     diagnoseFingerprintRuntime: (id: string) => Promise<FingerprintRuntimeDiagnosticReport>
+    repairFingerprintIdentity: (id: string, approvedByUser: boolean) => Promise<FingerprintRepairExecutionSummary & { profile: BrowserProfileView }>
+    fingerprintRepairHistory: (id: string) => Promise<FingerprintRepairAuditRecord[]>
     crashHistory: (id: string) => Promise<BrowserCrashRecord[]>
     environmentCheckHistory: (id: string) => Promise<EnvironmentCheckRecord[]>
     recordEnvironmentCheck: (id: string, urls: string[]) => Promise<EnvironmentCheckRecord[]>

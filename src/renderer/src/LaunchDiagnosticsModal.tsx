@@ -1,5 +1,5 @@
 import { CheckCircleFilled, CloseCircleFilled, WarningFilled } from '@ant-design/icons'
-import { Alert, List, Modal, Space, Tag, Typography } from 'antd'
+import { Alert, Button, List, Modal, Popconfirm, Space, Tag, Typography } from 'antd'
 import { buildAIDiagnosisContext } from '../../shared/fingerprint-ai-diagnosis'
 import { buildFingerprintHealthModel } from '../../shared/fingerprint-health-aggregator'
 import { diagnosticChecksToHealthSignals } from '../../shared/fingerprint-health-adapter'
@@ -11,6 +11,8 @@ interface LaunchDiagnosticsModalProps {
   profile?: BrowserProfileView
   report?: LaunchDiagnosticReport
   open: boolean
+  repairing?: boolean
+  onRepair?: () => Promise<void> | void
   onClose: () => void
 }
 
@@ -37,7 +39,7 @@ function uniqueSources(references: FingerprintConfigReference[]): IdentityConfig
   return [...new Set(references.map((reference) => reference.source))]
 }
 
-export function LaunchDiagnosticsModal({ profile, report, open, onClose }: LaunchDiagnosticsModalProps) {
+export function LaunchDiagnosticsModal({ profile, report, open, repairing = false, onRepair, onClose }: LaunchDiagnosticsModalProps) {
   const signals = report
     ? diagnosticChecksToHealthSignals(report.checks, profile?.identityConfigProvenance)
     : []
@@ -46,6 +48,7 @@ export function LaunchDiagnosticsModal({ profile, report, open, onClose }: Launc
   const proposals = diagnosis ? buildRepairProposals(diagnosis) : []
   const proposalByKey = new Map(proposals.filter((proposal) => proposal.signalKey).map((proposal) => [proposal.signalKey!, proposal]))
   const signalByKey = new Map(signals.map((signal) => [signal.key, signal]))
+  const repairableCount = proposals.filter((proposal) => proposal.automatedRepairAllowed).length
 
   return (
     <Modal open={open} title={`启动诊断${profile ? ` · ${profile.name}` : ''}`} footer={null} onCancel={onClose} destroyOnHidden width={720}>
@@ -70,6 +73,26 @@ export function LaunchDiagnosticsModal({ profile, report, open, onClose }: Launc
               showIcon
               title="检测到问题关联用户手动配置"
               description="AI 可以分析并给出修复建议，但不会自动覆盖这些手动配置。需要调整时请由用户在环境配置中修改。"
+            />
+          )}
+          {repairableCount > 0 && onRepair && (
+            <Alert
+              style={{ marginTop: 8 }}
+              type="info"
+              showIcon
+              title={`发现 ${repairableCount} 项可由 AI 修复的配置`}
+              description="执行流程：保存修复前配置备份 → 应用 AI 配置 → 实际启动 Runtime Verify；验证失败会自动回滚。手动配置始终保持不变。"
+              action={(
+                <Popconfirm
+                  title="确认应用 AI 身份修复？"
+                  description="只会修改 AI / 默认配置，手动配置不会被覆盖。"
+                  okText="确认修复"
+                  cancelText="取消"
+                  onConfirm={() => onRepair()}
+                >
+                  <Button type="primary" loading={repairing}>确认并应用 AI 修复</Button>
+                </Popconfirm>
+              )}
             />
           )}
           <List

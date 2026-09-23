@@ -28,6 +28,8 @@ import type { LocalApiServer } from './local-api-server'
 import type { ProxyPoolStore } from './proxy-pool-store'
 import { createStoredZip, diagnosticProfileSummary, redactDiagnosticText } from './diagnostic-bundle'
 import { selectBestProxyPoolEntry } from './proxy-pool-selection'
+import type { FingerprintRepairExecutor } from './fingerprint-repair-executor'
+import type { FingerprintRepairStateStore } from './fingerprint-repair-state'
 
 interface IpcDependencies {
   profiles: ProfileStore
@@ -44,11 +46,14 @@ interface IpcDependencies {
   environmentChecks: EnvironmentCheckHistoryStore
   localApi: LocalApiServer
   proxyPool: ProxyPoolStore
+  fingerprintRepair: FingerprintRepairExecutor
+  fingerprintRepairState: FingerprintRepairStateStore
 }
 
 export function registerIpc({
   profiles, settings, launcher, kernels, extensions, cookies, logger, backups,
-  workspaceMigration, appSession, updater, environmentChecks, localApi, proxyPool
+  workspaceMigration, appSession, updater, environmentChecks, localApi, proxyPool,
+  fingerprintRepair, fingerprintRepairState
 }: IpcDependencies): void {
   async function pinKernelFamily(draft: ProfileDraft): Promise<ProfileDraft> {
     const version = draft.kernelVersion.trim()
@@ -341,6 +346,12 @@ export function registerIpc({
   ipcMain.handle('profiles:diagnose', (_event, id: string) => launcher.diagnose(id))
   ipcMain.handle('profiles:diagnose-kernel-runtime', (_event, id: string) => launcher.diagnoseKernelRuntime(id))
   ipcMain.handle('profiles:diagnose-fingerprint-runtime', (_event, id: string) => launcher.diagnoseFingerprintRuntime(id))
+  ipcMain.handle('profiles:repair-fingerprint-identity', async (_event, id: string, approvedByUser: unknown) => {
+    if (approvedByUser !== true) throw new Error('AI 修复必须由用户明确确认后才能执行')
+    const result = await fingerprintRepair.execute(id, true)
+    return { ...result, profile: publicProfile(result.profile) }
+  })
+  ipcMain.handle('profiles:fingerprint-repair-history', (_event, id: string) => fingerprintRepairState.history(id))
   ipcMain.handle('profiles:crash-history', (_event, id: string) => launcher.crashHistory(id))
   ipcMain.handle('profiles:environment-check-history', (_event, id: string) => {
     profiles.get(id)

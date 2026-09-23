@@ -143,6 +143,7 @@ export default function App() {
   const [appRecoveryStatus, setAppRecoveryStatus] = useState<AppRecoveryStatus | null>(null)
   const [diagnosticProfile, setDiagnosticProfile] = useState<BrowserProfileView>()
   const [diagnosticReport, setDiagnosticReport] = useState<LaunchDiagnosticReport>()
+  const [repairingDiagnostic, setRepairingDiagnostic] = useState(false)
   const [crashProfile, setCrashProfile] = useState<BrowserProfileView>()
   const [crashRecords, setCrashRecords] = useState<BrowserCrashRecord[]>([])
   const [crashHistoryLoading, setCrashHistoryLoading] = useState(false)
@@ -644,10 +645,31 @@ export default function App() {
 
   async function runDiagnostics(profile: BrowserProfileView): Promise<void> {
     await withBusy(profile.id, async () => {
-      const report = await window.browserApi.profiles.diagnose(profile.id)
+      const report = await window.browserApi.profiles.diagnoseFingerprintRuntime(profile.id)
       setDiagnosticProfile(profile)
       setDiagnosticReport(report)
     })
+  }
+
+  async function repairDiagnosticIdentity(): Promise<void> {
+    if (!diagnosticProfile) return
+    setRepairingDiagnostic(true)
+    try {
+      const result = await window.browserApi.profiles.repairFingerprintIdentity(diagnosticProfile.id, true)
+      upsert(result.profile)
+      setDiagnosticProfile(result.profile)
+      if (result.status === 'completed') {
+        setDiagnosticReport(result.report)
+        messageApi.success(result.message)
+      } else {
+        setDiagnosticReport(undefined)
+        messageApi.warning(result.message)
+      }
+    } catch (error) {
+      messageApi.error(humanError(error))
+    } finally {
+      setRepairingDiagnostic(false)
+    }
   }
 
   async function openCrashHistory(profile: BrowserProfileView): Promise<void> {
@@ -1274,6 +1296,8 @@ export default function App() {
         open={Boolean(diagnosticProfile && diagnosticReport)}
         profile={diagnosticProfile}
         report={diagnosticReport}
+        repairing={repairingDiagnostic}
+        onRepair={() => repairDiagnosticIdentity()}
         onClose={() => { setDiagnosticProfile(undefined); setDiagnosticReport(undefined) }}
       />
       <CrashHistoryModal

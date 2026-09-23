@@ -20,6 +20,8 @@ import { EnvironmentCheckHistoryStore } from './environment-check-history'
 import { LocalApiServer, localApiPortFromEnvironment } from './local-api-server'
 import { ProxyPoolStore } from './proxy-pool-store'
 import { runMcpStdio } from './mcp-stdio-server'
+import { FingerprintRepairStateStore } from './fingerprint-repair-state'
+import { FingerprintRepairExecutor } from './fingerprint-repair-executor'
 
 let mainWindow: BrowserWindow | null = null
 let launcher: BrowserLauncher | null = null
@@ -141,6 +143,10 @@ app.whenReady().then(async () => {
   await kernels.initialize()
   const cookies = new CookieManager(profiles, settings, logger)
   const backups = new ProfileBackupManager(profiles, app.getVersion(), logger)
+  const fingerprintRepairState = new FingerprintRepairStateStore(profiles, logger)
+  const fingerprintRepair = new FingerprintRepairExecutor(profiles, launcher, fingerprintRepairState, logger)
+  const recoveredRepairs = await fingerprintRepair.recoverPendingRepairs()
+  if (recoveredRepairs) logger.info('已恢复未完成的 AI 指纹修复', { count: recoveredRepairs })
   const workspaceMigration = new WorkspaceMigrationManager(profiles, extensions, app.getVersion(), logger)
   const updater = new UpdateManager(vaultPath, app.getVersion(), process.resourcesPath, (status) => {
     mainWindow?.webContents.send('updates:changed', status)
@@ -153,7 +159,8 @@ app.whenReady().then(async () => {
   localApi = automationApi
   registerIpc({
     profiles, settings, launcher, kernels, extensions, cookies, logger, backups,
-    workspaceMigration, appSession, updater, environmentChecks, localApi: automationApi, proxyPool
+    workspaceMigration, appSession, updater, environmentChecks, localApi: automationApi, proxyPool,
+    fingerprintRepair, fingerprintRepairState
   })
   try {
     const api = await automationApi.start()
