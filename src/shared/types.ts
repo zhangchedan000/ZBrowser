@@ -447,6 +447,7 @@ export interface FingerprintRuntimeDiagnosticReport {
   identityDrift?: import('./identity-baseline-model').IdentityDriftReport
   identityHealth?: import('./fingerprint-health-model').FingerprintHealthModel
   identityDiagnosis?: import('./fingerprint-health-model').AIDiagnosisContext
+  identityHealthTrend?: import('./identity-health-trend').IdentityHealthTrendSummary
   checks: LaunchDiagnosticCheck[]
 }
 

@@ -24,6 +24,8 @@ import { buildRuntimeIdentitySnapshot } from '../shared/runtime-identity-snapsho
 import { IdentityBaselineStore } from './identity-baseline-store'
 import { evaluateRuntimeIdentity } from './identity-drift-runtime'
 import { buildIdentityDriftIntelligence } from '../shared/identity-drift-health'
+import { IdentityHealthHistoryStore } from './identity-health-history'
+import { summarizeIdentityHealthTrend } from '../shared/identity-health-trend'
 import type { Readable, Writable } from 'node:stream'
 
 type ProxyTester = (config: ProxyConfig) => Promise<ProxyTestResult>
@@ -987,6 +989,17 @@ export class BrowserLauncher {
             current.identityConfigProvenance
           )
         : undefined
+      const identityHealthTrend = identityIntelligence && identityState.baseline && identityState.drift
+        ? summarizeIdentityHealthTrend(await new IdentityHealthHistoryStore(this.profiles.vaultPath).record(id, {
+            checkedAt: identity.capturedAt,
+            baselineId: identityState.baseline.id,
+            score: identityIntelligence.health.score,
+            risk: identityIntelligence.health.risk,
+            driftDetected: identityState.drift.driftDetected,
+            driftSeverity: identityState.drift.severity,
+            changeCount: identityState.drift.changes.length
+          }))
+        : undefined
       return {
         profileId: id,
         checkedAt: identity.capturedAt,
@@ -1006,6 +1019,7 @@ export class BrowserLauncher {
         identityDrift: identityState.drift,
         identityHealth: identityIntelligence?.health,
         identityDiagnosis: identityIntelligence?.diagnosis,
+        identityHealthTrend,
         checks
       }
     } catch (error) {
