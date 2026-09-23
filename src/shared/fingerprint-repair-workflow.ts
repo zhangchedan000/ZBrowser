@@ -1,3 +1,4 @@
+import type { IdentityConfigSource } from './types'
 import type { FingerprintComponent } from './fingerprint-health-model'
 
 export type RepairWorkflowStatus =
@@ -15,6 +16,8 @@ export interface RepairAction {
   description: string
   requiresBackup: boolean
   reversible: boolean
+  mutatesConfiguration?: boolean
+  configSources?: IdentityConfigSource[]
 }
 
 export interface RepairWorkflow {
@@ -50,5 +53,10 @@ export function approveRepairWorkflow(workflow: RepairWorkflow): RepairWorkflow 
 }
 
 export function validateRepairSafety(workflow: RepairWorkflow): boolean {
-  return workflow.approvedByUser && workflow.actions.every((action) => action.reversible)
+  return workflow.approvedByUser && workflow.actions.every((action) => {
+    const protectedUserConfig = action.mutatesConfiguration === true
+      && action.configSources?.includes('user') === true
+    if (protectedUserConfig) return false
+    return action.reversible || action.requiresBackup
+  })
 }

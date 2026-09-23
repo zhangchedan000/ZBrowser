@@ -1,3 +1,5 @@
+import type { IdentityConfigSection, IdentityConfigSource } from './types'
+
 export type FingerprintComponent =
   | 'browser'
   | 'hardware'
@@ -7,6 +9,13 @@ export type FingerprintComponent =
   | 'locale'
 
 export type FingerprintRiskLevel = 'low' | 'medium' | 'high' | 'critical'
+export type FingerprintRepairPolicy = 'suggest_only' | 'confirm_apply'
+
+export interface FingerprintConfigReference {
+  section: IdentityConfigSection
+  key: string
+  source: IdentityConfigSource
+}
 
 export interface FingerprintHealthSignal {
   component: FingerprintComponent
@@ -17,6 +26,7 @@ export interface FingerprintHealthSignal {
   confidence: number
   impact: 'info' | 'warning' | 'error'
   evidence: string
+  configReferences?: FingerprintConfigReference[]
 }
 
 export interface FingerprintComponentHealth {
@@ -43,11 +53,21 @@ export interface FingerprintHealthModel {
   generatedAt: string
 }
 
+export interface AIDiagnosisIssue {
+  component: FingerprintComponent
+  key: string
+  evidence: string
+  configReferences: FingerprintConfigReference[]
+  repairPolicy: FingerprintRepairPolicy
+}
+
 export interface AIDiagnosisContext {
   summary: string
   risks: string[]
   suggestedActions: string[]
   requiresUserConfirmation: boolean
+  issues: AIDiagnosisIssue[]
+  protectedUserOverrides: number
 }
 
 export function calculateFingerprintHealthScore(signals: FingerprintHealthSignal[]): number {

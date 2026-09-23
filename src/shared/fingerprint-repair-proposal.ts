@@ -1,14 +1,19 @@
-import type { AIDiagnosisContext } from './fingerprint-health-model'
+import type { IdentityConfigSource } from './types'
+import type { AIDiagnosisContext, FingerprintComponent } from './fingerprint-health-model'
 
 export interface FingerprintRepairProposal {
   issue: string
+  signalKey?: string
   cause: string
   actions: string[]
-  affectedComponent: string
+  affectedComponent: FingerprintComponent
+  configSources: IdentityConfigSource[]
+  protectedByUserOverride: boolean
+  automatedRepairAllowed: boolean
   requiresUserConfirmation: boolean
 }
 
-function componentActions(component: string): string[] {
+function componentActions(component: FingerprintComponent): string[] {
   switch (component) {
     case 'gpu':
       return [
@@ -45,14 +50,41 @@ function componentActions(component: string): string[] {
 export function buildRepairProposals(
   context: AIDiagnosisContext
 ): FingerprintRepairProposal[] {
+  if (context.issues.length) {
+    return context.issues.map((issue) => {
+      const configSources = [...new Set(issue.configReferences.map((reference) => reference.source))]
+      const protectedByUserOverride = issue.repairPolicy === 'suggest_only'
+      const actions = componentActions(issue.component)
+      return {
+        issue: issue.evidence,
+        signalKey: issue.key,
+        cause: 'Runtime fingerprint signal is inconsistent with expected identity',
+        actions: protectedByUserOverride
+          ? [...actions, '保留用户手动配置；仅给出修改建议，不由 AI 自动覆盖']
+          : actions,
+        affectedComponent: issue.component,
+        configSources,
+        protectedByUserOverride,
+        automatedRepairAllowed: !protectedByUserOverride,
+        requiresUserConfirmation: true
+      }
+    })
+  }
+
   return context.risks.map((risk) => {
-    const component = risk.split(':')[0] ?? 'browser'
+    const rawComponent = risk.split(':')[0] ?? 'browser'
+    const affectedComponent: FingerprintComponent = ['browser', 'hardware', 'gpu', 'rendering', 'network', 'locale'].includes(rawComponent)
+      ? rawComponent as FingerprintComponent
+      : 'browser'
 
     return {
       issue: risk,
       cause: 'Runtime fingerprint signal is inconsistent with expected identity',
-      actions: componentActions(component),
-      affectedComponent: component,
+      actions: componentActions(affectedComponent),
+      affectedComponent,
+      configSources: [],
+      protectedByUserOverride: false,
+      automatedRepairAllowed: true,
       requiresUserConfirmation: true
     }
   })
