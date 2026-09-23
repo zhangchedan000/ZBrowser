@@ -19,11 +19,7 @@ afterEach(async () => {
 function generatedIdentity(): AIIdentityGenerationResult {
   return {
     config: {
-      fingerprint: {
-        hardwareConcurrency: { value: 4, source: 'ai' },
-        screenWidth: { value: 1920, source: 'ai' },
-        screenHeight: { value: 1080, source: 'ai' }
-      },
+      fingerprint: {},
       network: {
         networkIdentityMode: { value: 'manual', source: 'ai' }
       },
@@ -59,7 +55,6 @@ describe('FingerprintRepairExecutor', () => {
 
     const draft = defaultProfileDraft()
     draft.fingerprint.platform = 'windows'
-    draft.fingerprint.hardwareConcurrency = 12
     draft.fingerprint.language = 'de-DE'
     draft.fingerprint.acceptLanguages = 'de-DE,de'
     draft.fingerprint.timezone = 'America/Los_Angeles'
@@ -89,11 +84,10 @@ describe('FingerprintRepairExecutor', () => {
 
     expect(result.status).toBe('completed')
     expect(verifiedProfileId).toBe(profile.id)
-    expect(saved.fingerprint.hardwareConcurrency).toBe(4)
     expect(saved.fingerprint.language).toBe('en-US')
     expect(saved.fingerprint.timezone).toBe('America/Los_Angeles')
     expect(saved.identityConfigProvenance?.locale.timezone).toBe('user')
-    expect(saved.identityConfigProvenance?.fingerprint.hardwareConcurrency).toBe('ai')
+    expect(saved.identityConfigProvenance?.locale.language).toBe('ai')
     expect(await state.checkpoint(profile.id)).toBeNull()
     expect(history.map((record) => record.phase)).toEqual(['backup', 'applied', 'verified'])
     expect(JSON.stringify(history)).not.toContain('America/Los_Angeles')
@@ -107,7 +101,6 @@ describe('FingerprintRepairExecutor', () => {
 
     const draft = defaultProfileDraft()
     draft.fingerprint.platform = 'windows'
-    draft.fingerprint.hardwareConcurrency = 16
     draft.fingerprint.language = 'fr-FR'
     const profile = await profiles.create(draft)
     const before = JSON.parse(JSON.stringify(profiles.get(profile.id).fingerprint))
@@ -156,7 +149,7 @@ describe('FingerprintRepairExecutor', () => {
     const profiles = new ProfileStore(vault)
     await profiles.initialize()
     const draft = defaultProfileDraft()
-    draft.fingerprint.hardwareConcurrency = 12
+    draft.fingerprint.language = 'fr-FR'
     const profile = await profiles.create(draft)
 
     const state = new FingerprintRepairStateStore(profiles)
@@ -178,11 +171,11 @@ describe('FingerprintRepairExecutor', () => {
     changed.identityConfigProvenance = profile.identityConfigProvenance
     changed.fingerprint = {
       ...profile.fingerprint,
-      hardwareConcurrency: 2,
+      language: 'ja-JP',
       disabledSpoofing: [...profile.fingerprint.disabledSpoofing]
     }
     await profiles.update(profile.id, changed)
-    expect(profiles.get(profile.id).fingerprint.hardwareConcurrency).toBe(2)
+    expect(profiles.get(profile.id).fingerprint.language).toBe('ja-JP')
 
     const executor = new FingerprintRepairExecutor(
       profiles,
@@ -193,7 +186,7 @@ describe('FingerprintRepairExecutor', () => {
     )
 
     await expect(executor.recoverPendingRepairs()).resolves.toBe(1)
-    expect(profiles.get(profile.id).fingerprint.hardwareConcurrency).toBe(12)
+    expect(profiles.get(profile.id).fingerprint.language).toBe('fr-FR')
     expect(await state.checkpoint(profile.id)).toBeNull()
     expect((await state.history(profile.id)).at(-1)?.phase).toBe('rolled_back')
   })

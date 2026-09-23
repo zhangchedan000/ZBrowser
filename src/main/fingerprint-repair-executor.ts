@@ -15,6 +15,7 @@ import {
   type AIIdentityGenerationResult
 } from '../shared/identity-ai-generator'
 import {
+  HARDWARE_IDENTITY_FIELDS,
   identityConfigSource,
   identitySectionForFingerprintField,
   normalizeIdentityConfigProvenance
@@ -203,6 +204,12 @@ export class FingerprintRepairExecutor {
     const changedFields = changedFingerprintFields(current.fingerprint, nextFingerprint)
     if (!changedFields.length) {
       throw new Error('当前没有可由 AI 自动修复的配置；手动配置项只提供建议，不会被覆盖')
+    }
+    const hardwareChanges = changedFields.filter((key) =>
+      HARDWARE_IDENTITY_FIELDS.includes(key as (typeof HARDWARE_IDENTITY_FIELDS)[number])
+    )
+    if (hardwareChanges.length && !generated.personaId && current.fingerprint.hardwareProfileId !== 'legacy-custom') {
+      throw new Error('AI 硬件修复缺少完整 Hardware Persona，已阻止孤立硬件参数覆盖')
     }
     assertNoUserOverrideChanged(current, changedFields)
 
