@@ -1,49 +1,24 @@
-export type RuntimeIdentitySnapshot = {
-  capturedAt: string;
-  browser?: {
-    userAgent?: string;
-    platform?: string;
-    language?: string;
-    languages?: string[];
-  };
-  hardware?: {
-    cpuCores?: number;
-    deviceMemory?: number;
-    screen?: {
-      width?: number;
-      height?: number;
-      pixelRatio?: number;
-    };
-  };
-  graphics?: {
-    webglVendor?: string;
-    webglRenderer?: string;
-    webgpuAdapter?: string;
-  };
-  timezone?: string;
-};
+import {
+  buildRuntimeIdentitySnapshot,
+  type RuntimeIdentitySnapshotInput,
+  type RuntimeIdentitySnapshotResult
+} from '../shared/runtime-identity-snapshot'
+
+export type RuntimeIdentitySnapshot = RuntimeIdentitySnapshotResult
 
 export type RuntimeIdentitySnapshotSource = {
-  getSnapshot(): Promise<RuntimeIdentitySnapshot>;
-};
+  getSnapshot(): Promise<RuntimeIdentitySnapshotInput>
+}
 
 /**
- * Normalizes runtime identity observations into the same shape consumed by
- * fingerprint health diagnostics. The adapter deliberately only accepts
- * observed runtime values; it does not mutate profile configuration.
+ * Main-process wrapper for runtime snapshot sources. Collection remains owned by
+ * existing BrowserControlSession/CDP diagnostics; normalization is centralized
+ * in the shared adapter so baseline/drift consumers see one canonical shape.
  */
 export class RuntimeIdentitySnapshotAdapter {
   constructor(private readonly source: RuntimeIdentitySnapshotSource) {}
 
-  async capture(): Promise<RuntimeIdentitySnapshot> {
-    const snapshot = await this.source.getSnapshot();
-
-    return {
-      capturedAt: snapshot.capturedAt || new Date().toISOString(),
-      browser: snapshot.browser,
-      hardware: snapshot.hardware,
-      graphics: snapshot.graphics,
-      timezone: snapshot.timezone,
-    };
+  async capture(): Promise<RuntimeIdentitySnapshotResult> {
+    return buildRuntimeIdentitySnapshot(await this.source.getSnapshot())
   }
 }
