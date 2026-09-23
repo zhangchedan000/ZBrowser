@@ -1,101 +1,106 @@
-export type IdentitySnapshotSource = 'runtime' | 'unknown'
+import type { IdentityBaselineSnapshot } from './identity-baseline-model'
+import type { EngineStatus, ProxyCheckSummary, RuntimeFingerprintSnapshot } from './types'
 
-export interface RuntimeBrowserSnapshot {
-  userAgent?: string
-  version?: string
-  engine?: string
-}
-
-export interface RuntimeHardwareSnapshot {
-  platform?: string
-  architecture?: string
-  memoryGb?: number
-  cpuCores?: number
-  screenWidth?: number
-  screenHeight?: number
-  devicePixelRatio?: number
-}
-
-export interface RuntimeGpuSnapshot {
-  webglVendor?: string
-  webglRenderer?: string
-  webgpuAdapter?: string
-  softwareRenderer?: boolean
-}
-
-export interface RuntimeRenderingSnapshot {
-  canvasFingerprint?: string
-  audioFingerprint?: string
-  fonts?: string[]
-}
-
-export interface RuntimeNetworkSnapshot {
-  ip?: string
-  country?: string
-  timezone?: string
-  webrtcPolicy?: string
-}
-
-export interface RuntimeLocaleSnapshot {
-  language?: string
-  languages?: string[]
-  timezone?: string
-  region?: string
-}
-
-export interface IdentitySnapshot {
-  source: IdentitySnapshotSource
-  capturedAt: string
-  browser: RuntimeBrowserSnapshot
-  hardware: RuntimeHardwareSnapshot
-  gpu: RuntimeGpuSnapshot
-  rendering: RuntimeRenderingSnapshot
-  network: RuntimeNetworkSnapshot
-  locale: RuntimeLocaleSnapshot
-}
+export type IdentitySnapshot = IdentityBaselineSnapshot
 
 export interface RuntimeIdentitySnapshotInput {
-  browser?: RuntimeBrowserSnapshot
-  hardware?: RuntimeHardwareSnapshot
-  gpu?: RuntimeGpuSnapshot
-  rendering?: RuntimeRenderingSnapshot
-  network?: RuntimeNetworkSnapshot
-  locale?: RuntimeLocaleSnapshot
-  source?: IdentitySnapshotSource
+  runtime: RuntimeFingerprintSnapshot
+  engine?: Pick<EngineStatus, 'fingerprintKernel' | 'version'>
+  network?: ProxyCheckSummary
+  capturedAt?: string
 }
 
-/**
- * Adapter between existing runtime diagnostic collectors and IdentityBaseline.
- * This intentionally does not collect data itself. Existing IPC/CDP/runtime
- * checks remain the source of truth and pass their results here.
- */
-export function createRuntimeIdentitySnapshot(
-  input: RuntimeIdentitySnapshotInput
-): IdentitySnapshot {
+export interface RuntimeIdentitySnapshotResult {
+  capturedAt: string
+  snapshot: IdentitySnapshot
+}
+
+function sorted(values: string[] | undefined): string[] {
+  return [...(values ?? [])].sort((a, b) => a.localeCompare(b))
+}
+
+function observedNetwork(network: ProxyCheckSummary | undefined): IdentitySnapshot['network'] {
+  if (!network?.ok) return {}
+
   return {
-    source: input.source ?? 'runtime',
-    capturedAt: new Date().toISOString(),
-    browser: input.browser ?? {},
-    hardware: input.hardware ?? {},
-    gpu: input.gpu ?? {},
-    rendering: input.rendering ?? {},
-    network: input.network ?? {},
-    locale: input.locale ?? {}
+    ip: network.ip,
+    ipVersion: network.ipVersion,
+    country: network.country,
+    countryCode: network.countryCode,
+    region: network.region,
+    city: network.city,
+    timezone: network.timezone,
+    latitude: network.latitude,
+    longitude: network.longitude,
+    asn: network.asn,
+    organization: network.organization,
+    isp: network.isp,
+    networkRisk: network.networkRisk,
+    geoConfidence: network.geoConfidence
   }
 }
 
-export function mergeRuntimeIdentitySnapshot(
-  current: IdentitySnapshot,
-  patch: RuntimeIdentitySnapshotInput
-): IdentitySnapshot {
+/**
+ * Converts values already observed by the existing runtime diagnostics into the
+ * stable six-part identity shape consumed by IdentityBaseline/Drift Detection.
+ *
+ * This adapter deliberately performs no probing and does not read profile
+ * configuration as a substitute for runtime evidence.
+ */
+export function buildRuntimeIdentitySnapshot(
+  input: RuntimeIdentitySnapshotInput
+): RuntimeIdentitySnapshotResult {
+  const runtime = input.runtime
+
   return {
-    ...current,
-    capturedAt: new Date().toISOString(),
-    browser: { ...current.browser, ...patch.browser },
-    hardware: { ...current.hardware, ...patch.hardware },
-    gpu: { ...current.gpu, ...patch.gpu },
-    rendering: { ...current.rendering, ...patch.rendering },
-    network: { ...current.network, ...patch.network },
-    locale: { ...current.locale, ...patch.locale }
+    capturedAt: input.capturedAt ?? new Date().toISOString(),
+    snapshot: {
+      browser: {
+        userAgent: runtime.userAgent,
+        platform: runtime.platform,
+        kernelVersion: input.engine?.fingerprintKernel ? input.engine.version : undefined,
+        uaCh: {
+          exposed: runtime.uaCh.exposed,
+          platform: runtime.uaCh.platform,
+          mobile: runtime.uaCh.mobile,
+          brands: runtime.uaCh.brands.map((item) => ({ ...item })),
+          architecture: runtime.uaCh.architecture,
+          bitness: runtime.uaCh.bitness,
+          platformVersion: runtime.uaCh.platformVersion,
+          fullVersionList: runtime.uaCh.fullVersionList.map((item) => ({ ...item }))
+        }
+      },
+      hardware: {
+        hardwareConcurrency: runtime.hardwareConcurrency,
+        deviceMemory: runtime.deviceMemory,
+        devicePixelRatio: runtime.devicePixelRatio,
+        screen: { ...runtime.screen }
+      },
+      gpu: {
+        webgl: runtime.webgl ? { ...runtime.webgl } : undefined,
+        webgpu: runtime.webgpu ? { ...runtime.webgpu } : undefined,
+        systemGpu: runtime.systemGpu
+          ? {
+              devices: runtime.systemGpu.devices.map((device) => ({ ...device })),
+              glVendor: runtime.systemGpu.glVendor,
+              glRenderer: runtime.systemGpu.glRenderer
+            }
+          : undefined
+      },
+      rendering: {
+        fonts: runtime.fonts
+          ? {
+              method: runtime.fonts.method,
+              detected: sorted(runtime.fonts.detected)
+            }
+          : undefined
+      },
+      network: observedNetwork(input.network),
+      locale: {
+        language: runtime.language,
+        languages: [...runtime.languages],
+        timezone: runtime.timezone
+      }
+    }
   }
 }
