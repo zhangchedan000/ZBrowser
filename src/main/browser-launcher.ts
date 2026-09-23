@@ -20,6 +20,7 @@ import { GEOIP_CONFLICT_CONFIRMATION_PREFIX, hasCompleteProxyIdentity, proxyLaun
 import { sameProxyIdentity } from './profile-secrets'
 import { BrowserControlSession, PipeCdpTransport, WebSocketCdpTransport } from './browser-control-session'
 import { buildRuntimeFingerprintChecks } from '../shared/runtime-fingerprint-diagnostics'
+import { buildRuntimeIdentitySnapshot } from '../shared/runtime-identity-snapshot'
 import type { Readable, Writable } from 'node:stream'
 
 type ProxyTester = (config: ProxyConfig) => Promise<ProxyTestResult>
@@ -963,11 +964,18 @@ export class BrowserLauncher {
       const checks = buildRuntimeFingerprintChecks(current, snapshot, engine, {
         renderSurfacesRepresentative: !e2eHeadless
       })
+      const identity = buildRuntimeIdentitySnapshot({
+        runtime: snapshot,
+        engine,
+        network: current.proxyCheck
+      })
       return {
         profileId: id,
-        checkedAt: new Date().toISOString(),
+        checkedAt: identity.capturedAt,
         ready: !checks.some((check) => check.status === 'error'),
         snapshot,
+        identityCapturedAt: identity.capturedAt,
+        identitySnapshot: identity.snapshot,
         checks
       }
     } catch (error) {
