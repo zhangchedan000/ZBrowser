@@ -60,9 +60,11 @@ jobs:
           ZBROWSER_PROXY_E2E_OUTPUT: test-results/proxy-e2e.json
         run: |
           New-Item -ItemType Directory -Force -Path test-results | Out-Null
-          if ([string]::IsNullOrWhiteSpace($env:ZBROWSER_TEST_HTTP_PROXY_URL) -or [string]::IsNullOrWhiteSpace($env:ZBROWSER_TEST_SOCKS5_PROXY)) {
-            Write-Host "Real proxy smoke skipped because one or more repository secrets are not configured."
-            exit 0
+          if ([string]::IsNullOrWhiteSpace($env:ZBROWSER_TEST_SOCKS5_PROXY)) {
+            throw "SOCKS5 real-proxy smoke is a required check, but ZBROWSER_TEST_SOCKS5_PROXY is not configured."
+          }
+          if ([string]::IsNullOrWhiteSpace($env:ZBROWSER_TEST_HTTP_PROXY_URL)) {
+            throw "ZBROWSER_TEST_HTTP_PROXY_URL is not configured; the current proxy smoke runner requires both provider inputs."
           }
 
           $maxAttempts = 3
@@ -83,10 +85,10 @@ jobs:
             throw "Proxy fail-closed check failed"
           }
           if (-not $socks -or -not $socks.ok) {
-            Write-Warning "SOCKS5 provider smoke failed after retries; continuing because fail-closed behavior still passed."
+            throw "SOCKS5 real-proxy smoke failed after retries"
           }
           if ($http -and -not $http.ok) {
-            Write-Warning "HTTP provider smoke failed after retries; continuing because fail-closed behavior still passed."
+            Write-Warning "HTTP provider smoke failed after retries; continuing because SOCKS5 and fail-closed behavior passed."
           }
           exit 0
 
