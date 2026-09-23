@@ -34,6 +34,18 @@ interface ProfileOwnerMarker {
   profileId: string
 }
 
+export type ProfileIdentityChangeReason =
+  | 'user_config'
+  | 'kernel_upgrade'
+  | 'kernel_rollback'
+  | 'proxy_reassignment'
+
+export type ProfileIdentityLifecycleHook = (
+  before: BrowserProfile,
+  after: BrowserProfile,
+  reason: ProfileIdentityChangeReason
+) => void | Promise<void>
+
 const PROFILE_OWNER_FILE = 'profile-owner.json'
 const MAX_PROFILE_SERIAL = 999_999_999
 
@@ -99,7 +111,11 @@ export class ProfileStore {
   private health: ProfileStoreHealth = { recoveredFromBackup: false, backupHealthy: true }
   private preservePreviousBackupOnce = false
 
-  constructor(vaultPath: string, private readonly secrets: SecretCodec = identitySecretCodec) {
+  constructor(
+    vaultPath: string,
+    private readonly secrets: SecretCodec = identitySecretCodec,
+    private readonly identityLifecycleHook?: ProfileIdentityLifecycleHook
+  ) {
     this.vaultPath = vaultPath
     this.profilesPath = join(vaultPath, 'profiles.json')
     this.backupPath = join(vaultPath, 'profiles.json.backup')
@@ -352,6 +368,7 @@ export class ProfileStore {
     }
     this.profiles.set(id, profile)
     await this.persist()
+    await this.identityLifecycleHook?.(current, profile, 'user_config')
     return profile
   }
 
@@ -382,6 +399,7 @@ export class ProfileStore {
     this.profiles.set(id, profile)
     try {
       await this.persist()
+      await this.identityLifecycleHook?.(current, profile, 'kernel_upgrade')
       return profile
     } catch (error) {
       this.profiles.set(id, current)
@@ -409,6 +427,7 @@ export class ProfileStore {
     this.profiles.set(id, profile)
     try {
       await this.persist()
+      await this.identityLifecycleHook?.(current, profile, 'kernel_rollback')
       return profile
     } catch (error) {
       this.profiles.set(id, current)
@@ -730,6 +749,7 @@ export class ProfileStore {
     this.profiles.set(id, profile)
     try {
       await this.persist()
+      await this.identityLifecycleHook?.(current, profile, 'proxy_reassignment')
       return profile
     } catch (error) {
       this.profiles.set(id, current)

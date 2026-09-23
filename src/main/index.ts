@@ -22,6 +22,8 @@ import { ProxyPoolStore } from './proxy-pool-store'
 import { runMcpStdio } from './mcp-stdio-server'
 import { FingerprintRepairStateStore } from './fingerprint-repair-state'
 import { FingerprintRepairExecutor } from './fingerprint-repair-executor'
+import { IdentityBaselineStore } from './identity-baseline-store'
+import { requestBaselineReplacementForChange } from './identity-baseline-lifecycle'
 
 let mainWindow: BrowserWindow | null = null
 let launcher: BrowserLauncher | null = null
@@ -100,7 +102,10 @@ app.whenReady().then(async () => {
   logger = new AppLogger(vaultPath)
   appSession = new AppSessionTracker(vaultPath)
   const secrets = new ElectronSecretCodec()
-  const profiles = new ProfileStore(vaultPath, secrets)
+  const identityBaselines = new IdentityBaselineStore(vaultPath)
+  const profiles = new ProfileStore(vaultPath, secrets, async (before, after, reason) => {
+    await requestBaselineReplacementForChange(identityBaselines, before, after, reason)
+  })
   const proxyPool = new ProxyPoolStore(vaultPath, secrets)
   const settings = new SettingsStore(vaultPath)
   const extensions = new ExtensionStore(vaultPath, logger)
