@@ -31,7 +31,7 @@ function snapshot(language: string, timezone = 'America/New_York'): IdentityBase
       }
     },
     rendering: { fonts: { detected: ['Segoe UI'] } },
-    network: { ip: '203.0.113.10', countryCode: 'US', timezone },
+    network: { ip: '203.0.113.10', countryCode: 'US', timezone: 'America/New_York' },
     locale: { language, timezone }
   }
 }
