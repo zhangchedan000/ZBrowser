@@ -435,6 +435,8 @@ export interface FingerprintRuntimeDiagnosticReport {
   checkedAt: string
   ready: boolean
   snapshot?: RuntimeFingerprintSnapshot
+  identityCapturedAt?: string
+  identitySnapshot?: import('./identity-baseline-model').IdentityBaselineSnapshot
   checks: LaunchDiagnosticCheck[]
 }
 
