@@ -38,7 +38,7 @@ describe('fingerprint intelligence provenance', () => {
     expect(diagnosis.protectedUserOverrides).toBe(1)
     expect(timezoneProposal?.protectedByUserOverride).toBe(true)
     expect(timezoneProposal?.automatedRepairAllowed).toBe(false)
-    expect(timezoneProposal?.actions.at(-1)).toContain('不会')
+    expect(timezoneProposal?.actions.at(-1)).toContain('不由 AI 自动覆盖')
     expect(gpuProposal?.protectedByUserOverride).toBe(false)
     expect(gpuProposal?.automatedRepairAllowed).toBe(true)
   })
