@@ -40,7 +40,9 @@ function generatedIdentity(): AIIdentityGenerationResult {
   return {
     config: {
       fingerprint: {},
-      network: {},
+      network: {
+        networkIdentityMode: { value: 'manual', source: 'ai' }
+      },
       locale: {
         language: { value: 'en-US', source: 'ai' },
         timezone: { value: 'America/New_York', source: 'ai' }
