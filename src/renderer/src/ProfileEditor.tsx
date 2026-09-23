@@ -954,10 +954,11 @@ export function ProfileEditor({ open, profile, suggestedIndex, saving, extension
         requiredMark={false}
         onValuesChange={(changed) => {
           if ('proxy' in changed) setProxyResult(null)
-          if (changed.fingerprint && typeof changed.fingerprint === 'object') {
+          const changedFingerprint = changed.fingerprint
+          if (changedFingerprint && typeof changedFingerprint === 'object') {
             setIdentityConfigProvenance((currentProvenance) => markFingerprintConfigSources(
               currentProvenance,
-              Object.keys(changed.fingerprint),
+              Object.keys(changedFingerprint),
               'user'
             ))
           }

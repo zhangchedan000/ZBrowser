@@ -4,8 +4,8 @@ import type {
   NetworkIdentityMode,
   ProxyProtocol,
   ProxyTestResult,
-  type IdentityConfigProvenance,
-  type IdentityConfigSection
+  IdentityConfigProvenance,
+  IdentityConfigSection
 } from './types'
 import {
   applyFingerprintHardwarePersona,
