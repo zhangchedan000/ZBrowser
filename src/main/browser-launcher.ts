@@ -23,6 +23,7 @@ import { buildRuntimeFingerprintChecks } from '../shared/runtime-fingerprint-dia
 import { buildRuntimeIdentitySnapshot } from '../shared/runtime-identity-snapshot'
 import { IdentityBaselineStore } from './identity-baseline-store'
 import { evaluateRuntimeIdentity } from './identity-drift-runtime'
+import { buildIdentityDriftIntelligence } from '../shared/identity-drift-health'
 import type { Readable, Writable } from 'node:stream'
 
 type ProxyTester = (config: ProxyConfig) => Promise<ProxyTestResult>
@@ -979,6 +980,13 @@ export class BrowserLauncher {
         current.identityConfigProvenance,
         { allowCreateBaseline: ready }
       )
+      const identityIntelligence = identityState.drift
+        ? buildIdentityDriftIntelligence(
+            identityState.drift,
+            identity.snapshot,
+            current.identityConfigProvenance
+          )
+        : undefined
       return {
         profileId: id,
         checkedAt: identity.capturedAt,
@@ -996,6 +1004,8 @@ export class BrowserLauncher {
           : undefined,
         identityBaselineCreated: identityState.baselineCreated,
         identityDrift: identityState.drift,
+        identityHealth: identityIntelligence?.health,
+        identityDiagnosis: identityIntelligence?.diagnosis,
         checks
       }
     } catch (error) {
