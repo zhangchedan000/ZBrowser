@@ -1,14 +1,22 @@
-import type { EngineStatus, KernelRelease } from '../shared/types'
+import { kernelFamilyForRelease } from '../shared/kernel-version'
+import type { EngineStatus, KernelFamily, KernelRelease } from '../shared/types'
+
+function catalogKey(version: string, family: KernelFamily): string {
+  return `${family}:${version}`
+}
 
 /**
- * The copy shipped with ZBrowser is authoritative for a bundled version. A stale
- * user-imported copy with the same version must not hide it in the UI.
+ * The copy shipped with ZBrowser is authoritative for the bundled
+ * fingerprint-chromium family at a version. A custom/local build with the same
+ * Chromium version is a distinct kernel identity and must remain selectable.
  */
 export function mergeKernelCatalog(managed: KernelRelease[], bundled: EngineStatus[]): KernelRelease[] {
-  const byVersion = new Map(managed.map((kernel) => [kernel.version, kernel]))
+  const byIdentity = new Map(
+    managed.map((kernel) => [catalogKey(kernel.version, kernelFamilyForRelease(kernel)), kernel] as const)
+  )
   for (const engine of bundled) {
     if (!engine.version || !engine.executable) continue
-    byVersion.set(engine.version, {
+    byIdentity.set(catalogKey(engine.version, 'fingerprint-chromium'), {
       version: engine.version,
       publishedAt: '',
       assetName: 'bundled-with-zbrowser',
@@ -21,6 +29,10 @@ export function mergeKernelCatalog(managed: KernelRelease[], bundled: EngineStat
       executable: engine.executable
     })
   }
-  return [...byVersion.values()]
-    .sort((first, second) => second.version.localeCompare(first.version, undefined, { numeric: true }))
+  return [...byIdentity.values()]
+    .sort((first, second) => {
+      const versionOrder = second.version.localeCompare(first.version, undefined, { numeric: true })
+      if (versionOrder !== 0) return versionOrder
+      return kernelFamilyForRelease(first).localeCompare(kernelFamilyForRelease(second))
+    })
 }
