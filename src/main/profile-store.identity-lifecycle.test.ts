@@ -3,6 +3,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 import { defaultProfileDraft } from '../shared/defaults'
+import { emptyIdentityConfigProvenance } from '../shared/identity-config-provenance'
 import type { IdentityBaselineSnapshot } from '../shared/identity-baseline-model'
 import { IdentityBaselineStore } from './identity-baseline-store'
 import { requestBaselineReplacementForChange } from './identity-baseline-lifecycle'
@@ -38,7 +39,11 @@ async function harness() {
   draft.kernelVersion = '144.0.7559.132'
   draft.kernelFamily = 'fingerprint-chromium'
   const profile = await profiles.create(draft)
-  await baselines.create(profile.id, snapshot(), profile.identityConfigProvenance)
+  await baselines.create(
+    profile.id,
+    snapshot(),
+    profile.identityConfigProvenance ?? emptyIdentityConfigProvenance()
+  )
   return { baselines, profiles, profile }
 }
 
@@ -68,7 +73,11 @@ describe('profile identity baseline lifecycle wiring', () => {
     expect((await baselines.pendingReplacement(profile.id))?.reasons).toEqual(['kernel_upgrade'])
 
     const upgraded = profiles.get(profile.id)
-    await baselines.create(profile.id, snapshot(), upgraded.identityConfigProvenance)
+    await baselines.create(
+      profile.id,
+      snapshot(),
+      upgraded.identityConfigProvenance ?? emptyIdentityConfigProvenance()
+    )
     await profiles.restoreKernelBinding(profile.id, '144.0.7559.132', 'fingerprint-chromium')
     expect((await baselines.pendingReplacement(profile.id))?.reasons).toEqual(['kernel_rollback'])
   })
