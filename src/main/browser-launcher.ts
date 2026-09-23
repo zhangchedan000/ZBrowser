@@ -45,6 +45,8 @@ interface RunningBrowser {
   proxyIdentityIp?: string
   proxyMonitor?: ReturnType<typeof setInterval>
   proxyMonitorRunning: boolean
+  identityMonitor?: ReturnType<typeof setInterval>
+  identityMonitorRunning: boolean
   proxyQuarantined: boolean
   proxyIdentityMismatch: boolean
   expectedExit: boolean
@@ -111,13 +113,17 @@ export class BrowserLauncher {
     private readonly maxConcurrentLaunches = 3,
     private readonly browserSpawner: typeof spawn = spawn,
     private readonly proxyMonitorIntervalMs = 5 * 60_000,
-    private readonly proxyPoolRecorder?: { recordResult(id: string, result: ProxyTestResult): Promise<unknown> }
+    private readonly proxyPoolRecorder?: { recordResult(id: string, result: ProxyTestResult): Promise<unknown> },
+    private readonly identityMonitorIntervalMs = 5 * 60_000
   ) {
     if (!Number.isInteger(maxConcurrentLaunches) || maxConcurrentLaunches < 1 || maxConcurrentLaunches > 20) {
       throw new Error('浏览器并发启动数必须在 1 到 20 之间')
     }
     if (!Number.isInteger(proxyMonitorIntervalMs) || proxyMonitorIntervalMs < 10) {
       throw new Error('代理出口复检间隔不能小于 10 毫秒')
+    }
+    if (!Number.isInteger(identityMonitorIntervalMs) || identityMonitorIntervalMs < 10) {
+      throw new Error('身份监控间隔不能小于 10 毫秒')
     }
   }
 
@@ -309,6 +315,7 @@ export class BrowserLauncher {
         finalized = true
         automation?.close()
         if (running?.proxyMonitor) clearInterval(running.proxyMonitor)
+        if (running?.identityMonitor) clearInterval(running.identityMonitor)
         this.processes.delete(id)
         this.orphanProcesses.delete(id)
         try {
@@ -343,6 +350,7 @@ export class BrowserLauncher {
         proxyUrl: localProxyUrl,
         proxyIdentityIp: profile.proxyCheck?.ip,
         proxyMonitorRunning: false,
+        identityMonitorRunning: false,
         proxyQuarantined: false,
         proxyIdentityMismatch: false,
         expectedExit: false,
@@ -379,6 +387,9 @@ export class BrowserLauncher {
             }
             this.onChanged(next)
             if (localProxyUrl) this.startProxyMonitor(id, profile.proxy)
+            if (!options.runtimeVersionProbe && !options.runtimeFingerprintProbe) {
+              this.startIdentityMonitor(id, engine)
+            }
             markStarted()
           } catch (error) {
             markStartFailed(error)
@@ -963,65 +974,9 @@ export class BrowserLauncher {
     try {
       await this.launch(id, { startUrls: [], runtimeFingerprintProbe: true })
       const snapshot = await (await this.controlSession(id)).runtimeFingerprintSnapshot()
-      const current = this.profiles.get(id)
       const e2eHeadless = process.env.ZBROWSER_E2E_BROWSER_HEADLESS === '1'
         || process.env.PRISM_E2E_BROWSER_HEADLESS === '1'
-      const checks = buildRuntimeFingerprintChecks(current, snapshot, engine, {
-        renderSurfacesRepresentative: !e2eHeadless
-      })
-      const identity = buildRuntimeIdentitySnapshot({
-        runtime: snapshot,
-        engine,
-        network: current.proxyCheck
-      })
-      const ready = !checks.some((check) => check.status === 'error')
-      const identityState = await evaluateRuntimeIdentity(
-        new IdentityBaselineStore(this.profiles.vaultPath),
-        id,
-        identity.snapshot,
-        current.identityConfigProvenance,
-        { allowCreateBaseline: ready }
-      )
-      const identityIntelligence = identityState.drift
-        ? buildIdentityDriftIntelligence(
-            identityState.drift,
-            identity.snapshot,
-            current.identityConfigProvenance
-          )
-        : undefined
-      const identityHealthTrend = identityIntelligence && identityState.baseline && identityState.drift
-        ? summarizeIdentityHealthTrend(await new IdentityHealthHistoryStore(this.profiles.vaultPath).record(id, {
-            checkedAt: identity.capturedAt,
-            baselineId: identityState.baseline.id,
-            score: identityIntelligence.health.score,
-            risk: identityIntelligence.health.risk,
-            driftDetected: identityState.drift.driftDetected,
-            driftSeverity: identityState.drift.severity,
-            changeCount: identityState.drift.changes.length
-          }))
-        : undefined
-      return {
-        profileId: id,
-        checkedAt: identity.capturedAt,
-        ready,
-        snapshot,
-        identityCapturedAt: identity.capturedAt,
-        identitySnapshot: identity.snapshot,
-        identityBaseline: identityState.baseline
-          ? {
-              id: identityState.baseline.id,
-              version: identityState.baseline.version,
-              status: identityState.baseline.status,
-              lastVerifiedAt: identityState.baseline.lastVerifiedAt
-            }
-          : undefined,
-        identityBaselineCreated: identityState.baselineCreated,
-        identityDrift: identityState.drift,
-        identityHealth: identityIntelligence?.health,
-        identityDiagnosis: identityIntelligence?.diagnosis,
-        identityHealthTrend,
-        checks
-      }
+      return await this.evaluateRuntimeFingerprintSnapshot(id, snapshot, engine, !e2eHeadless)
     } catch (error) {
       return {
         profileId: id,
@@ -1160,6 +1115,125 @@ export class BrowserLauncher {
     running.proxyWarningIssued = false
     this.logger?.info('浏览器代理桥已恢复传输', { profileId: id })
     this.onChanged(await this.profiles.setRuntime(id, { status: 'running', lastError: undefined }))
+  }
+
+  private async evaluateRuntimeFingerprintSnapshot(
+    id: string,
+    snapshot: import('../shared/types').RuntimeFingerprintSnapshot,
+    engine: Awaited<ReturnType<typeof locateBrowserForProfile>>,
+    renderSurfacesRepresentative: boolean
+  ): Promise<FingerprintRuntimeDiagnosticReport> {
+    const current = this.profiles.get(id)
+    const checks = buildRuntimeFingerprintChecks(current, snapshot, engine, {
+      renderSurfacesRepresentative
+    })
+    const identity = buildRuntimeIdentitySnapshot({
+      runtime: snapshot,
+      engine,
+      network: current.proxyCheck
+    })
+    const ready = !checks.some((check) => check.status === 'error')
+    const identityState = await evaluateRuntimeIdentity(
+      new IdentityBaselineStore(this.profiles.vaultPath),
+      id,
+      identity.snapshot,
+      current.identityConfigProvenance,
+      { allowCreateBaseline: ready }
+    )
+    const identityIntelligence = identityState.drift
+      ? buildIdentityDriftIntelligence(
+          identityState.drift,
+          identity.snapshot,
+          current.identityConfigProvenance
+        )
+      : undefined
+    const identityHealthTrend = identityIntelligence && identityState.baseline && identityState.drift
+      ? summarizeIdentityHealthTrend(await new IdentityHealthHistoryStore(this.profiles.vaultPath).record(id, {
+          checkedAt: identity.capturedAt,
+          baselineId: identityState.baseline.id,
+          score: identityIntelligence.health.score,
+          risk: identityIntelligence.health.risk,
+          driftDetected: identityState.drift.driftDetected,
+          driftSeverity: identityState.drift.severity,
+          changeCount: identityState.drift.changes.length
+        }))
+      : undefined
+
+    return {
+      profileId: id,
+      checkedAt: identity.capturedAt,
+      ready,
+      snapshot,
+      identityCapturedAt: identity.capturedAt,
+      identitySnapshot: identity.snapshot,
+      identityBaseline: identityState.baseline
+        ? {
+            id: identityState.baseline.id,
+            version: identityState.baseline.version,
+            status: identityState.baseline.status,
+            lastVerifiedAt: identityState.baseline.lastVerifiedAt
+          }
+        : undefined,
+      identityBaselineCreated: identityState.baselineCreated,
+      identityDrift: identityState.drift,
+      identityHealth: identityIntelligence?.health,
+      identityDiagnosis: identityIntelligence?.diagnosis,
+      identityHealthTrend,
+      checks
+    }
+  }
+
+  private startIdentityMonitor(
+    id: string,
+    engine: Awaited<ReturnType<typeof locateBrowserForProfile>>
+  ): void {
+    const running = this.processes.get(id)
+    if (!running || running.identityMonitor || !engine.fingerprintKernel || !engine.version) return
+
+    running.identityMonitor = setInterval(() => {
+      void this.monitorRuntimeIdentity(id, engine).catch((error) => {
+        this.logger?.error('运行中身份监控失败', {
+          profileId: id,
+          error: safeErrorText(error)
+        })
+      })
+    }, this.identityMonitorIntervalMs)
+    running.identityMonitor.unref()
+  }
+
+  private async monitorRuntimeIdentity(
+    id: string,
+    engine: Awaited<ReturnType<typeof locateBrowserForProfile>>
+  ): Promise<void> {
+    const running = this.processes.get(id)
+    if (!running || running.expectedExit || running.identityMonitorRunning) return
+    running.identityMonitorRunning = true
+
+    try {
+      const snapshot = await (await this.controlSession(id)).runtimeFingerprintSnapshot()
+      const report = await this.evaluateRuntimeFingerprintSnapshot(id, snapshot, engine, true)
+      if (!report.identityDrift?.driftDetected) return
+
+      const details = {
+        profileId: id,
+        severity: report.identityDrift.severity,
+        healthScore: report.identityHealth?.score,
+        healthRisk: report.identityHealth?.risk,
+        changes: report.identityDrift.changes.map((change) => ({
+          component: change.component,
+          field: change.field,
+          severity: change.severity
+        }))
+      }
+
+      if (report.identityDrift.severity === 'critical' || report.identityDrift.severity === 'high') {
+        this.logger?.error('运行中检测到身份漂移', details)
+      } else {
+        this.logger?.info('运行中检测到身份漂移', details)
+      }
+    } finally {
+      running.identityMonitorRunning = false
+    }
   }
 
   private startProxyMonitor(id: string, proxy: ProxyConfig): void {
