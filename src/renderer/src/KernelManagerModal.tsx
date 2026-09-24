@@ -283,8 +283,8 @@ export function KernelManagerModal({ open, engine, onClose, onEngineChanged }: K
           dataSource={releases}
           locale={{ emptyText: '暂时没有找到可用的开源内核版本' }}
           renderItem={(release) => {
-            const active = currentVersion === release.version
             const bundledRelease = release.origin === 'bundled'
+            const active = Boolean(release.executable && engine?.executable && release.executable === engine.executable)
             const compatibility = compatibilityLabel(release.version)
             const actions: ReactNode[] = []
 
@@ -312,7 +312,11 @@ export function KernelManagerModal({ open, engine, onClose, onEngineChanged }: K
               actions.push(
                 active
                   ? <Tag key="active" color="success" icon={<CheckCircleFilled />}>正在使用</Tag>
-                  : <Button key="use" disabled={Boolean(installing)} onClick={() => void activate(release.version)}>切换使用</Button>
+                  : <Button
+                      key="use"
+                      disabled={Boolean(installing)}
+                      onClick={() => void (bundledRelease ? activateBundled() : activate(release.version))}
+                    >切换使用</Button>
               )
             }
 
@@ -330,7 +334,7 @@ export function KernelManagerModal({ open, engine, onClose, onEngineChanged }: K
                 </Popconfirm>
               )
             }
-            if (release.installed) {
+            if (release.installed && !bundledRelease) {
               actions.push(
                 <Button
                   key="verify"
@@ -353,9 +357,9 @@ export function KernelManagerModal({ open, engine, onClose, onEngineChanged }: K
                       <Tag color={compatibility.color}>{compatibility.text}</Tag>
                       {bundledRelease && <Tag color="blue">随应用内置</Tag>}
                       {release.origin === 'local-build' && <Tag color="purple">本地构建</Tag>}
-                      {health[release.version]?.status === 'healthy' && <Tag color="success">文件正常</Tag>}
-                      {health[release.version]?.status === 'unverified' && <Tag color="warning">建议重新导入</Tag>}
-                      {health[release.version]?.status === 'corrupt' && <Tag color="error">文件异常</Tag>}
+                      {!bundledRelease && health[release.version]?.status === 'healthy' && <Tag color="success">文件正常</Tag>}
+                      {!bundledRelease && health[release.version]?.status === 'unverified' && <Tag color="warning">建议重新导入</Tag>}
+                      {!bundledRelease && health[release.version]?.status === 'corrupt' && <Tag color="error">文件异常</Tag>}
                     </Space>
                   }
                   description={
