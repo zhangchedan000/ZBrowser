@@ -132,6 +132,16 @@ const TOOLS: ToolDefinition[] = [
     }
   },
   {
+    name: 'profile_self_healing_history',
+    description: 'Read recent persisted Self-Healing attempts for one profile. This is read-only and does not start or modify the browser.',
+    inputSchema: {
+      type: 'object',
+      properties: { profileId: PROFILE_ID_SCHEMA },
+      required: ['profileId'],
+      additionalProperties: false
+    }
+  },
+  {
     name: 'page_open',
     description: 'Open an HTTP or HTTPS URL in a running ZBrowser profile.',
     inputSchema: {
@@ -237,6 +247,8 @@ async function callTool(client: McpApiClient, name: string, rawArguments: unknow
       return client.request(toolPathProfile(profileId(args), '/self-healing'))
     case 'profile_self_healing_check':
       return client.request(toolPathProfile(profileId(args), '/self-healing/check'), { method: 'POST', timeoutMs: 120000 })
+    case 'profile_self_healing_history':
+      return client.request(toolPathProfile(profileId(args), '/self-healing/history'))
     case 'page_open': {
       const url = stringArgument(args, 'url', 2048)
       let parsed: URL
