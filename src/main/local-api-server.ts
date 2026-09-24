@@ -2,7 +2,7 @@ import { randomBytes, timingSafeEqual } from 'node:crypto'
 import { mkdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http'
 import { join } from 'node:path'
-import type { AutomationApiStatus, BrowserProfile, FingerprintRuntimeDiagnosticReport, LaunchDiagnosticReport } from '../shared/types'
+import type { AutomationApiStatus, BrowserProfile, FingerprintRuntimeDiagnosticReport, IdentitySelfHealingSummary, LaunchDiagnosticReport } from '../shared/types'
 import type { Logger } from './app-logger'
 import type { LocalApiProfileRuntime } from './browser-launcher'
 import type { BrowserControlSession } from './browser-control-session'
@@ -11,7 +11,7 @@ import { safeErrorText } from './redaction'
 export const DEFAULT_LOCAL_API_PORT = 17653
 const LOCAL_API_HOST = '127.0.0.1'
 const MAX_REQUEST_BODY_BYTES = 16 * 1024
-const LOCAL_API_CAPABILITIES = ['profile-control', 'cdp', 'page-control', 'proxy-test', 'diagnostics']
+const LOCAL_API_CAPABILITIES = ['profile-control', 'cdp', 'page-control', 'proxy-test', 'diagnostics', 'self-healing']
 
 interface LocalApiProfileStore {
   list(): BrowserProfile[]
@@ -31,9 +31,16 @@ interface LocalApiLauncher {
   diagnoseFingerprintRuntime(id: string): Promise<FingerprintRuntimeDiagnosticReport>
 }
 
+interface LocalApiSelfHealing {
+  status(profileId: string): Promise<IdentitySelfHealingSummary>
+  statusAll(): Promise<Record<string, IdentitySelfHealingSummary>>
+  diagnose(profileId: string): Promise<FingerprintRuntimeDiagnosticReport>
+}
+
 export interface LocalApiServerOptions {
   port?: number
   token?: string
+  selfHealing?: LocalApiSelfHealing
 }
 
 export interface LocalApiServerStatus {
@@ -88,6 +95,10 @@ function profileSummary(profile: BrowserProfile): Record<string, unknown> {
       ip: profile.proxyCheck?.ok ? profile.proxyCheck.ip : undefined,
       countryCode: profile.proxyCheck?.ok ? profile.proxyCheck.countryCode : undefined,
       timezone: profile.proxyCheck?.ok ? profile.proxyCheck.timezone : undefined
+    },
+    identity: {
+      targetCountryCode: profile.identityIntent?.targetCountryCode,
+      selfHealingMode: profile.identityIntent?.selfHealingMode ?? 'assisted'
     },
     fingerprint: {
       platform: profile.fingerprint.platform,
@@ -318,6 +329,34 @@ export class LocalApiServer {
       return
     }
 
+    if (method === 'GET' && url.pathname === '/api/v1/self-healing') {
+      if (!this.options.selfHealing) throw new LocalApiHttpError(503, 'SELF_HEALING_UNAVAILABLE', 'Self-Healing controller is unavailable')
+      this.sendJson(response, 200, { profiles: await this.options.selfHealing.statusAll() })
+      return
+    }
+
+    const selfHealingRoute = url.pathname.match(/^\/api\/v1\/profiles\/([^/]+)\/self-healing(?:\/(check))?$/)
+    if (selfHealingRoute) {
+      const id = decodeURIComponent(selfHealingRoute[1])
+      this.profile(id)
+      if (!this.options.selfHealing) throw new LocalApiHttpError(503, 'SELF_HEALING_UNAVAILABLE', 'Self-Healing controller is unavailable')
+      if (!selfHealingRoute[2] && method === 'GET') {
+        this.sendJson(response, 200, { profileId: id, selfHealing: await this.options.selfHealing.status(id) })
+        return
+      }
+      if (selfHealingRoute[2] === 'check' && method === 'POST') {
+        const report = await this.options.selfHealing.diagnose(id)
+        this.sendJson(response, 200, {
+          profileId: id,
+          selfHealing: report.identitySelfHealing,
+          repairStrategy: report.identityRepairStrategy,
+          ready: report.ready
+        })
+        return
+      }
+      throw new LocalApiHttpError(405, 'METHOD_NOT_ALLOWED', 'Method not allowed')
+    }
+
     const diagnosticRoute = url.pathname.match(/^\/api\/v1\/profiles\/([^/]+)\/diagnostics\/(launch|kernel-runtime|fingerprint-runtime)$/)
     if (diagnosticRoute) {
       if (method !== 'POST') throw new LocalApiHttpError(405, 'METHOD_NOT_ALLOWED', 'Method not allowed')
@@ -328,7 +367,9 @@ export class LocalApiServer {
         ? await this.launcher.diagnose(id)
         : action === 'kernel-runtime'
           ? await this.launcher.diagnoseKernelRuntime(id)
-          : await this.launcher.diagnoseFingerprintRuntime(id)
+          : this.options.selfHealing
+            ? await this.options.selfHealing.diagnose(id)
+            : await this.launcher.diagnoseFingerprintRuntime(id)
       this.sendJson(response, 200, { profileId: id, report })
       return
     }

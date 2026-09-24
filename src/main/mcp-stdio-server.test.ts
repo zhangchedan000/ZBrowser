@@ -66,7 +66,12 @@ describe('MCP stdio message handler', () => {
       params: {}
     }, client, '1.2.3')
     expect((listed?.result as { tools: unknown[] }).tools).toHaveLength(TOOLS.length)
-    expect(TOOLS.map((tool) => tool.name)).toContain('page_snapshot')
+    expect(TOOLS.map((tool) => tool.name)).toEqual(expect.arrayContaining([
+      'page_snapshot',
+      'self_healing_list',
+      'profile_self_healing_status',
+      'profile_self_healing_check'
+    ]))
   })
 
   it('maps tool calls only to fixed Local API routes', async () => {
@@ -102,6 +107,43 @@ describe('MCP stdio message handler', () => {
       }
     })
     expect((response?.result as { isError?: boolean }).isError).toBeUndefined()
+  })
+
+  it('maps Self-Healing tools only to fixed policy-gated Local API routes', async () => {
+    const client = new FakeClient()
+    await handleMcpMessage({
+      jsonrpc: '2.0',
+      id: 31,
+      method: 'tools/call',
+      params: { name: 'self_healing_list', arguments: {} }
+    }, client, '1.0.0')
+    await handleMcpMessage({
+      jsonrpc: '2.0',
+      id: 32,
+      method: 'tools/call',
+      params: {
+        name: 'profile_self_healing_status',
+        arguments: { profileId: '11111111-1111-1111-1111-111111111111' }
+      }
+    }, client, '1.0.0')
+    await handleMcpMessage({
+      jsonrpc: '2.0',
+      id: 33,
+      method: 'tools/call',
+      params: {
+        name: 'profile_self_healing_check',
+        arguments: { profileId: '11111111-1111-1111-1111-111111111111' }
+      }
+    }, client, '1.0.0')
+
+    expect(client.calls).toEqual([
+      { path: '/api/v1/self-healing', options: undefined },
+      { path: '/api/v1/profiles/11111111-1111-1111-1111-111111111111/self-healing', options: undefined },
+      {
+        path: '/api/v1/profiles/11111111-1111-1111-1111-111111111111/self-healing/check',
+        options: { method: 'POST', timeoutMs: 120000 }
+      }
+    ])
   })
 
   it('returns tool errors as tool results and never turns arguments into arbitrary API paths', async () => {

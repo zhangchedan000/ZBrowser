@@ -11,6 +11,7 @@ import type { IdentitySelfHealingStateStore } from './identity-self-healing-stat
 
 interface SelfHealingProfileStore {
   get(id: string): BrowserProfile
+  list(): BrowserProfile[]
 }
 
 interface SelfHealingVerifier {
@@ -38,15 +39,37 @@ export class IdentitySelfHealingManager {
 
   private async summary(
     profileId: string,
-    decision: IdentitySelfHealingDecision,
-    reason: string
+    decision?: IdentitySelfHealingDecision,
+    reason?: string
   ): Promise<IdentitySelfHealingSummary> {
     const profile = this.profiles.get(profileId)
     const snapshot = await this.state.snapshot(profileId)
+    const mode = profile.identityIntent?.selfHealingMode ?? 'assisted'
+    let resolvedDecision = decision
+    let resolvedReason = reason
+    if (!resolvedDecision || !resolvedReason) {
+      if (snapshot.cooldownUntil) {
+        resolvedDecision = snapshot.consecutiveFailures >= 2 ? 'blocked' : 'cooldown'
+        resolvedReason = snapshot.consecutiveFailures >= 2
+          ? '同一恢复策略连续失败，循环保护仍在生效'
+          : 'Self-Healing 处于冷却期'
+      } else if (snapshot.pending?.policyAction === 'execute') {
+        resolvedDecision = 'auto_execute'
+        resolvedReason = '已检测到可由 Auto Policy 执行的低风险恢复任务'
+      } else if (snapshot.pending) {
+        resolvedDecision = mode === 'manual' ? 'disabled' : 'suggest'
+        resolvedReason = snapshot.pending.reason
+      } else {
+        resolvedDecision = mode === 'manual' ? 'disabled' : 'suggest'
+        resolvedReason = mode === 'manual'
+          ? 'Self-Healing 为 Manual，仅监控身份状态'
+          : '当前没有待处理的 Self-Healing 任务'
+      }
+    }
     return {
-      mode: profile.identityIntent?.selfHealingMode ?? 'assisted',
-      decision,
-      reason,
+      mode,
+      decision: resolvedDecision ?? 'disabled',
+      reason: resolvedReason ?? 'Self-Healing 状态尚未初始化',
       pending: Boolean(snapshot.pending),
       attemptsInWindow: snapshot.attemptsInWindow,
       consecutiveFailures: snapshot.consecutiveFailures,
@@ -54,8 +77,24 @@ export class IdentitySelfHealingManager {
       lastAttemptAt: snapshot.lastAttemptAt,
       lastResult: snapshot.lastResult,
       lastStrategyKind: snapshot.lastStrategyKind,
-      lastMessage: snapshot.lastMessage
+      lastMessage: snapshot.lastMessage,
+      pendingStrategyKind: snapshot.pending?.strategyKind,
+      pendingReason: snapshot.pending?.reason,
+      pendingDetectedAt: snapshot.pending?.detectedAt
     }
+  }
+
+  async status(profileId: string): Promise<IdentitySelfHealingSummary> {
+    this.profiles.get(profileId)
+    return this.summary(profileId)
+  }
+
+  async statusAll(): Promise<Record<string, IdentitySelfHealingSummary>> {
+    const entries = await Promise.all(this.profiles.list().map(async (profile) => [
+      profile.id,
+      await this.summary(profile.id)
+    ] as const))
+    return Object.fromEntries(entries)
   }
 
   private async attach(
@@ -76,10 +115,12 @@ export class IdentitySelfHealingManager {
       await this.state.clearPending(profileId)
       return
     }
+    const policy = evaluateProfileSelfHealingPolicy(this.profiles.get(profileId), report)
     await this.state.observe(profileId, {
       signature: identityRepairStrategySignature(strategy),
       strategyKind: strategy.kind,
       reason: strategy.reason,
+      policyAction: policy.action,
       detectedAt: report.checkedAt
     })
   }

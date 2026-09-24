@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 import { defaultProfileDraft } from '../shared/defaults'
-import type { BrowserProfile, FingerprintRuntimeDiagnosticReport, LaunchDiagnosticReport } from '../shared/types'
+import type { BrowserProfile, FingerprintRuntimeDiagnosticReport, IdentitySelfHealingSummary, LaunchDiagnosticReport } from '../shared/types'
 import { LocalApiServer, localApiPortFromEnvironment } from './local-api-server'
 import type { LocalApiProfileRuntime } from './browser-launcher'
 
@@ -147,8 +147,33 @@ describe('Local API server', () => {
         }
       }
     }
+    const selfHealingStatus: IdentitySelfHealingSummary = {
+      mode: 'assisted',
+      decision: 'suggest',
+      reason: 'test pending repair',
+      pending: true,
+      attemptsInWindow: 1,
+      consecutiveFailures: 0,
+      pendingStrategyKind: 'repair_configuration',
+      pendingReason: 'repair locale'
+    }
+    const selfHealing = {
+      async status(id: string) {
+        expect(id).toBe(current.id)
+        return selfHealingStatus
+      },
+      async statusAll() {
+        return { [current.id]: selfHealingStatus }
+      },
+      async diagnose(id: string) {
+        return {
+          ...await launcher.diagnoseFingerprintRuntime(id),
+          identitySelfHealing: selfHealingStatus
+        }
+      }
+    }
     const token = 'test-local-api-token-0123456789-abcdef'
-    const server = new LocalApiServer(vault, profiles, launcher, undefined, { port: 0, token })
+    const server = new LocalApiServer(vault, profiles, launcher, undefined, { port: 0, token, selfHealing })
     const status = await server.start()
     const authorization = { Authorization: 'Bearer ' + token }
 
@@ -159,7 +184,7 @@ describe('Local API server', () => {
       port: status.port,
       url: status.url,
       tokenPath: status.tokenPath,
-      capabilities: ['profile-control', 'cdp', 'page-control', 'proxy-test', 'diagnostics']
+      capabilities: ['profile-control', 'cdp', 'page-control', 'proxy-test', 'diagnostics', 'self-healing']
     })
     expect(JSON.stringify(server.publicStatus())).not.toContain(token)
 
@@ -264,6 +289,36 @@ describe('Local API server', () => {
           }
         })
       }
+
+      const healingList = await fetch(status.url + '/api/v1/self-healing', { headers: authorization })
+      expect(healingList.status).toBe(200)
+      expect(await healingList.json()).toMatchObject({
+        profiles: {
+          [current.id]: {
+            mode: 'assisted',
+            pending: true,
+            pendingStrategyKind: 'repair_configuration'
+          }
+        }
+      })
+
+      const healingStatus = await fetch(status.url + '/api/v1/profiles/' + current.id + '/self-healing', { headers: authorization })
+      expect(healingStatus.status).toBe(200)
+      expect(await healingStatus.json()).toMatchObject({
+        profileId: current.id,
+        selfHealing: { mode: 'assisted', decision: 'suggest', pending: true }
+      })
+
+      const healingCheck = await fetch(status.url + '/api/v1/profiles/' + current.id + '/self-healing/check', {
+        method: 'POST',
+        headers: authorization
+      })
+      expect(healingCheck.status).toBe(200)
+      expect(await healingCheck.json()).toMatchObject({
+        profileId: current.id,
+        selfHealing: { mode: 'assisted', pending: true },
+        ready: true
+      })
 
       const stopped = await fetch(status.url + '/api/profile/stop', {
         method: 'POST',

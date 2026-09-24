@@ -175,7 +175,8 @@ app.whenReady().then(async () => {
   const environmentChecks = new EnvironmentCheckHistoryStore(vaultPath)
   const automationApi = new LocalApiServer(vaultPath, profiles, launcher, logger, {
     port: localApiPortFromEnvironment(process.env.ZBROWSER_LOCAL_API_PORT),
-    token: process.env.ZBROWSER_LOCAL_API_TOKEN
+    token: process.env.ZBROWSER_LOCAL_API_TOKEN,
+    selfHealing: identitySelfHealing
   })
   localApi = automationApi
   registerIpc({

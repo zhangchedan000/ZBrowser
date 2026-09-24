@@ -536,6 +536,9 @@ export interface IdentitySelfHealingSummary {
   lastResult?: IdentitySelfHealingAttemptResult
   lastStrategyKind?: import('./identity-repair-strategy').IdentityRepairStrategyKind
   lastMessage?: string
+  pendingStrategyKind?: import('./identity-repair-strategy').IdentityRepairStrategyKind
+  pendingReason?: string
+  pendingDetectedAt?: string
 }
 
 export type IdentityProfileHealthState = import('./identity-profile-health').IdentityProfileHealthState
@@ -605,6 +608,8 @@ export interface BrowserApi {
     storageHealth: () => Promise<ProfileStoreHealth>
     identityHealth: (id: string) => Promise<IdentityProfileHealthSummary>
     identityHealthAll: () => Promise<Record<string, IdentityProfileHealthSummary>>
+    identitySelfHealing: (id: string) => Promise<IdentitySelfHealingSummary>
+    identitySelfHealingAll: () => Promise<Record<string, IdentitySelfHealingSummary>>
     storageInfo: (id: string) => Promise<ProfileStorageInfo>
     storageOverview: () => Promise<StorageOverview>
     openDataFolder: (id: string) => Promise<void>

@@ -98,7 +98,32 @@ const TOOLS: ToolDefinition[] = [
   },
   {
     name: 'profile_diagnose_fingerprint_runtime',
-    description: 'Run runtime fingerprint diagnostics for one profile.',
+    description: 'Run runtime fingerprint diagnostics for one profile. Auto Self-Healing may execute only when the profile policy explicitly allows a low-risk repair.',
+    inputSchema: {
+      type: 'object',
+      properties: { profileId: PROFILE_ID_SCHEMA },
+      required: ['profileId'],
+      additionalProperties: false
+    }
+  },
+  {
+    name: 'self_healing_list',
+    description: 'List persisted Self-Healing mode, pending work, cooldown and loop-guard status for all ZBrowser profiles.',
+    inputSchema: { type: 'object', properties: {}, additionalProperties: false }
+  },
+  {
+    name: 'profile_self_healing_status',
+    description: 'Get persisted Self-Healing status for one ZBrowser profile without starting the browser.',
+    inputSchema: {
+      type: 'object',
+      properties: { profileId: PROFILE_ID_SCHEMA },
+      required: ['profileId'],
+      additionalProperties: false
+    }
+  },
+  {
+    name: 'profile_self_healing_check',
+    description: 'Run the profile Self-Healing check. It may execute only low-risk actions already authorized by the profile Auto policy; high-risk actions remain confirmation-gated.',
     inputSchema: {
       type: 'object',
       properties: { profileId: PROFILE_ID_SCHEMA },
@@ -205,6 +230,13 @@ async function callTool(client: McpApiClient, name: string, rawArguments: unknow
       return client.request(toolPathProfile(profileId(args), '/diagnostics/kernel-runtime'), { method: 'POST' })
     case 'profile_diagnose_fingerprint_runtime':
       return client.request(toolPathProfile(profileId(args), '/diagnostics/fingerprint-runtime'), { method: 'POST', timeoutMs: 120000 })
+    case 'self_healing_list':
+      if (Object.keys(args).length) throw new McpLocalApiError('INVALID_ARGUMENTS', 'self_healing_list does not accept arguments')
+      return client.request('/api/v1/self-healing')
+    case 'profile_self_healing_status':
+      return client.request(toolPathProfile(profileId(args), '/self-healing'))
+    case 'profile_self_healing_check':
+      return client.request(toolPathProfile(profileId(args), '/self-healing/check'), { method: 'POST', timeoutMs: 120000 })
     case 'page_open': {
       const url = stringArgument(args, 'url', 2048)
       let parsed: URL

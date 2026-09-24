@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto'
 import { mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import type { IdentityRepairStrategyKind } from '../shared/identity-repair-strategy'
+import type { IdentitySelfHealingPolicyAction } from '../shared/identity-self-healing-policy'
 import type { IdentitySelfHealingAttemptResult } from '../shared/types'
 
 export const IDENTITY_SELF_HEALING_COOLDOWN_MS = 10 * 60_000
@@ -15,6 +16,7 @@ export interface IdentitySelfHealingPending {
   signature: string
   strategyKind: IdentityRepairStrategyKind
   reason: string
+  policyAction?: IdentitySelfHealingPolicyAction
 }
 
 export interface IdentitySelfHealingAttempt {
@@ -103,7 +105,10 @@ function safeFile(value: unknown): IdentitySelfHealingFile {
         detectedAt: raw.pending.detectedAt,
         signature: raw.pending.signature,
         strategyKind: raw.pending.strategyKind,
-        reason: raw.pending.reason.slice(0, 500)
+        reason: raw.pending.reason.slice(0, 500),
+        policyAction: raw.pending.policyAction === 'none' || raw.pending.policyAction === 'suggest' || raw.pending.policyAction === 'execute'
+          ? raw.pending.policyAction
+          : undefined
       }
     : undefined
 
