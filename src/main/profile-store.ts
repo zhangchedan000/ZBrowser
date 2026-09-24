@@ -473,7 +473,12 @@ export class ProfileStore {
       kernelFamily: source.kernelFamily,
       environmentType: source.environmentType ?? 'account',
       identityIntent: source.identityIntent
-        ? { schemaVersion: 1, targetCountryCode: source.identityIntent.targetCountryCode, strategy: 'manual' }
+        ? {
+            schemaVersion: 1,
+            targetCountryCode: source.identityIntent.targetCountryCode,
+            strategy: 'manual',
+            selfHealingMode: source.identityIntent.selfHealingMode ?? 'assisted'
+          }
         : undefined,
       identityConfigProvenance: normalizeIdentityConfigProvenance(source.identityConfigProvenance),
       window: { ...source.window },

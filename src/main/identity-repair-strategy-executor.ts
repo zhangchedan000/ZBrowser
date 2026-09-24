@@ -10,6 +10,7 @@ import type {
 } from '../shared/types'
 import { normalizeIdentityConfigProvenance } from '../shared/identity-config-provenance'
 import type { IdentityRepairStrategy } from '../shared/identity-repair-strategy'
+import { autoPolicyAllowsStrategy } from '../shared/identity-self-healing-policy'
 import type { IdentityBaseline } from '../shared/identity-baseline-model'
 import type { IdentityBaselineReplacementReason, IdentityBaselineReplacementRequest } from './identity-baseline-store'
 import { IdentityBaselineStore } from './identity-baseline-store'
@@ -39,7 +40,8 @@ interface FingerprintRepairRunner {
     profileId: string,
     approvedByUser: boolean,
     planId: string,
-    requestedSections: FingerprintRepairPlan['sections']
+    requestedSections: FingerprintRepairPlan['sections'],
+    approvedByPolicy?: boolean
   ): Promise<FingerprintRepairExecutionSummary & { profile: BrowserProfile }>
 }
 
@@ -110,18 +112,19 @@ export class IdentityRepairStrategyExecutor {
     await store.markVerified(profileId)
   }
 
-  private assertApproval(strategy: IdentityRepairStrategy, approvedByUser: boolean): void {
-    if (strategy.requiresUserConfirmation && !approvedByUser) {
-      throw new Error('该 Identity Repair Strategy 必须由用户明确确认后才能执行')
+  private assertApproval(strategy: IdentityRepairStrategy, approvedByUser: boolean, approvedByPolicy: boolean): void {
+    if (strategy.requiresUserConfirmation && !approvedByUser && !approvedByPolicy) {
+      throw new Error('该 Identity Repair Strategy 必须由用户明确确认或由低风险 Auto Policy 授权后才能执行')
     }
   }
 
   private async executeProxySwitch(
     profileId: string,
     strategy: IdentityRepairStrategy,
-    approvedByUser: boolean
+    approvedByUser: boolean,
+    approvedByPolicy: boolean
   ): Promise<IdentityRepairStrategyExecutionResultInternal> {
-    this.assertApproval(strategy, approvedByUser)
+    this.assertApproval(strategy, approvedByUser, approvedByPolicy)
     const candidate = strategy.candidateProxy
     if (!candidate) throw new Error('当前没有符合 Identity Intent 的可用代理候选')
 
@@ -200,10 +203,21 @@ export class IdentityRepairStrategyExecutor {
   private async executeFingerprintStrategy(
     profileId: string,
     strategy: IdentityRepairStrategy,
-    approvedByUser: boolean
+    approvedByUser: boolean,
+    approvedByPolicy: boolean
   ): Promise<IdentityRepairStrategyExecutionResultInternal> {
-    this.assertApproval(strategy, approvedByUser)
+    this.assertApproval(strategy, approvedByUser, approvedByPolicy)
     const plan = await this.fingerprintRepair.plan(profileId)
+    if (approvedByPolicy && plan.strategy?.kind && plan.strategy.kind !== strategy.kind) {
+      const report = await this.verifier.diagnoseFingerprintRuntime(profileId)
+      return {
+        status: 'no_action',
+        strategy: report.identityRepairStrategy ?? plan.strategy,
+        message: 'AI 修复计划在执行前发生变化，Auto Policy 已停止并等待重新评估',
+        report,
+        profile: this.profiles.get(profileId)
+      }
+    }
     if (plan.status === 'blocked') throw new Error(plan.blockedReason ?? '当前 AI 修复计划不可执行')
     if (plan.status !== 'ready' || !plan.sections.length) {
       const report = await this.verifier.diagnoseFingerprintRuntime(profileId)
@@ -218,7 +232,7 @@ export class IdentityRepairStrategyExecutor {
 
     const preferred = strategy.affectedSections.filter((section) => plan.sections.includes(section))
     const sections = preferred.length ? preferred : plan.sections
-    const result = await this.fingerprintRepair.execute(profileId, true, plan.planId, sections)
+    const result = await this.fingerprintRepair.execute(profileId, approvedByUser, plan.planId, sections, approvedByPolicy)
     return {
       status: result.status,
       strategy,
@@ -258,7 +272,11 @@ export class IdentityRepairStrategyExecutor {
     }
   }
 
-  async execute(profileId: string, approvedByUser: boolean): Promise<IdentityRepairStrategyExecutionResultInternal> {
+  async execute(
+    profileId: string,
+    approvedByUser: boolean,
+    approvedByPolicy = false
+  ): Promise<IdentityRepairStrategyExecutionResultInternal> {
     const current = this.profiles.get(profileId)
     if (current.status !== 'closed' && current.status !== 'error') {
       throw new Error('请先关闭浏览器环境再执行 Identity Repair Strategy')
@@ -285,12 +303,21 @@ export class IdentityRepairStrategyExecutor {
         profile: this.profiles.get(profileId)
       }
     }
+    if (approvedByPolicy && !autoPolicyAllowsStrategy(current, report, strategy.kind)) {
+      return {
+        status: 'no_action',
+        strategy,
+        message: '最新 Runtime Diagnosis 已不满足低风险 Auto Policy，已降级为等待用户确认',
+        report,
+        profile: this.profiles.get(profileId)
+      }
+    }
 
     if (strategy.kind === 'switch_proxy') {
-      return this.executeProxySwitch(profileId, strategy, approvedByUser)
+      return this.executeProxySwitch(profileId, strategy, approvedByUser, approvedByPolicy)
     }
     if (strategy.kind === 'repair_configuration' || strategy.kind === 'regenerate_identity') {
-      return this.executeFingerprintStrategy(profileId, strategy, approvedByUser)
+      return this.executeFingerprintStrategy(profileId, strategy, approvedByUser, approvedByPolicy)
     }
     if (strategy.kind === 'replace_baseline') {
       return this.executeBaselineReplacement(profileId, strategy)

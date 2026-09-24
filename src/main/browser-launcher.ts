@@ -81,6 +81,11 @@ export interface LocalApiProfileRuntime {
 
 export type { BrowserCrashRecord } from '../shared/types'
 
+export interface IdentitySelfHealingHooks {
+  onRuntimeReport?: (profileId: string, report: FingerprintRuntimeDiagnosticReport) => void | Promise<void>
+  onProfileClosed?: (profileId: string) => void | Promise<void>
+}
+
 const MAX_PROFILE_CRASH_RECORDS = 20
 const MAX_CLOSE_ALL_ROUNDS = 4
 const MAX_STAGNANT_CLOSE_ALL_ROUNDS = 2
@@ -104,6 +109,7 @@ export class BrowserLauncher {
   private activeLaunches = 0
   private readonly launchWaiters: Array<() => void> = []
   private closeAllOperation?: Promise<void>
+  private identitySelfHealingHooks?: IdentitySelfHealingHooks
 
   constructor(
     private readonly profiles: ProfileStore,
@@ -131,6 +137,10 @@ export class BrowserLauncher {
     if (!Number.isInteger(identityMonitorIntervalMs) || identityMonitorIntervalMs < 10) {
       throw new Error('身份监控间隔不能小于 10 毫秒')
     }
+  }
+
+  setIdentitySelfHealingHooks(hooks: IdentitySelfHealingHooks | undefined): void {
+    this.identitySelfHealingHooks = hooks
   }
 
   async initialize(): Promise<void> {
@@ -340,6 +350,23 @@ export class BrowserLauncher {
           }
           const next = await this.profiles.setRuntime(id, { status, lastError })
           this.onChanged(next)
+          const shouldRunPendingSelfHealing = Boolean(
+            this.identitySelfHealingHooks?.onProfileClosed
+            && !this.closeAllOperation
+            && !options.runtimeVersionProbe
+            && !options.runtimeFingerprintProbe
+          )
+          if (shouldRunPendingSelfHealing) {
+            const timer = setTimeout(() => {
+              void Promise.resolve(this.identitySelfHealingHooks?.onProfileClosed?.(id)).catch((error) => {
+                this.logger?.error('环境关闭后执行 pending Self-Healing 失败', {
+                  profileId: id,
+                  error: safeErrorText(error)
+                })
+              })
+            }, 100)
+            timer.unref()
+          }
         } catch (error) {
           this.logger?.error('浏览器退出状态持久化失败', {
             profileId: id,
@@ -1271,6 +1298,12 @@ export class BrowserLauncher {
       const snapshot = await (await this.controlSession(id)).runtimeFingerprintSnapshot()
       const report = await this.evaluateRuntimeFingerprintSnapshot(id, snapshot, engine, true)
       this.onChanged(this.profiles.get(id))
+      await Promise.resolve(this.identitySelfHealingHooks?.onRuntimeReport?.(id, report)).catch((error) => {
+        this.logger?.error('记录运行中 Self-Healing pending 状态失败', {
+          profileId: id,
+          error: safeErrorText(error)
+        })
+      })
       if (!report.identityDrift?.driftDetected) return
 
       const details = {

@@ -52,6 +52,20 @@ const sectionView: Record<IdentityConfigSection, string> = {
   browser: '浏览器身份'
 }
 
+const selfHealingModeView = {
+  manual: 'Manual',
+  assisted: 'Assisted',
+  auto: 'Auto'
+} as const
+
+const selfHealingDecisionView = {
+  disabled: { color: 'default', text: '只监控' },
+  suggest: { color: 'blue', text: '等待确认' },
+  auto_execute: { color: 'success', text: '自动执行' },
+  cooldown: { color: 'warning', text: '冷却中' },
+  blocked: { color: 'error', text: '保护阻止' }
+} as const
+
 const strategyView = {
   none: { color: 'default', text: '无需修复' },
   switch_proxy: { color: 'purple', text: '切换代理' },
@@ -197,6 +211,48 @@ export function LaunchDiagnosticsModal({
             <Typography.Paragraph type="secondary" style={{ marginTop: 6, marginBottom: 0 }}>
               {report.identityDiagnosis.summary}
             </Typography.Paragraph>
+          )}
+
+          {report.identitySelfHealing && (
+            <Alert
+              style={{ marginTop: 8 }}
+              type={report.identitySelfHealing.decision === 'blocked'
+                ? 'error'
+                : report.identitySelfHealing.decision === 'cooldown'
+                  ? 'warning'
+                  : report.identitySelfHealing.decision === 'auto_execute'
+                    ? 'success'
+                    : 'info'}
+              showIcon
+              title={
+                <Space wrap>
+                  <Typography.Text strong>
+                    Self-Healing · {selfHealingModeView[report.identitySelfHealing.mode]}
+                  </Typography.Text>
+                  <Tag color={selfHealingDecisionView[report.identitySelfHealing.decision].color}>
+                    {selfHealingDecisionView[report.identitySelfHealing.decision].text}
+                  </Tag>
+                  {report.identitySelfHealing.pending && <Tag color="processing">Pending</Tag>}
+                </Space>
+              }
+              description={
+                <Space direction="vertical" size={2}>
+                  <Typography.Text>{report.identitySelfHealing.reason}</Typography.Text>
+                  <Typography.Text type="secondary">
+                    最近 1 小时自动尝试 {report.identitySelfHealing.attemptsInWindow} / 3
+                    {report.identitySelfHealing.consecutiveFailures
+                      ? ` · 连续失败 ${report.identitySelfHealing.consecutiveFailures}`
+                      : ''}
+                    {report.identitySelfHealing.cooldownUntil
+                      ? ` · 冷却至 ${new Date(report.identitySelfHealing.cooldownUntil).toLocaleString()}`
+                      : ''}
+                  </Typography.Text>
+                  {report.identitySelfHealing.lastMessage && (
+                    <Typography.Text type="secondary">上次结果：{report.identitySelfHealing.lastMessage}</Typography.Text>
+                  )}
+                </Space>
+              }
+            />
           )}
 
           {report.identityRepairStrategy && report.identityRepairStrategy.kind !== 'none' && (

@@ -532,9 +532,12 @@ export class FingerprintRepairExecutor {
     profileId: string,
     approvedByUser: boolean,
     planId: string,
-    requestedSections: IdentityConfigSection[]
+    requestedSections: IdentityConfigSection[],
+    approvedByPolicy = false
   ): Promise<FingerprintRepairExecutionResultInternal> {
-    if (!approvedByUser) throw new Error('AI 修复必须由用户明确确认后才能执行')
+    if (!approvedByUser && !approvedByPolicy) {
+      throw new Error('AI 修复必须由用户明确确认或由低风险 Auto Policy 授权后才能执行')
+    }
     this.prunePlans()
     const pending = this.pendingPlans.get(planId)
     if (!pending || pending.publicPlan.profileId !== profileId) throw new Error('AI 修复计划已过期，请重新预览后确认')

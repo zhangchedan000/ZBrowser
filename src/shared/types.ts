@@ -20,10 +20,13 @@ export type ProfileEnvironmentType = 'account' | 'temporary'
 export type IdentityConfigSource = 'default' | 'ai' | 'user'
 export type IdentityConfigSection = 'fingerprint' | 'network' | 'locale' | 'browser'
 export type IdentityIntentStrategy = 'manual' | 'ai_assisted'
+export type IdentitySelfHealingMode = 'manual' | 'assisted' | 'auto'
 export interface IdentityIntent {
   schemaVersion: 1
   targetCountryCode?: string
   strategy: IdentityIntentStrategy
+  /** manual = never auto-run, assisted = suggest + confirm, auto = low-risk policies may run unattended. */
+  selfHealingMode?: IdentitySelfHealingMode
   lastGeneratedAt?: string
   lastGenerator?: 'identity-ai-v1'
   lastGeneratedPersonaId?: string
@@ -462,6 +465,7 @@ export interface FingerprintRuntimeDiagnosticReport {
   identityHealthTrend?: import('./identity-health-trend').IdentityHealthTrendSummary
   identityIntentConsistency?: import('./identity-intent-consistency').IdentityIntentConsistency
   identityRepairStrategy?: import('./identity-repair-strategy').IdentityRepairStrategy
+  identitySelfHealing?: IdentitySelfHealingSummary
   checks: LaunchDiagnosticCheck[]
 }
 
@@ -516,6 +520,22 @@ export interface IdentityRepairStrategyExecutionSummary {
   strategy: import('./identity-repair-strategy').IdentityRepairStrategy
   message: string
   report: FingerprintRuntimeDiagnosticReport
+}
+
+export type IdentitySelfHealingDecision = 'disabled' | 'suggest' | 'auto_execute' | 'cooldown' | 'blocked'
+export type IdentitySelfHealingAttemptResult = 'completed' | 'rolled_back' | 'failed' | 'no_action'
+export interface IdentitySelfHealingSummary {
+  mode: IdentitySelfHealingMode
+  decision: IdentitySelfHealingDecision
+  reason: string
+  pending: boolean
+  attemptsInWindow: number
+  consecutiveFailures: number
+  cooldownUntil?: string
+  lastAttemptAt?: string
+  lastResult?: IdentitySelfHealingAttemptResult
+  lastStrategyKind?: import('./identity-repair-strategy').IdentityRepairStrategyKind
+  lastMessage?: string
 }
 
 export type IdentityProfileHealthState = import('./identity-profile-health').IdentityProfileHealthState

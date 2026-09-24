@@ -31,6 +31,7 @@ import { selectBestProxyPoolEntry } from './proxy-pool-selection'
 import type { FingerprintRepairExecutor } from './fingerprint-repair-executor'
 import type { FingerprintRepairStateStore } from './fingerprint-repair-state'
 import type { IdentityRepairStrategyExecutor } from './identity-repair-strategy-executor'
+import type { IdentitySelfHealingManager } from './identity-self-healing-manager'
 import { IdentityHealthHistoryStore } from './identity-health-history'
 import { summarizeIdentityProfileHealth } from '../shared/identity-profile-health'
 
@@ -52,12 +53,13 @@ interface IpcDependencies {
   fingerprintRepair: FingerprintRepairExecutor
   fingerprintRepairState: FingerprintRepairStateStore
   identityRepairStrategy: IdentityRepairStrategyExecutor
+  identitySelfHealing: IdentitySelfHealingManager
 }
 
 export function registerIpc({
   profiles, settings, launcher, kernels, extensions, cookies, logger, backups,
   workspaceMigration, appSession, updater, environmentChecks, localApi, proxyPool,
-  fingerprintRepair, fingerprintRepairState, identityRepairStrategy
+  fingerprintRepair, fingerprintRepairState, identityRepairStrategy, identitySelfHealing
 }: IpcDependencies): void {
   const identityHealthHistory = new IdentityHealthHistoryStore(profiles.vaultPath)
 
@@ -371,7 +373,7 @@ export function registerIpc({
   ipcMain.handle('profiles:test-proxy', (_event, id: string) => launcher.testProfileProxy(id).then(publicProfile))
   ipcMain.handle('profiles:diagnose', (_event, id: string) => launcher.diagnose(id))
   ipcMain.handle('profiles:diagnose-kernel-runtime', (_event, id: string) => launcher.diagnoseKernelRuntime(id))
-  ipcMain.handle('profiles:diagnose-fingerprint-runtime', (_event, id: string) => launcher.diagnoseFingerprintRuntime(id))
+  ipcMain.handle('profiles:diagnose-fingerprint-runtime', (_event, id: string) => identitySelfHealing.diagnose(id))
   ipcMain.handle('profiles:plan-fingerprint-repair', (_event, id: string) => fingerprintRepair.plan(id))
   ipcMain.handle('profiles:repair-fingerprint-identity', async (
     _event,
@@ -387,6 +389,7 @@ export function registerIpc({
       throw new Error('AI 修复区域无效')
     }
     const result = await fingerprintRepair.execute(id, true, planId, sections as IdentityConfigSection[])
+    await identitySelfHealing.observeRuntimeReport(id, result.report)
     return { ...result, profile: publicProfile(result.profile) }
   })
   ipcMain.handle('profiles:execute-identity-repair-strategy', async (
@@ -396,6 +399,7 @@ export function registerIpc({
   ) => {
     if (typeof approvedByUser !== 'boolean') throw new Error('Identity Repair Strategy 确认参数无效')
     const result = await identityRepairStrategy.execute(id, approvedByUser)
+    await identitySelfHealing.observeRuntimeReport(id, result.report)
     return { ...result, profile: publicProfile(result.profile) }
   })
   ipcMain.handle('profiles:fingerprint-repair-history', (_event, id: string) => fingerprintRepairState.history(id))

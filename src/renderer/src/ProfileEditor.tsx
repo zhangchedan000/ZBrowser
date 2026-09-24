@@ -41,12 +41,13 @@ import {
 } from '../../shared/hardware-profiles'
 import { applyRecommendedProxyNetworkIdentity, effectiveNetworkIdentity, networkIdentityPlan } from '../../shared/network-identity'
 import { isKernelDowngrade, kernelFamilyForRelease, kernelMajorVersion, kernelReleaseMatchesPin, latestSameMajorCompatibleKernelVersion, newerCompatibleKernelVersion } from '../../shared/kernel-version'
-import type { BrowserExtension, BrowserProfileView, EngineStatus, HardwareProfileId, IdentityConfigProvenance, IdentityIntent, KernelRelease, ProfileDraft, ProxyTestResult } from '../../shared/types'
+import type { BrowserExtension, BrowserProfileView, EngineStatus, HardwareProfileId, IdentityConfigProvenance, IdentityIntent, IdentitySelfHealingMode, KernelRelease, ProfileDraft, ProxyTestResult } from '../../shared/types'
 
 interface EditorValues extends Omit<ProfileDraft, 'startUrls' | 'color'> {
   startUrlsText: string
   color: string | { toHexString: () => string }
   targetCountryCode?: string
+  selfHealingMode?: IdentitySelfHealingMode
 }
 
 interface ProfileEditorProps {
@@ -74,6 +75,7 @@ function editorValues(profile: BrowserProfileView | undefined, index: number): E
     color: draft.color,
     startUrlsText: draft.startUrls.join('\n'),
     targetCountryCode: draft.identityIntent?.targetCountryCode ?? '',
+    selfHealingMode: draft.identityIntent?.selfHealingMode ?? 'assisted',
     kernelVersion: draft.kernelVersion,
     kernelFamily: draft.kernelFamily,
     environmentType: draft.environmentType ?? 'account',
@@ -270,6 +272,7 @@ export function ProfileEditor({ open, profile, suggestedIndex, saving, extension
         schemaVersion: 1,
         targetCountryCode: environment.targetCountryCode,
         strategy: 'ai_assisted',
+        selfHealingMode: form.getFieldValue('selfHealingMode') ?? identityIntent.selfHealingMode ?? 'assisted',
         lastGeneratedAt: new Date().toISOString(),
         lastGenerator: 'identity-ai-v1',
         lastGeneratedPersonaId: generated.personaId,
@@ -343,9 +346,10 @@ export function ProfileEditor({ open, profile, suggestedIndex, saving, extension
       ? values.kernelFamily ?? (selectedKernel ? kernelFamilyForRelease(selectedKernel) : undefined)
       : undefined
     const normalizedTarget = values.targetCountryCode?.trim().toUpperCase() || undefined
+    const selfHealingMode = values.selfHealingMode ?? identityIntent.selfHealingMode ?? 'assisted'
     const intent = normalizedTarget === identityIntent.targetCountryCode
-      ? normalizeIdentityIntent({ ...identityIntent, targetCountryCode: normalizedTarget })
-      : normalizeIdentityIntent({ schemaVersion: 1, targetCountryCode: normalizedTarget, strategy: 'manual' })
+      ? normalizeIdentityIntent({ ...identityIntent, targetCountryCode: normalizedTarget, selfHealingMode })
+      : normalizeIdentityIntent({ schemaVersion: 1, targetCountryCode: normalizedTarget, strategy: 'manual', selfHealingMode })
     await onSave({
       name: values.name,
       note: values.note,
@@ -585,6 +589,19 @@ export function ProfileEditor({ open, profile, suggestedIndex, saving, extension
           </Row>
         </>
       )}
+      <Form.Item
+        name="selfHealingMode"
+        label="Self-Healing 模式"
+        extra="Manual 只监控；Assisted 给出策略并等待确认；Auto 仅自动执行低风险修复。账号环境不会自动换代理，重生成完整 Identity 等高风险动作仍需确认。"
+      >
+        <Select
+          options={[
+            { value: 'manual', label: 'Manual · 只监控，不自动执行' },
+            { value: 'assisted', label: 'Assisted · 推荐策略，确认后执行（默认）' },
+            { value: 'auto', label: 'Auto · 低风险自动恢复，高风险仍需确认' }
+          ]}
+        />
+      </Form.Item>
       <Form.Item
         name="targetCountryCode"
         label="目标国家"
