@@ -122,6 +122,34 @@ describe('ManagedKernelManager registry synchronization', () => {
     expect(records.map((record) => record.id)).toEqual([`fingerprint-chromium-${releaseVersion}`])
   })
 
+  it('resynchronizes the active registry record after rollback', async () => {
+    const vaultPath = await temporaryVault()
+    const releaseVersion = '144.0.7559.132'
+    const customVersion = '145.0.0.1'
+    const releaseExecutable = await writeKernel(vaultPath, releaseVersion, 'release', 'a'.repeat(64))
+    await writeKernel(vaultPath, customVersion, 'local-build', 'b'.repeat(64))
+
+    const settings = new SettingsStore(vaultPath)
+    await settings.update({
+      browserExecutable: releaseExecutable,
+      fingerprintKernel: true,
+      enginePreference: 'auto'
+    })
+    const registry = new KernelRegistry(join(vaultPath, 'kernels'))
+    const manager = new ManagedKernelManager(vaultPath, settings, () => undefined, undefined, () => [], registry)
+
+    await manager.initialize()
+    await manager.activate(customVersion)
+    let records = await registry.list()
+    expect(records.find((record) => record.id === `fingerprint-chromium-${releaseVersion}`)?.enabled).toBe(false)
+    expect(records.find((record) => record.id === `custom-${customVersion}`)?.enabled).toBe(true)
+
+    await manager.rollback()
+    records = await registry.list()
+    expect(records.find((record) => record.id === `fingerprint-chromium-${releaseVersion}`)?.enabled).toBe(true)
+    expect(records.find((record) => record.id === `custom-${customVersion}`)?.enabled).toBe(false)
+  })
+
   it('keeps same-version custom builds separate from upstream releases', async () => {
     const vaultPath = await temporaryVault()
     const version = '144.0.7559.132'

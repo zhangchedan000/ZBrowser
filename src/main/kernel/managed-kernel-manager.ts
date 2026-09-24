@@ -63,6 +63,12 @@ export class ManagedKernelManager extends KernelManager {
     return engine
   }
 
+  override async rollback(): Promise<EngineStatus> {
+    const engine = await super.rollback()
+    await this.syncRegistry()
+    return engine
+  }
+
   override async configure(
     patch: Pick<AppSettings, 'browserExecutable' | 'fingerprintKernel' | 'enginePreference'>,
     resolvedExecutable = patch.browserExecutable
