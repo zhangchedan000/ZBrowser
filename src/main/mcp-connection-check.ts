@@ -66,7 +66,7 @@ export async function checkMcpConnection(
   const child = spawn(config.command, config.args, {
     stdio: ['pipe', 'pipe', 'pipe'],
     windowsHide: true,
-    env: { ...process.env, ZBROWSER_MCP_STDIO: '1' }
+    env: { ...process.env, ...(config.env ?? {}), ZBROWSER_MCP_STDIO: '1' }
   })
   const lines = createInterface({ input: child.stdout })
   let stderr = ''
