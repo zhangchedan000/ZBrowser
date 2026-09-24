@@ -370,7 +370,8 @@ export default function App() {
 
 
   const selectableKernels = useMemo(() => {
-    if (!bundledEngine?.version || !bundledEngine.executable || kernels.some((kernel) => kernel.version === bundledEngine.version)) {
+    if (!bundledEngine?.version || !bundledEngine.executable || kernels.some((kernel) =>
+      kernel.version === bundledEngine.version && kernelFamilyForRelease(kernel) === 'fingerprint-chromium')) {
       return kernels
     }
     return [{
