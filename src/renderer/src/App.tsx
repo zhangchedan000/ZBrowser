@@ -70,6 +70,7 @@ import { profileTableSorters } from './profile-table-sort'
 import { executeBatchKernelUpgrades, planBatchKernelUpgrades } from './batch-kernel-upgrade'
 import { runSelfHealingBatchChecks } from './self-healing-batch'
 import { profileHasSelfHealingAttention, selfHealingAttentionAction } from './self-healing-attention'
+import { selfHealingResultView } from './self-healing-result-view'
 
 const { Sider, Content } = Layout
 
@@ -1174,7 +1175,7 @@ export default function App() {
     {
       title: 'Self-Healing',
       key: 'selfHealing',
-      width: 150,
+      width: 190,
       render: (_value, profile) => {
         const state = selfHealingByProfile[profile.id]
         const mode = state?.mode ?? profile.identityIntent?.selfHealingMode ?? 'assisted'
@@ -1195,12 +1196,22 @@ export default function App() {
               state.cooldownUntil ? `至 ${new Date(state.cooldownUntil).toLocaleString()}` : undefined
             ].filter(Boolean).join(' · ')
           : '尚无 Self-Healing 状态记录'
+        const resultView = selfHealingResultView(state)
         return (
-          <Tooltip title={detail}>
-            <Tag color={view.color} style={{ cursor: 'pointer' }} onClick={() => setSelfHealingCenterOpen(true)}>
-              {mode === 'auto' ? 'Auto' : mode === 'manual' ? 'Manual' : 'Assisted'} · {view.text}
-            </Tag>
-          </Tooltip>
+          <Space direction="vertical" size={2}>
+            <Tooltip title={detail}>
+              <Tag color={view.color} style={{ cursor: 'pointer', marginInlineEnd: 0 }} onClick={() => setSelfHealingCenterOpen(true)}>
+                {mode === 'auto' ? 'Auto' : mode === 'manual' ? 'Manual' : 'Assisted'} · {view.text}
+              </Tag>
+            </Tooltip>
+            {resultView && (
+              <Tooltip title={resultView.detail}>
+                <Tag color={resultView.color} style={{ marginInlineEnd: 0 }}>
+                  最近 · {resultView.text}
+                </Tag>
+              </Tooltip>
+            )}
+          </Space>
         )
       }
     },
@@ -1536,7 +1547,7 @@ export default function App() {
                   onChange: (keys) => setSelectedIds(keys.map(String))
                 }}
                 pagination={profiles.length > 12 ? { pageSize: 12 } : false}
-                scroll={{ x: 1540 }}
+                scroll={{ x: 1580 }}
                 locale={{
                   emptyText: (
                     <Empty description="还没有浏览器环境">
