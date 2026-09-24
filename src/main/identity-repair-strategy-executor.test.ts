@@ -39,7 +39,7 @@ function entry(countryCode = 'US'): ProxyPoolEntry {
     id: 'proxy-us',
     name: 'US Proxy',
     tags: [],
-    proxy: { protocol: 'http', host: '127.0.0.1', port: 8080, username: '', passwordStored: false },
+    proxy: { protocol: 'http', host: '127.0.0.1', port: 8080, username: '', password: '', passwordStored: false },
     createdAt: now,
     updatedAt: now,
     check: check(countryCode),
