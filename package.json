@@ -10,7 +10,7 @@
   "type": "module",
   "scripts": {
     "dev": "electron-vite dev",
-    "build": "npm run typecheck && electron-vite build",
+    "build": "npm run typecheck && electron-vite build && node tools/build-mcp-stdio.mjs",
     "dist:mac": "npm run build && electron-builder --mac dmg zip",
     "dist:win": "npm run build && electron-builder --win msi portable zip --x64 --publish never",
     "preview": "electron-vite preview",
@@ -111,7 +111,10 @@
     },
     "portable": {
       "artifactName": "${productName} ${version}.${ext}"
-    }
+    },
+    "asarUnpack": [
+      "out/mcp-stdio.cjs"
+    ]
   },
   "license": "MIT",
   "repository": {
