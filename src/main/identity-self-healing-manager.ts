@@ -1,6 +1,7 @@
 import type {
   BrowserProfile,
   FingerprintRuntimeDiagnosticReport,
+  IdentitySelfHealingAttemptRecord,
   IdentitySelfHealingDecision,
   IdentitySelfHealingSummary
 } from '../shared/types'
@@ -96,6 +97,11 @@ export class IdentitySelfHealingManager {
       await this.summary(profile.id)
     ] as const))
     return Object.fromEntries(entries)
+  }
+
+  async history(profileId: string): Promise<IdentitySelfHealingAttemptRecord[]> {
+    this.profiles.get(profileId)
+    return this.state.history(profileId)
   }
 
   private async attach(
