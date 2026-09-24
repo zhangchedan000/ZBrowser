@@ -1,4 +1,4 @@
-import { Alert, Button, Modal, Space, Spin, Tag, Typography } from 'antd'
+import { Alert, Button, Divider, Modal, Space, Spin, Tag, Typography } from 'antd'
 import { useCallback, useEffect, useState } from 'react'
 import type { AutomationApiStatus } from '../../shared/types'
 
@@ -31,7 +31,7 @@ export function AutomationApiModal({ open, onClose }: AutomationApiModalProps) {
   return (
     <Modal
       open={open}
-      title="自动化 API"
+      title="自动化 API · MCP"
       width={680}
       onCancel={onClose}
       footer={(
@@ -80,9 +80,69 @@ export function AutomationApiModal({ open, onClose }: AutomationApiModalProps) {
               </div>
             </div>
             <Typography.Paragraph type="secondary" style={{ marginBottom: 0 }}>
-              Token 明文不会显示在 ZBrowser 页面或日志中。需要接入脚本、Playwright、Puppeteer 或后续 MCP 时，
-              由本机程序读取 Token 文件，并通过 Authorization: Bearer 请求头访问。
+              Token 明文不会显示在 ZBrowser 页面或日志中。脚本、Playwright、Puppeteer 通过本机 Token 文件访问 Local API。
             </Typography.Paragraph>
+
+            <Divider style={{ marginBlock: 4 }} />
+
+            <Typography.Title level={5} style={{ margin: 0 }}>本地 AI · MCP</Typography.Title>
+            {status.mcp ? (
+              <>
+                <Alert
+                  type={status.mcp.available ? 'success' : 'warning'}
+                  showIcon
+                  message={status.mcp.available ? 'MCP stdio 已可用' : 'MCP 后端可启动，但当前 Local API 未运行'}
+                  description={status.mcp.available
+                    ? `支持 MCP ${status.mcp.protocolVersion}，当前提供 ${status.mcp.toolCount} 个本地工具。启动 ZBrowser 后，MCP 子进程会通过受保护的 Local API 控制环境。`
+                    : 'MCP stdio 依赖正在运行的 ZBrowser Local API。先解决上方 Local API 状态后再连接 AI 客户端。'}
+                />
+                <div>
+                  <Typography.Text strong>传输方式：</Typography.Text>{' '}
+                  <Tag>STDIO</Tag>
+                </div>
+                <div>
+                  <Typography.Text strong>启动命令：</Typography.Text>
+                  <Typography.Paragraph
+                    code
+                    copyable={{ text: [status.mcp.command, ...status.mcp.args].map((value) => value.includes(' ') ? `"${value}"` : value).join(' ') }}
+                    style={{ marginTop: 6, marginBottom: 8 }}
+                  >
+                    {[status.mcp.command, ...status.mcp.args].map((value) => value.includes(' ') ? `"${value}"` : value).join(' ')}
+                  </Typography.Paragraph>
+                </div>
+                <div>
+                  <Typography.Text strong>MCP 客户端配置：</Typography.Text>
+                  <Typography.Paragraph
+                    code
+                    copyable={{
+                      text: JSON.stringify({
+                        mcpServers: {
+                          zbrowser: {
+                            command: status.mcp.command,
+                            args: status.mcp.args
+                          }
+                        }
+                      }, null, 2)
+                    }}
+                    style={{ whiteSpace: 'pre-wrap', marginTop: 6, marginBottom: 0 }}
+                  >
+                    {JSON.stringify({
+                      mcpServers: {
+                        zbrowser: {
+                          command: status.mcp.command,
+                          args: status.mcp.args
+                        }
+                      }
+                    }, null, 2)}
+                  </Typography.Paragraph>
+                </div>
+                <Typography.Paragraph type="secondary" style={{ marginBottom: 0 }}>
+                  MCP 不会把 Local API Token 暴露给模型；子进程只从本机受保护文件读取 Token，并只连接 127.0.0.1。
+                </Typography.Paragraph>
+              </>
+            ) : (
+              <Alert type="warning" showIcon message="当前版本未返回 MCP 配置" />
+            )>
           </Space>
         )}
       </Spin>
