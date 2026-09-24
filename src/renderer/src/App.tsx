@@ -71,6 +71,7 @@ import { profileTableSorters } from './profile-table-sort'
 import { executeBatchKernelUpgrades, planBatchKernelUpgrades } from './batch-kernel-upgrade'
 import { runSelfHealingBatchChecks } from './self-healing-batch'
 import { profileHasSelfHealingAttention, selfHealingAttentionAction } from './self-healing-attention'
+import { profileAttentionItem, profileAttentionQueue } from '../../shared/profile-attention'
 import { selfHealingResultView } from './self-healing-result-view'
 import { selfHealingStateNotices } from './self-healing-notifications'
 
@@ -304,16 +305,11 @@ export default function App() {
       if (favoritesOnly && !profile.favorite) return false
       if (selectedStatus === 'closed' && profile.status !== 'closed') return false
       if (selectedStatus === 'running' && !['starting', 'running', 'stopping'].includes(profile.status)) return false
-      if (selectedStatus === 'attention') {
-        const identityState = identityHealthByProfile[profile.id]?.state
-        const selfHealingAttention = profileHasSelfHealingAttention(profile, selfHealingByProfile[profile.id])
-        if (
-          !['orphaned', 'error'].includes(profile.status)
-          && identityState !== 'attention'
-          && identityState !== 'critical'
-          && !selfHealingAttention
-        ) return false
-      }
+      if (selectedStatus === 'attention' && !profileAttentionItem(
+        profile,
+        identityHealthByProfile[profile.id],
+        selfHealingByProfile[profile.id]
+      )) return false
       if (!normalized) return true
       return [String(profile.serialNumber), profile.name, profile.note, profile.group, ...profile.tags, profile.proxy.host, profile.fingerprint.timezone]
         .some((value) => value.toLowerCase().includes(normalized))
@@ -1341,13 +1337,11 @@ export default function App() {
   ]
 
   const runningCount = profiles.filter((profile) => profile.status === 'running' || profile.status === 'orphaned').length
-  const attentionCount = profiles.filter((profile) => {
-    const identityState = identityHealthByProfile[profile.id]?.state
-    return ['orphaned', 'error'].includes(profile.status)
-      || identityState === 'attention'
-      || identityState === 'critical'
-      || profileHasSelfHealingAttention(profile, selfHealingByProfile[profile.id])
-  }).length
+  const attentionCount = profileAttentionQueue(
+    profiles,
+    identityHealthByProfile,
+    selfHealingByProfile
+  ).length
   const selfHealingAttentionCount = profiles.filter((profile) =>
     profileHasSelfHealingAttention(profile, selfHealingByProfile[profile.id])
   ).length
