@@ -192,6 +192,14 @@ app.whenReady().then(async () => {
     localApi = null
   }
   mainWindow = createWindow()
+  const selfHealingResumeTimer = setTimeout(() => {
+    void identitySelfHealing.resumePersistedPending()
+      .then((count) => {
+        if (count) logger?.info('已恢复持久化 Auto Self-Healing 任务', { count })
+      })
+      .catch((error) => logger?.error('恢复持久化 Auto Self-Healing 任务失败', error))
+  }, 1_500)
+  selfHealingResumeTimer.unref()
   if (app.isPackaged && process.env.ZBROWSER_E2E !== '1' && process.env.PRISM_E2E !== '1') setTimeout(() => void updater.check().catch(() => undefined), 10_000)
 }).catch(async (error) => {
   if (mcpStdioMode) {
