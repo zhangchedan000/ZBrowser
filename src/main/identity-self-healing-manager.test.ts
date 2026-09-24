@@ -129,4 +129,83 @@ describe('IdentitySelfHealingManager', () => {
     expect(executions).toBe(0)
     expect(result.identitySelfHealing).toMatchObject({ mode: 'assisted', decision: 'suggest', pending: true })
   })
+  it('resumes persisted pending auto work after restart without touching assisted profiles', async () => {
+    const vault = await mkdtemp(join(tmpdir(), 'zbrowser-self-heal-manager-'))
+    paths.push(vault)
+    const profiles = new ProfileStore(vault)
+    await profiles.initialize()
+
+    const autoDraft = defaultProfileDraft()
+    autoDraft.name = 'Auto profile'
+    autoDraft.identityIntent = {
+      schemaVersion: 1,
+      strategy: 'ai_assisted',
+      targetCountryCode: 'US',
+      selfHealingMode: 'auto'
+    }
+    const assistedDraft = defaultProfileDraft()
+    assistedDraft.name = 'Assisted profile'
+    assistedDraft.identityIntent = {
+      schemaVersion: 1,
+      strategy: 'ai_assisted',
+      targetCountryCode: 'US',
+      selfHealingMode: 'assisted'
+    }
+
+    const autoProfile = await profiles.create(autoDraft)
+    const assistedProfile = await profiles.create(assistedDraft)
+    const state = new IdentitySelfHealingStateStore(vault)
+    for (const profile of [autoProfile, assistedProfile]) {
+      await state.observe(profile.id, {
+        signature: 'repair_configuration|||locale',
+        strategyKind: 'repair_configuration',
+        reason: 'persisted locale drift',
+        policyAction: 'execute'
+      })
+    }
+
+    const reports = new Map([
+      [autoProfile.id, repairReport(autoProfile.id)],
+      [assistedProfile.id, repairReport(assistedProfile.id)]
+    ])
+    let executions = 0
+    const manager = new IdentitySelfHealingManager(
+      profiles,
+      {
+        diagnoseFingerprintRuntime: async (id) => reports.get(id)!
+      },
+      {
+        execute: async (id): Promise<IdentityRepairStrategyExecutionSummary & { profile: BrowserProfile }> => {
+          executions += 1
+          const initial = reports.get(id)!
+          return {
+            status: 'completed',
+            strategy: initial.identityRepairStrategy!,
+            message: 'healed after restart',
+            report: {
+              ...initial,
+              ready: true,
+              identityDrift: { ...initial.identityDrift!, driftDetected: false, severity: 'low', changes: [] },
+              identityHealth: { score: 100, risk: 'low', identity: {}, components: [], generatedAt: new Date().toISOString() },
+              identityRepairStrategy: {
+                kind: 'none',
+                reason: 'healthy',
+                affectedSections: [],
+                requiresUserConfirmation: false,
+                automaticActionAvailable: false
+              }
+            },
+            profile: profiles.get(id)
+          }
+        }
+      },
+      state
+    )
+
+    await expect(manager.resumePersistedPending()).resolves.toBe(1)
+    expect(executions).toBe(1)
+    expect(await state.pending(autoProfile.id)).toBeNull()
+    expect(await state.pending(assistedProfile.id)).not.toBeNull()
+  })
+
 })
