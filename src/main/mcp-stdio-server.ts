@@ -37,6 +37,11 @@ const TOOLS: ToolDefinition[] = [
     inputSchema: { type: 'object', properties: {}, additionalProperties: false }
   },
   {
+    name: 'attention_queue',
+    description: 'List profiles that need attention, combining process errors, Identity Health and Self-Healing into one prioritized read-only queue.',
+    inputSchema: { type: 'object', properties: {}, additionalProperties: false }
+  },
+  {
     name: 'profile_status',
     description: 'Get one profile status and local runtime state.',
     inputSchema: {
@@ -251,6 +256,9 @@ async function callTool(client: McpApiClient, name: string, rawArguments: unknow
     case 'profiles_list':
       if (Object.keys(args).length) throw new McpLocalApiError('INVALID_ARGUMENTS', 'profiles_list does not accept arguments')
       return client.request('/api/v1/profiles')
+    case 'attention_queue':
+      if (Object.keys(args).length) throw new McpLocalApiError('INVALID_ARGUMENTS', 'attention_queue does not accept arguments')
+      return client.request('/api/v1/attention')
     case 'profile_status':
       return client.request(toolPathProfile(profileId(args), '/status'))
     case 'profile_start':
