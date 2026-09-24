@@ -6,7 +6,9 @@ interface SelfHealingControlCenterModalProps {
   profiles: BrowserProfileView[]
   states: Record<string, IdentitySelfHealingSummary>
   loading?: boolean
+  executingProfileId?: string
   onRefresh: () => Promise<void> | void
+  onExecute: (profile: BrowserProfileView) => Promise<void> | void
   onDiagnose: (profile: BrowserProfileView) => Promise<void> | void
   onClose: () => void
 }
@@ -51,7 +53,9 @@ export function SelfHealingControlCenterModal({
   profiles,
   states,
   loading = false,
+  executingProfileId,
   onRefresh,
+  onExecute,
   onDiagnose,
   onClose
 }: SelfHealingControlCenterModalProps) {
@@ -148,17 +152,55 @@ export function SelfHealingControlCenterModal({
     {
       title: '操作',
       key: 'action',
-      width: 100,
+      width: 190,
       fixed: 'right',
-      render: (_value, row) => (
-        <Button
-          size="small"
-          disabled={!['closed', 'error'].includes(row.profile.status)}
-          onClick={() => void onDiagnose(row.profile)}
-        >
-          检查
-        </Button>
-      )
+      render: (_value, row) => {
+        const executable = row.state.pending
+          && row.state.pendingStrategyKind !== 'manual_review'
+          && !['cooldown', 'blocked'].includes(row.state.decision)
+          && ['closed', 'error'].includes(row.profile.status)
+        return (
+          <Space size={6}>
+            {row.state.pending && row.state.pendingStrategyKind !== 'manual_review' && (
+              <Button
+                size="small"
+                type="primary"
+                danger={row.state.pendingStrategyKind === 'regenerate_identity' || row.state.pendingStrategyKind === 'switch_proxy'}
+                loading={executingProfileId === row.profile.id}
+                disabled={!executable || (executingProfileId !== undefined && executingProfileId !== row.profile.id)}
+                onClick={() => {
+                  Modal.confirm({
+                    title: '确认执行 Self-Healing 恢复？',
+                    content: (
+                      <Space direction="vertical" size={4}>
+                        <Typography.Text>环境：#{row.profile.serialNumber} · {row.profile.name}</Typography.Text>
+                        <Typography.Text>策略：{strategyText[row.state.pendingStrategyKind!]}</Typography.Text>
+                        <Typography.Text type="secondary">{row.state.pendingReason ?? row.state.reason}</Typography.Text>
+                        <Typography.Text type="secondary">执行后会再次做 Runtime Verify；验证失败的可回滚策略会自动恢复原状态。</Typography.Text>
+                      </Space>
+                    ),
+                    okText: '确认执行',
+                    cancelText: '取消',
+                    okButtonProps: {
+                      danger: row.state.pendingStrategyKind === 'regenerate_identity' || row.state.pendingStrategyKind === 'switch_proxy'
+                    },
+                    onOk: () => onExecute(row.profile)
+                  })
+                }}
+              >
+                确认执行
+              </Button>
+            )}
+            <Button
+              size="small"
+              disabled={!['closed', 'error'].includes(row.profile.status)}
+              onClick={() => void onDiagnose(row.profile)}
+            >
+              检查
+            </Button>
+          </Space>
+        )
+      }
     }
   ]
 
@@ -187,7 +229,7 @@ export function SelfHealingControlCenterModal({
         columns={columns}
         dataSource={rows}
         pagination={rows.length > 10 ? { pageSize: 10 } : false}
-        scroll={{ x: 1260 }}
+        scroll={{ x: 1350 }}
       />
     </Modal>
   )
