@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { BrowserProfileView, IdentitySelfHealingSummary } from '../../shared/types'
-import { classifySelfHealingAttention, selfHealingAttentionItems } from './self-healing-attention'
+import { classifySelfHealingAttention, profileHasSelfHealingAttention, selfHealingAttentionItems } from './self-healing-attention'
 
 function profile(id: string): BrowserProfileView {
   return { id, name: id, status: 'closed' } as BrowserProfileView
@@ -32,6 +32,22 @@ describe('self-healing attention classification', () => {
 
     expect(blocked).toMatchObject({ level: 'critical', reason: 'loop guard' })
     expect(manual).toMatchObject({ level: 'critical', reason: 'inspect identity' })
+  })
+
+  it('exposes a boolean predicate for main-workspace attention filtering', () => {
+    const item = profile('profile')
+    expect(profileHasSelfHealingAttention(item, state({
+      pending: true,
+      pendingStrategyKind: 'switch_proxy',
+      decision: 'suggest'
+    }))).toBe(true)
+    expect(profileHasSelfHealingAttention(item, state({
+      mode: 'auto',
+      pending: true,
+      pendingStrategyKind: 'repair_configuration',
+      decision: 'auto_execute'
+    }))).toBe(false)
+    expect(profileHasSelfHealingAttention(item, undefined)).toBe(false)
   })
 
   it('ignores healthy low-risk auto work and sorts critical attention first', () => {
