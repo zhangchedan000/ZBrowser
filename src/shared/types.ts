@@ -593,6 +593,15 @@ export interface EnvironmentCheckRecord {
   externalUrls: string[]
 }
 
+export interface McpAutomationStatus {
+  available: boolean
+  transport: 'stdio'
+  protocolVersion: string
+  command: string
+  args: string[]
+  toolCount: number
+}
+
 export interface AutomationApiStatus {
   running: boolean
   apiVersion: 1
@@ -602,6 +611,7 @@ export interface AutomationApiStatus {
   tokenPath: string
   metadataPath: string
   capabilities: string[]
+  mcp: McpAutomationStatus
 }
 
 export interface BrowserApi {
