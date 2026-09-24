@@ -265,6 +265,14 @@ describe('IdentitySelfHealingManager', () => {
     const snapshot = await state.snapshot(profile.id)
     expect(snapshot.lastAttemptTrigger).toBe('user')
     expect(snapshot.lastResult).toBe('completed')
+    await expect(manager.history(profile.id)).resolves.toEqual([
+      expect.objectContaining({
+        strategyKind: 'repair_configuration',
+        trigger: 'user',
+        result: 'completed',
+        message: 'user approved repair completed'
+      })
+    ])
   })
 
 })
