@@ -593,6 +593,17 @@ export interface EnvironmentCheckRecord {
   externalUrls: string[]
 }
 
+export interface McpConnectionCheckResult {
+  ok: boolean
+  checkedAt: string
+  latencyMs: number
+  protocolVersion: string
+  serverName?: string
+  serverVersion?: string
+  toolCount: number
+  message: string
+}
+
 export interface McpAutomationStatus {
   available: boolean
   transport: 'stdio'
@@ -710,6 +721,7 @@ export interface BrowserApi {
   }
   automation: {
     status: () => Promise<AutomationApiStatus>
+    checkMcp: () => Promise<McpConnectionCheckResult>
   }
   diagnostics: {
     sessionHealth: () => Promise<AppRecoveryStatus>
