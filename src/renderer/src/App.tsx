@@ -1376,7 +1376,7 @@ export default function App() {
           <DownloadOutlined /><span>应用更新</span>
         </button>
         <button className="nav-item sidebar-action" onClick={() => setAutomationApiOpen(true)}>
-          <ApiOutlined /><span>自动化 API</span><b>本机</b>
+          <ApiOutlined /><span>自动化 API · MCP</span><b>本机</b>
         </button>
         <button className="nav-item sidebar-action" onClick={() => setSelfHealingCenterOpen(true)}>
           <RobotOutlined /><span>Self-Healing</span><b>{selfHealingAttentionCount || ''}</b>
@@ -1384,9 +1384,6 @@ export default function App() {
         <button className="nav-item sidebar-action" disabled={exportingDiagnostics} onClick={() => void exportDiagnosticBundle()}>
           <BugOutlined /><span>{exportingDiagnostics ? '正在导出诊断包' : '导出诊断包'}</span>
         </button>
-        <div className="nav-item disabled-tool">
-          <RobotOutlined /><span>本地 AI · MCP</span><b>开发中</b>
-        </div>
         <div className="sidebar-spacer" />
         <div className="community-card">
           <span className="community-icon"><SafetyCertificateOutlined /></span>
