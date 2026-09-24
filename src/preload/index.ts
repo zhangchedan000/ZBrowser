@@ -44,6 +44,8 @@ const api: BrowserApi = {
     planFingerprintRepair: (id: string) => ipcRenderer.invoke('profiles:plan-fingerprint-repair', id),
     repairFingerprintIdentity: (id: string, approvedByUser: boolean, planId: string, sections) =>
       ipcRenderer.invoke('profiles:repair-fingerprint-identity', id, approvedByUser, planId, sections),
+    executeIdentityRepairStrategy: (id: string, approvedByUser: boolean) =>
+      ipcRenderer.invoke('profiles:execute-identity-repair-strategy', id, approvedByUser),
     fingerprintRepairHistory: (id: string) => ipcRenderer.invoke('profiles:fingerprint-repair-history', id),
     crashHistory: (id: string) => ipcRenderer.invoke('profiles:crash-history', id),
     environmentCheckHistory: (id: string) => ipcRenderer.invoke('profiles:environment-check-history', id),

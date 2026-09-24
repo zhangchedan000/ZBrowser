@@ -30,6 +30,7 @@ import { createStoredZip, diagnosticProfileSummary, redactDiagnosticText } from 
 import { selectBestProxyPoolEntry } from './proxy-pool-selection'
 import type { FingerprintRepairExecutor } from './fingerprint-repair-executor'
 import type { FingerprintRepairStateStore } from './fingerprint-repair-state'
+import type { IdentityRepairStrategyExecutor } from './identity-repair-strategy-executor'
 import { IdentityHealthHistoryStore } from './identity-health-history'
 import { summarizeIdentityProfileHealth } from '../shared/identity-profile-health'
 
@@ -50,12 +51,13 @@ interface IpcDependencies {
   proxyPool: ProxyPoolStore
   fingerprintRepair: FingerprintRepairExecutor
   fingerprintRepairState: FingerprintRepairStateStore
+  identityRepairStrategy: IdentityRepairStrategyExecutor
 }
 
 export function registerIpc({
   profiles, settings, launcher, kernels, extensions, cookies, logger, backups,
   workspaceMigration, appSession, updater, environmentChecks, localApi, proxyPool,
-  fingerprintRepair, fingerprintRepairState
+  fingerprintRepair, fingerprintRepairState, identityRepairStrategy
 }: IpcDependencies): void {
   const identityHealthHistory = new IdentityHealthHistoryStore(profiles.vaultPath)
 
@@ -385,6 +387,15 @@ export function registerIpc({
       throw new Error('AI 修复区域无效')
     }
     const result = await fingerprintRepair.execute(id, true, planId, sections as IdentityConfigSection[])
+    return { ...result, profile: publicProfile(result.profile) }
+  })
+  ipcMain.handle('profiles:execute-identity-repair-strategy', async (
+    _event,
+    id: string,
+    approvedByUser: unknown
+  ) => {
+    if (typeof approvedByUser !== 'boolean') throw new Error('Identity Repair Strategy 确认参数无效')
+    const result = await identityRepairStrategy.execute(id, approvedByUser)
     return { ...result, profile: publicProfile(result.profile) }
   })
   ipcMain.handle('profiles:fingerprint-repair-history', (_event, id: string) => fingerprintRepairState.history(id))

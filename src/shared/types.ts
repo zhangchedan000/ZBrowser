@@ -511,6 +511,13 @@ export interface FingerprintRepairExecutionSummary {
   report: FingerprintRuntimeDiagnosticReport
 }
 
+export interface IdentityRepairStrategyExecutionSummary {
+  status: 'completed' | 'rolled_back' | 'no_action'
+  strategy: import('./identity-repair-strategy').IdentityRepairStrategy
+  message: string
+  report: FingerprintRuntimeDiagnosticReport
+}
+
 export type IdentityProfileHealthState = import('./identity-profile-health').IdentityProfileHealthState
 export type IdentityProfileHealthSummary = import('./identity-profile-health').IdentityProfileHealthSummary
 
@@ -604,6 +611,7 @@ export interface BrowserApi {
     diagnoseFingerprintRuntime: (id: string) => Promise<FingerprintRuntimeDiagnosticReport>
     planFingerprintRepair: (id: string) => Promise<FingerprintRepairPlan>
     repairFingerprintIdentity: (id: string, approvedByUser: boolean, planId: string, sections: IdentityConfigSection[]) => Promise<FingerprintRepairExecutionSummary & { profile: BrowserProfileView }>
+    executeIdentityRepairStrategy: (id: string, approvedByUser: boolean) => Promise<IdentityRepairStrategyExecutionSummary & { profile: BrowserProfileView }>
     fingerprintRepairHistory: (id: string) => Promise<FingerprintRepairAuditRecord[]>
     crashHistory: (id: string) => Promise<BrowserCrashRecord[]>
     environmentCheckHistory: (id: string) => Promise<EnvironmentCheckRecord[]>

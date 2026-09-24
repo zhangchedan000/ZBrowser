@@ -46,6 +46,13 @@ export type ProfileIdentityLifecycleHook = (
   reason: ProfileIdentityChangeReason
 ) => void | Promise<void>
 
+export interface ProfileNetworkIdentityCheckpoint {
+  proxy: ProxyConfig
+  proxyPoolEntryId?: string
+  proxyCheck?: ProxyCheckSummary
+  fingerprint: BrowserProfile['fingerprint']
+}
+
 const PROFILE_OWNER_FILE = 'profile-owner.json'
 const MAX_PROFILE_SERIAL = 999_999_999
 
@@ -764,6 +771,26 @@ export class ProfileStore {
       proxyPoolEntryId,
       proxyCheck: nextCheck,
       fingerprint,
+      updatedAt: new Date().toISOString()
+    }
+    return this.persistIdentityChange(current, profile, 'proxy_reassignment')
+  }
+
+  async restoreNetworkIdentity(id: string, checkpoint: ProfileNetworkIdentityCheckpoint): Promise<BrowserProfile> {
+    const current = this.get(id)
+    if (current.status !== 'closed' && current.status !== 'error') {
+      throw new Error('请先关闭浏览器环境再恢复网络身份')
+    }
+    const restoredCheck = checkpoint.proxyCheck ? safeProxyCheck(checkpoint.proxyCheck) : undefined
+    const profile: BrowserProfile = {
+      ...current,
+      proxy: privateProxyConfig({ ...checkpoint.proxy }),
+      proxyPoolEntryId: checkpoint.proxyPoolEntryId,
+      proxyCheck: restoredCheck,
+      fingerprint: {
+        ...checkpoint.fingerprint,
+        disabledSpoofing: [...checkpoint.fingerprint.disabledSpoofing]
+      },
       updatedAt: new Date().toISOString()
     }
     return this.persistIdentityChange(current, profile, 'proxy_reassignment')

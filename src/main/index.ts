@@ -22,6 +22,7 @@ import { ProxyPoolStore } from './proxy-pool-store'
 import { runMcpStdio } from './mcp-stdio-server'
 import { FingerprintRepairStateStore } from './fingerprint-repair-state'
 import { FingerprintRepairExecutor } from './fingerprint-repair-executor'
+import { IdentityRepairStrategyExecutor } from './identity-repair-strategy-executor'
 import { IdentityBaselineStore } from './identity-baseline-store'
 import { requestBaselineReplacementForChange } from './identity-baseline-lifecycle'
 
@@ -150,6 +151,7 @@ app.whenReady().then(async () => {
   const backups = new ProfileBackupManager(profiles, app.getVersion(), logger)
   const fingerprintRepairState = new FingerprintRepairStateStore(profiles, logger)
   const fingerprintRepair = new FingerprintRepairExecutor(profiles, launcher, fingerprintRepairState, logger)
+  const identityRepairStrategy = new IdentityRepairStrategyExecutor(profiles, launcher, proxyPool, fingerprintRepair, logger)
   const recoveredRepairs = await fingerprintRepair.recoverPendingRepairs()
   if (recoveredRepairs) logger.info('已恢复未完成的 AI 指纹修复', { count: recoveredRepairs })
   const workspaceMigration = new WorkspaceMigrationManager(profiles, extensions, app.getVersion(), logger)
@@ -165,7 +167,7 @@ app.whenReady().then(async () => {
   registerIpc({
     profiles, settings, launcher, kernels, extensions, cookies, logger, backups,
     workspaceMigration, appSession, updater, environmentChecks, localApi: automationApi, proxyPool,
-    fingerprintRepair, fingerprintRepairState
+    fingerprintRepair, fingerprintRepairState, identityRepairStrategy
   })
   try {
     const api = await automationApi.start()

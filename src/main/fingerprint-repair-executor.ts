@@ -408,7 +408,9 @@ export class FingerprintRepairExecutor {
       current.identityConfigProvenance
     )
     const generatedChanges = repairChanges(current, nextFingerprint)
-    const changes = filterChangesToDiagnosis(generatedChanges, scope)
+    const changes = strategy?.kind === 'regenerate_identity'
+      ? generatedChanges
+      : filterChangesToDiagnosis(generatedChanges, scope)
     const warnings = [...new Set([...generated.warnings, ...scope.warnings])]
 
     if (!changes.length) {

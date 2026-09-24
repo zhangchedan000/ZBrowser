@@ -704,6 +704,26 @@ export default function App() {
     })
   }
 
+  async function executeDiagnosticStrategy(): Promise<void> {
+    if (!diagnosticProfile) return
+    setRepairingDiagnostic(true)
+    try {
+      const result = await window.browserApi.profiles.executeIdentityRepairStrategy(diagnosticProfile.id, true)
+      upsert(result.profile)
+      setDiagnosticProfile(result.profile)
+      setDiagnosticReport(result.report)
+      const health = await window.browserApi.profiles.identityHealth(result.profile.id)
+      setIdentityHealthByProfile((current) => ({ ...current, [result.profile.id]: health }))
+      if (result.status === 'completed') messageApi.success(result.message)
+      else if (result.status === 'rolled_back') messageApi.warning(result.message)
+      else messageApi.info(result.message)
+    } catch (error) {
+      messageApi.error(humanError(error))
+    } finally {
+      setRepairingDiagnostic(false)
+    }
+  }
+
   async function repairDiagnosticIdentity(planId: string, sections: IdentityConfigSection[]): Promise<void> {
     if (!diagnosticProfile) return
     setRepairingDiagnostic(true)
@@ -1382,6 +1402,7 @@ export default function App() {
         profile={diagnosticProfile}
         report={diagnosticReport}
         repairing={repairingDiagnostic}
+        onExecuteStrategy={() => executeDiagnosticStrategy()}
         onRepair={(planId, sections) => repairDiagnosticIdentity(planId, sections)}
         onClose={() => { setDiagnosticProfile(undefined); setDiagnosticReport(undefined) }}
       />

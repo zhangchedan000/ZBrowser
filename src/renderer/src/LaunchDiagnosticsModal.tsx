@@ -21,6 +21,7 @@ interface LaunchDiagnosticsModalProps {
   report?: FingerprintRuntimeDiagnosticReport
   open: boolean
   repairing?: boolean
+  onExecuteStrategy?: () => Promise<void> | void
   onRepair?: (planId: string, sections: IdentityConfigSection[]) => Promise<void> | void
   onClose: () => void
 }
@@ -85,6 +86,7 @@ export function LaunchDiagnosticsModal({
   report,
   open,
   repairing = false,
+  onExecuteStrategy,
   onRepair,
   onClose
 }: LaunchDiagnosticsModalProps) {
@@ -214,6 +216,27 @@ export function LaunchDiagnosticsModal({
                   {!report.identityRepairStrategy.automaticActionAvailable && report.identityRepairStrategy.kind !== 'manual_review' && (
                     <Typography.Text type="secondary">当前没有可自动执行的候选资源，需要先补充可用代理或人工配置。</Typography.Text>
                   )}
+                  {onExecuteStrategy
+                    && report.identityRepairStrategy.automaticActionAvailable
+                    && report.identityRepairStrategy.kind !== 'manual_review' && (
+                      report.identityRepairStrategy.requiresUserConfirmation ? (
+                        <Popconfirm
+                          title="确认执行当前 Identity Repair Strategy？"
+                          description="执行后会自动 Runtime Verify；验证失败时会按策略回滚可恢复的配置。"
+                          okText="确认执行"
+                          cancelText="取消"
+                          onConfirm={onExecuteStrategy}
+                        >
+                          <Button type="primary" loading={repairing}>
+                            执行恢复策略
+                          </Button>
+                        </Popconfirm>
+                      ) : (
+                        <Button type="primary" loading={repairing} onClick={onExecuteStrategy}>
+                          执行恢复策略
+                        </Button>
+                      )
+                    )}
                 </Space>
               }
             />
