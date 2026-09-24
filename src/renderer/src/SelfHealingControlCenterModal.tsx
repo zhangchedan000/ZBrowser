@@ -1,6 +1,7 @@
-import { Button, Modal, Space, Table, Tag, Tooltip, Typography, type TableColumnsType } from 'antd'
+import { Alert, Button, Modal, Space, Table, Tag, Tooltip, Typography, type TableColumnsType } from 'antd'
 import { useState } from 'react'
 import type { BrowserProfileView, IdentitySelfHealingAttemptRecord, IdentitySelfHealingSummary } from '../../shared/types'
+import { selfHealingAttentionItems } from './self-healing-attention'
 
 interface SelfHealingControlCenterModalProps {
   open: boolean
@@ -91,6 +92,9 @@ export function SelfHealingControlCenterModal({
   const pendingCount = rows.filter((row) => row.state.pending).length
   const blockedCount = rows.filter((row) => row.state.decision === 'blocked' || row.state.decision === 'cooldown').length
   const autoCount = rows.filter((row) => row.state.mode === 'auto').length
+  const attentionItems = selfHealingAttentionItems(profiles, states, fallback)
+  const criticalAttentionCount = attentionItems.filter((item) => item.level === 'critical').length
+  const warningAttentionCount = attentionItems.length - criticalAttentionCount
   const batchCandidates = rows
     .filter((row) => ['closed', 'error'].includes(row.profile.status))
     .map((row) => row.profile)
@@ -325,15 +329,58 @@ export function SelfHealingControlCenterModal({
         <Button key="close" type="primary" onClick={onClose}>关闭</Button>
       ]}
     >
-      <Space wrap style={{ marginBottom: 16 }}>
+      <Space wrap style={{ marginBottom: 12 }}>
         <Tag color="success">Auto {autoCount}</Tag>
         <Tag color={pendingCount ? 'processing' : 'default'}>Pending {pendingCount}</Tag>
         <Tag color={blockedCount ? 'warning' : 'default'}>Cooldown / Blocked {blockedCount}</Tag>
+        <Tag color={criticalAttentionCount ? 'error' : 'default'}>高优先级 {criticalAttentionCount}</Tag>
+        <Tag color={warningAttentionCount ? 'warning' : 'default'}>需关注 {warningAttentionCount}</Tag>
         <Tag color="default">可批量检查 {batchCandidates.length}</Tag>
-        <Typography.Text type="secondary">
-          Auto 只执行低风险白名单；账号环境自动换代理、完整 Identity 重生成等高风险动作仍需确认。
-        </Typography.Text>
       </Space>
+      {attentionItems.length > 0 ? (
+        <Alert
+          type={criticalAttentionCount ? 'error' : 'warning'}
+          showIcon
+          title={criticalAttentionCount
+            ? `有 ${criticalAttentionCount} 个环境需要优先人工处理`
+            : `有 ${warningAttentionCount} 个环境需要关注`}
+          description={(
+            <Space direction="vertical" size={6} style={{ width: '100%' }}>
+              {attentionItems.slice(0, 5).map((item) => (
+                <Space key={item.profile.id} wrap>
+                  <Tag color={item.level === 'critical' ? 'error' : 'warning'}>
+                    {item.level === 'critical' ? '高优先级' : '需关注'}
+                  </Tag>
+                  <Typography.Text strong>#{item.profile.serialNumber} · {item.profile.name}</Typography.Text>
+                  {item.state.pendingStrategyKind && (
+                    <Typography.Text>{strategyText[item.state.pendingStrategyKind]}</Typography.Text>
+                  )}
+                  <Tooltip title={item.reason}>
+                    <Typography.Text type="secondary" ellipsis style={{ maxWidth: 520 }}>
+                      {item.reason}
+                    </Typography.Text>
+                  </Tooltip>
+                  <Button size="small" type="link" onClick={() => void openHistory(item.profile)}>历史</Button>
+                </Space>
+              ))}
+              {attentionItems.length > 5 && (
+                <Typography.Text type="secondary">还有 {attentionItems.length - 5} 个需要处理的环境，请在下方列表查看。</Typography.Text>
+              )}
+            </Space>
+          )}
+          style={{ marginBottom: 16 }}
+        />
+      ) : (
+        <Alert
+          type="success"
+          showIcon
+          title="当前没有需要人工处理的 Self-Healing 告警"
+          style={{ marginBottom: 16 }}
+        />
+      )}
+      <Typography.Paragraph type="secondary" style={{ marginBottom: 12 }}>
+        Auto 只执行低风险白名单；账号环境自动换代理、完整 Identity 重生成等高风险动作仍需确认。
+      </Typography.Paragraph>
       <Table
         size="small"
         rowKey={(row) => row.profile.id}
