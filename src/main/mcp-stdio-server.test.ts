@@ -70,7 +70,8 @@ describe('MCP stdio message handler', () => {
       'page_snapshot',
       'self_healing_list',
       'profile_self_healing_status',
-      'profile_self_healing_check'
+      'profile_self_healing_check',
+      'profile_self_healing_history'
     ]))
   })
 
@@ -135,6 +136,15 @@ describe('MCP stdio message handler', () => {
         arguments: { profileId: '11111111-1111-1111-1111-111111111111' }
       }
     }, client, '1.0.0')
+    await handleMcpMessage({
+      jsonrpc: '2.0',
+      id: 34,
+      method: 'tools/call',
+      params: {
+        name: 'profile_self_healing_history',
+        arguments: { profileId: '11111111-1111-1111-1111-111111111111' }
+      }
+    }, client, '1.0.0')
 
     expect(client.calls).toEqual([
       { path: '/api/v1/self-healing', options: undefined },
@@ -142,6 +152,10 @@ describe('MCP stdio message handler', () => {
       {
         path: '/api/v1/profiles/11111111-1111-1111-1111-111111111111/self-healing/check',
         options: { method: 'POST', timeoutMs: 120000 }
+      },
+      {
+        path: '/api/v1/profiles/11111111-1111-1111-1111-111111111111/self-healing/history',
+        options: undefined
       }
     ])
   })
