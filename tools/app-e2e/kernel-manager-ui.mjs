@@ -84,6 +84,22 @@ async function openCdp(url) {
   }
 }
 
+async function evaluateWithCollectedPromiseRetry(cdp, expression, attempts = 3) {
+  let lastError
+  for (let attempt = 1; attempt <= attempts; attempt += 1) {
+    try {
+      return await cdp.evaluate(expression)
+    } catch (error) {
+      lastError = error
+      const message = error instanceof Error ? error.message : String(error)
+      if (!message.includes('Promise was collected') || attempt === attempts) throw error
+      console.warn(`Renderer promise was collected; retrying UI smoke evaluation (${attempt}/${attempts})`)
+      await delay(250)
+    }
+  }
+  throw lastError
+}
+
 async function main() {
   await access(app)
   const dataRoot = await mkdtemp(`${tmpdir()}\\zbrowser-kernel-ui-`)
@@ -110,7 +126,9 @@ async function main() {
     }
     if (!apiReady) throw new Error('Renderer API did not become ready')
 
-    const checks = await cdp.evaluate(`(async () => {
+    const checks = await evaluateWithCollectedPromiseRetry(cdp, `(async () => {
+      for (const closeButton of document.querySelectorAll('button.ant-modal-close')) closeButton.click()
+      await new Promise(resolve => setTimeout(resolve, 100))
       const releases = await window.browserApi.engine.releases()
       const catalogRelease = releases.find((release) => release.version === '144.0.7559.132')
       const entry = document.querySelector('button.engine-card')
