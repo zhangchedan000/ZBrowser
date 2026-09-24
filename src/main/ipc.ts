@@ -101,6 +101,7 @@ export function registerIpc({
   ipcMain.handle('profiles:identity-health-all', () => identityHealthSummaries())
   ipcMain.handle('profiles:identity-self-healing', (_event, id: string) => identitySelfHealing.status(id))
   ipcMain.handle('profiles:identity-self-healing-all', () => identitySelfHealing.statusAll())
+  ipcMain.handle('profiles:identity-self-healing-history', (_event, id: string) => identitySelfHealing.history(id))
   ipcMain.handle('profiles:create', async (_event, draft: ProfileDraft) => publicProfile(await profiles.create(await pinKernelFamily(draft))))
   ipcMain.handle('profiles:update', async (_event, id: string, draft: ProfileDraft) => {
     const pinned = await pinKernelFamily(draft)
