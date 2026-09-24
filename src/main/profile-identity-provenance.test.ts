@@ -31,7 +31,7 @@ describe('ProfileStore identity provenance', () => {
     const restored = reopened.get(created.id)
     const persisted = JSON.parse(await readFile(reopened.profilesPath, 'utf8'))
 
-    expect(persisted.schemaVersion).toBe(12)
+    expect(persisted.schemaVersion).toBe(13)
     expect(restored.identityConfigProvenance?.locale.timezone).toBe('user')
     expect(restored.identityConfigProvenance?.locale.language).toBe('ai')
     expect(restored.identityConfigProvenance?.network.webrtcPolicy).toBe('ai')
