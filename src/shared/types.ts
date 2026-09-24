@@ -525,6 +525,16 @@ export interface IdentityRepairStrategyExecutionSummary {
 export type IdentitySelfHealingDecision = 'disabled' | 'suggest' | 'auto_execute' | 'cooldown' | 'blocked'
 export type IdentitySelfHealingAttemptResult = 'completed' | 'rolled_back' | 'failed' | 'no_action'
 export type IdentitySelfHealingAttemptTrigger = 'auto' | 'user'
+export interface IdentitySelfHealingAttemptRecord {
+  id: string
+  startedAt: string
+  completedAt?: string
+  signature: string
+  strategyKind: import('./identity-repair-strategy').IdentityRepairStrategyKind
+  trigger: IdentitySelfHealingAttemptTrigger
+  result?: IdentitySelfHealingAttemptResult
+  message?: string
+}
 export interface IdentitySelfHealingSummary {
   mode: IdentitySelfHealingMode
   decision: IdentitySelfHealingDecision
@@ -612,6 +622,7 @@ export interface BrowserApi {
     identityHealthAll: () => Promise<Record<string, IdentityProfileHealthSummary>>
     identitySelfHealing: (id: string) => Promise<IdentitySelfHealingSummary>
     identitySelfHealingAll: () => Promise<Record<string, IdentitySelfHealingSummary>>
+    identitySelfHealingHistory: (id: string) => Promise<IdentitySelfHealingAttemptRecord[]>
     storageInfo: (id: string) => Promise<ProfileStorageInfo>
     storageOverview: () => Promise<StorageOverview>
     openDataFolder: (id: string) => Promise<void>
