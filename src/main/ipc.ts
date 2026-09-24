@@ -400,7 +400,11 @@ export function registerIpc({
     approvedByUser: unknown
   ) => {
     if (typeof approvedByUser !== 'boolean') throw new Error('Identity Repair Strategy 确认参数无效')
-    const result = await identityRepairStrategy.execute(id, approvedByUser)
+    if (approvedByUser) {
+      const result = await identitySelfHealing.executeApproved(id)
+      return { ...result, profile: publicProfile(result.profile) }
+    }
+    const result = await identityRepairStrategy.execute(id, false)
     await identitySelfHealing.observeRuntimeReport(id, result.report)
     return { ...result, profile: publicProfile(result.profile) }
   })
