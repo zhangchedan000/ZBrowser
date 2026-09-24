@@ -7,8 +7,10 @@ interface SelfHealingControlCenterModalProps {
   profiles: BrowserProfileView[]
   states: Record<string, IdentitySelfHealingSummary>
   loading?: boolean
+  batchLoading?: boolean
   executingProfileId?: string
   onRefresh: () => Promise<void> | void
+  onBatchDiagnose: (profiles: BrowserProfileView[]) => Promise<void> | void
   onExecute: (profile: BrowserProfileView) => Promise<void> | void
   onDiagnose: (profile: BrowserProfileView) => Promise<void> | void
   onClose: () => void
@@ -54,8 +56,10 @@ export function SelfHealingControlCenterModal({
   profiles,
   states,
   loading = false,
+  batchLoading = false,
   executingProfileId,
   onRefresh,
+  onBatchDiagnose,
   onExecute,
   onDiagnose,
   onClose
@@ -87,6 +91,9 @@ export function SelfHealingControlCenterModal({
   const pendingCount = rows.filter((row) => row.state.pending).length
   const blockedCount = rows.filter((row) => row.state.decision === 'blocked' || row.state.decision === 'cooldown').length
   const autoCount = rows.filter((row) => row.state.mode === 'auto').length
+  const batchCandidates = rows
+    .filter((row) => ['closed', 'error'].includes(row.profile.status))
+    .map((row) => row.profile)
 
   const columns: TableColumnsType<(typeof rows)[number]> = [
     {
@@ -291,6 +298,29 @@ export function SelfHealingControlCenterModal({
       title="Self-Healing Control Center"
       onCancel={onClose}
       footer={[
+        <Button
+          key="batch"
+          loading={batchLoading}
+          disabled={!batchCandidates.length || Boolean(executingProfileId)}
+          onClick={() => {
+            Modal.confirm({
+              title: `批量检查 ${batchCandidates.length} 个环境？`,
+              content: (
+                <Space direction="vertical" size={4}>
+                  <Typography.Text>只会处理当前已关闭或异常的环境，并按顺序逐个执行。</Typography.Text>
+                  <Typography.Text type="secondary">
+                    Auto 环境仍只执行现有低风险白名单；Assisted 和高风险策略只会进入待确认，不会批量越权执行。
+                  </Typography.Text>
+                </Space>
+              ),
+              okText: '开始批量检查',
+              cancelText: '取消',
+              onOk: () => onBatchDiagnose(batchCandidates)
+            })
+          }}
+        >
+          批量检查 ({batchCandidates.length})
+        </Button>,
         <Button key="refresh" loading={loading} onClick={() => void onRefresh()}>刷新状态</Button>,
         <Button key="close" type="primary" onClick={onClose}>关闭</Button>
       ]}
@@ -299,6 +329,7 @@ export function SelfHealingControlCenterModal({
         <Tag color="success">Auto {autoCount}</Tag>
         <Tag color={pendingCount ? 'processing' : 'default'}>Pending {pendingCount}</Tag>
         <Tag color={blockedCount ? 'warning' : 'default'}>Cooldown / Blocked {blockedCount}</Tag>
+        <Tag color="default">可批量检查 {batchCandidates.length}</Tag>
         <Typography.Text type="secondary">
           Auto 只执行低风险白名单；账号环境自动换代理、完整 Identity 重生成等高风险动作仍需确认。
         </Typography.Text>
