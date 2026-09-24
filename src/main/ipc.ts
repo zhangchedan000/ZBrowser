@@ -574,7 +574,10 @@ export function registerIpc({
     const launch = mcpLaunchConfig({
       packaged: app.isPackaged,
       execPath: process.execPath,
-      appPath: app.getAppPath()
+      appPath: app.getAppPath(),
+      resourcesPath: process.resourcesPath,
+      vaultPath: profiles.vaultPath,
+      serverVersion: app.getVersion()
     })
     return {
       ...status,
@@ -584,6 +587,7 @@ export function registerIpc({
         protocolVersion: MODERN_PROTOCOL_VERSION,
         command: launch.command,
         args: launch.args,
+        env: launch.env,
         toolCount: MCP_TOOLS.length
       }
     }
@@ -603,7 +607,10 @@ export function registerIpc({
     return checkMcpConnection(mcpLaunchConfig({
       packaged: app.isPackaged,
       execPath: process.execPath,
-      appPath: app.getAppPath()
+      appPath: app.getAppPath(),
+      resourcesPath: process.resourcesPath,
+      vaultPath: profiles.vaultPath,
+      serverVersion: app.getVersion()
     }))
   })
   ipcMain.handle('diagnostics:session-health', () => appSession.recoveryStatus())
