@@ -207,4 +207,23 @@ export class IdentitySelfHealingManager {
     if (!await this.state.pending(profileId)) return
     await this.handleReport(profileId, await this.verifier.diagnoseFingerprintRuntime(profileId))
   }
+
+  async resumePersistedPending(): Promise<number> {
+    let resumed = 0
+    for (const profile of this.profiles.list()) {
+      if ((profile.identityIntent?.selfHealingMode ?? 'assisted') !== 'auto') continue
+      if (profile.status !== 'closed' && profile.status !== 'error') continue
+      if (!await this.state.pending(profile.id)) continue
+      resumed += 1
+      try {
+        await this.runPending(profile.id)
+      } catch (error) {
+        this.logger?.error('启动时恢复 pending Self-Healing 失败', {
+          profileId: profile.id,
+          error: error instanceof Error ? error.message : String(error)
+        })
+      }
+    }
+    return resumed
+  }
 }
