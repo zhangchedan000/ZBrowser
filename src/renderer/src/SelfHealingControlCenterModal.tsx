@@ -141,6 +141,8 @@ export function SelfHealingControlCenterModal({
         <Tooltip title={row.state.lastMessage}>
           <Space direction="vertical" size={0}>
             <Typography.Text>
+              {row.state.lastAttemptTrigger === 'user' ? '人工确认' : 'Auto'}
+              {' · '}
               {row.state.lastStrategyKind ? strategyText[row.state.lastStrategyKind] : 'Self-Healing'}
               {row.state.lastResult ? ` · ${row.state.lastResult}` : ''}
             </Typography.Text>
