@@ -76,6 +76,7 @@ export class IdentitySelfHealingManager {
       cooldownUntil: snapshot.cooldownUntil,
       lastAttemptAt: snapshot.lastAttemptAt,
       lastResult: snapshot.lastResult,
+      lastAttemptTrigger: snapshot.lastAttemptTrigger,
       lastStrategyKind: snapshot.lastStrategyKind,
       lastMessage: snapshot.lastMessage,
       pendingStrategyKind: snapshot.pending?.strategyKind,
@@ -197,6 +198,68 @@ export class IdentitySelfHealingManager {
 
   async diagnose(profileId: string): Promise<FingerprintRuntimeDiagnosticReport> {
     return this.handleReport(profileId, await this.verifier.diagnoseFingerprintRuntime(profileId))
+  }
+
+  async executeApproved(profileId: string): Promise<IdentityRepairStrategyExecutionSummary & { profile: BrowserProfile }> {
+    if (this.inFlight.has(profileId)) throw new Error('该环境已有 Self-Healing 执行中，请稍后重试')
+    const profile = this.profiles.get(profileId)
+    if (profile.status !== 'closed' && profile.status !== 'error') {
+      throw new Error('请先关闭浏览器环境再执行 Identity Repair Strategy')
+    }
+
+    let pending = await this.state.pending(profileId)
+    if (!pending) {
+      const report = await this.verifier.diagnoseFingerprintRuntime(profileId)
+      await this.observe(profileId, report)
+      pending = await this.state.pending(profileId)
+      if (!pending) {
+        const result = await this.executor.execute(profileId, true)
+        return {
+          ...result,
+          report: {
+            ...result.report,
+            identitySelfHealing: await this.summary(profileId)
+          }
+        }
+      }
+    }
+
+    this.inFlight.add(profileId)
+    const attempt = await this.state.beginAttempt(
+      profileId,
+      pending.signature,
+      pending.strategyKind,
+      new Date(),
+      'user'
+    )
+    try {
+      const result = await this.executor.execute(profileId, true)
+      await this.state.finishAttempt(profileId, attempt.id, result.status, result.message)
+      if (result.status === 'no_action') await this.observe(profileId, result.report)
+      this.logger?.info('用户确认 Self-Healing 执行结束', {
+        profileId,
+        strategy: result.strategy.kind,
+        status: result.status
+      })
+      return {
+        ...result,
+        report: {
+          ...result.report,
+          identitySelfHealing: await this.summary(profileId)
+        }
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      await this.state.finishAttempt(profileId, attempt.id, 'failed', message)
+      this.logger?.error('用户确认 Self-Healing 执行失败', {
+        profileId,
+        strategy: pending.strategyKind,
+        error: message
+      })
+      throw error
+    } finally {
+      this.inFlight.delete(profileId)
+    }
   }
 
   async runPending(profileId: string): Promise<void> {
