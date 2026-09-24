@@ -69,6 +69,7 @@ import { orderBatchLaunchProfiles, waitForBatchLaunchGap } from './batch-launch-
 import { profileTableSorters } from './profile-table-sort'
 import { executeBatchKernelUpgrades, planBatchKernelUpgrades } from './batch-kernel-upgrade'
 import { runSelfHealingBatchChecks } from './self-healing-batch'
+import { profileHasSelfHealingAttention } from './self-healing-attention'
 
 const { Sider, Content } = Layout
 
@@ -260,7 +261,13 @@ export default function App() {
       if (selectedStatus === 'running' && !['starting', 'running', 'stopping'].includes(profile.status)) return false
       if (selectedStatus === 'attention') {
         const identityState = identityHealthByProfile[profile.id]?.state
-        if (!['orphaned', 'error'].includes(profile.status) && identityState !== 'attention' && identityState !== 'critical') return false
+        const selfHealingAttention = profileHasSelfHealingAttention(profile, selfHealingByProfile[profile.id])
+        if (
+          !['orphaned', 'error'].includes(profile.status)
+          && identityState !== 'attention'
+          && identityState !== 'critical'
+          && !selfHealingAttention
+        ) return false
       }
       if (!normalized) return true
       return [String(profile.serialNumber), profile.name, profile.note, profile.group, ...profile.tags, profile.proxy.host, profile.fingerprint.timezone]
@@ -273,7 +280,7 @@ export default function App() {
       if (sortMode === 'created') return second.createdAt.localeCompare(first.createdAt)
       return second.updatedAt.localeCompare(first.updatedAt)
     })
-  }, [profiles, query, selectedGroup, selectedStatus, sortMode, favoritesOnly, identityHealthByProfile])
+  }, [profiles, query, selectedGroup, selectedStatus, sortMode, favoritesOnly, identityHealthByProfile, selfHealingByProfile])
 
   const groupOptions = useMemo(() => {
     const counts = new Map<string, number>()
@@ -1226,6 +1233,16 @@ export default function App() {
   ]
 
   const runningCount = profiles.filter((profile) => profile.status === 'running' || profile.status === 'orphaned').length
+  const attentionCount = profiles.filter((profile) => {
+    const identityState = identityHealthByProfile[profile.id]?.state
+    return ['orphaned', 'error'].includes(profile.status)
+      || identityState === 'attention'
+      || identityState === 'critical'
+      || profileHasSelfHealingAttention(profile, selfHealingByProfile[profile.id])
+  }).length
+  const selfHealingAttentionCount = profiles.filter((profile) =>
+    profileHasSelfHealingAttention(profile, selfHealingByProfile[profile.id])
+  ).length
 
   return (
     <Layout className="app-shell">
@@ -1254,7 +1271,7 @@ export default function App() {
           <ApiOutlined /><span>自动化 API</span><b>本机</b>
         </button>
         <button className="nav-item sidebar-action" onClick={() => setSelfHealingCenterOpen(true)}>
-          <RobotOutlined /><span>Self-Healing</span><b>{Object.values(selfHealingByProfile).filter((item) => item.pending).length || ''}</b>
+          <RobotOutlined /><span>Self-Healing</span><b>{selfHealingAttentionCount || ''}</b>
         </button>
         <button className="nav-item sidebar-action" disabled={exportingDiagnostics} onClick={() => void exportDiagnosticBundle()}>
           <BugOutlined /><span>{exportingDiagnostics ? '正在导出诊断包' : '导出诊断包'}</span>
@@ -1432,7 +1449,7 @@ export default function App() {
                     { value: '__all__', label: '全部状态' },
                     { value: 'closed', label: '已关闭' },
                     { value: 'running', label: '运行中' },
-                    { value: 'attention', label: '需要处理' }
+                    { value: 'attention', label: `需要处理${attentionCount ? ` (${attentionCount})` : ''}` }
                   ]}
                 />
                 <Select
