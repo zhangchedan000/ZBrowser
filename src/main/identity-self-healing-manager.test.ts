@@ -208,4 +208,63 @@ describe('IdentitySelfHealingManager', () => {
     expect(await state.pending(assistedProfile.id)).not.toBeNull()
   })
 
+  it('records a user-confirmed assisted repair in the unified self-healing audit state', async () => {
+    const vault = await mkdtemp(join(tmpdir(), 'zbrowser-self-heal-manager-'))
+    paths.push(vault)
+    const profiles = new ProfileStore(vault)
+    await profiles.initialize()
+    const draft = defaultProfileDraft()
+    draft.identityIntent = {
+      schemaVersion: 1,
+      strategy: 'ai_assisted',
+      targetCountryCode: 'US',
+      selfHealingMode: 'assisted'
+    }
+    const profile = await profiles.create(draft)
+    const initial = repairReport(profile.id)
+    const healed: FingerprintRuntimeDiagnosticReport = {
+      ...initial,
+      ready: true,
+      identityDrift: { ...initial.identityDrift!, driftDetected: false, severity: 'low', changes: [] },
+      identityHealth: { score: 100, risk: 'low', identity: {}, components: [], generatedAt: new Date().toISOString() },
+      identityRepairStrategy: {
+        kind: 'none',
+        reason: 'healthy',
+        affectedSections: [],
+        requiresUserConfirmation: false,
+        automaticActionAvailable: false
+      }
+    }
+    const state = new IdentitySelfHealingStateStore(vault)
+    const manager = new IdentitySelfHealingManager(
+      profiles,
+      { diagnoseFingerprintRuntime: async () => initial },
+      {
+        execute: async (_id, approvedByUser): Promise<IdentityRepairStrategyExecutionSummary & { profile: BrowserProfile }> => {
+          expect(approvedByUser).toBe(true)
+          return {
+            status: 'completed',
+            strategy: initial.identityRepairStrategy!,
+            message: 'user approved repair completed',
+            report: healed,
+            profile: profiles.get(profile.id)
+          }
+        }
+      },
+      state
+    )
+
+    await manager.diagnose(profile.id)
+    const result = await manager.executeApproved(profile.id)
+    expect(result.report.identitySelfHealing).toMatchObject({
+      mode: 'assisted',
+      lastResult: 'completed',
+      lastAttemptTrigger: 'user',
+      pending: false
+    })
+    const snapshot = await state.snapshot(profile.id)
+    expect(snapshot.lastAttemptTrigger).toBe('user')
+    expect(snapshot.lastResult).toBe('completed')
+  })
+
 })
