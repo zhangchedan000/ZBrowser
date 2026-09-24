@@ -524,6 +524,7 @@ export interface IdentityRepairStrategyExecutionSummary {
 
 export type IdentitySelfHealingDecision = 'disabled' | 'suggest' | 'auto_execute' | 'cooldown' | 'blocked'
 export type IdentitySelfHealingAttemptResult = 'completed' | 'rolled_back' | 'failed' | 'no_action'
+export type IdentitySelfHealingAttemptTrigger = 'auto' | 'user'
 export interface IdentitySelfHealingSummary {
   mode: IdentitySelfHealingMode
   decision: IdentitySelfHealingDecision
@@ -534,6 +535,7 @@ export interface IdentitySelfHealingSummary {
   cooldownUntil?: string
   lastAttemptAt?: string
   lastResult?: IdentitySelfHealingAttemptResult
+  lastAttemptTrigger?: IdentitySelfHealingAttemptTrigger
   lastStrategyKind?: import('./identity-repair-strategy').IdentityRepairStrategyKind
   lastMessage?: string
   pendingStrategyKind?: import('./identity-repair-strategy').IdentityRepairStrategyKind
