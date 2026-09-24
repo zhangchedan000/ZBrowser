@@ -396,8 +396,9 @@ export default function App() {
   async function saveProfile(draft: ProfileDraft): Promise<void> {
     setSaving(true)
     const wasEditing = Boolean(editing)
+    let saved: BrowserProfileView | undefined
     try {
-      let saved = editing
+      saved = editing
         ? await window.browserApi.profiles.update(editing.id, draft)
         : await window.browserApi.profiles.create(draft)
 
@@ -412,10 +413,36 @@ export default function App() {
       upsert(saved)
       setEditorOpen(false)
       setEditing(undefined)
-      messageApi.success(wasEditing ? '环境已更新' : '环境已创建，已进入环境检测')
-      if (!wasEditing) setEnvironmentCheckProfile(saved)
     } catch (error) {
       messageApi.error(humanError(error))
+      setSaving(false)
+      return
+    }
+
+    try {
+      const report = await window.browserApi.profiles.diagnoseFingerprintRuntime(saved.id)
+      const health = await window.browserApi.profiles.identityHealth(saved.id)
+      setIdentityHealthByProfile((current) => ({ ...current, [saved!.id]: health }))
+
+      if (report.ready) {
+        const baselineVersion = report.identityBaseline?.version
+        messageApi.success(
+          baselineVersion
+            ? `${wasEditing ? '环境已更新' : '环境已创建'}并通过身份验证 · Baseline v${baselineVersion}`
+            : `${wasEditing ? '环境已更新' : '环境已创建'}并通过身份验证`
+        )
+        if (!wasEditing) setEnvironmentCheckProfile(saved)
+      } else {
+        setDiagnosticProfile(saved)
+        setDiagnosticReport(report)
+        messageApi.warning(
+          `${wasEditing ? '环境已更新' : '环境已创建'}，但 Runtime Identity Verify 未通过，已打开诊断`
+        )
+      }
+    } catch (error) {
+      messageApi.warning(
+        `${wasEditing ? '环境已更新' : '环境已创建'}，但 Runtime Identity Verify 执行失败：${humanError(error)}`
+      )
     } finally {
       setSaving(false)
     }

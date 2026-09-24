@@ -1147,16 +1147,27 @@ export class BrowserLauncher {
           current.identityConfigProvenance
         )
       : undefined
-    const identityHealthTrend = identityIntelligence && identityState.baseline && identityState.drift
-      ? summarizeIdentityHealthTrend(await new IdentityHealthHistoryStore(this.profiles.vaultPath).record(id, {
-          checkedAt: identity.capturedAt,
-          baselineId: identityState.baseline.id,
-          score: identityIntelligence.health.score,
-          risk: identityIntelligence.health.risk,
-          driftDetected: identityState.drift.driftDetected,
-          driftSeverity: identityState.drift.severity,
-          changeCount: identityState.drift.changes.length
-        }))
+    const healthHistory = new IdentityHealthHistoryStore(this.profiles.vaultPath)
+    const identityHealthTrend = identityState.baseline
+      ? summarizeIdentityHealthTrend(await healthHistory.record(id, identityState.drift && identityIntelligence
+        ? {
+            checkedAt: identity.capturedAt,
+            baselineId: identityState.baseline.id,
+            score: identityIntelligence.health.score,
+            risk: identityIntelligence.health.risk,
+            driftDetected: identityState.drift.driftDetected,
+            driftSeverity: identityState.drift.severity,
+            changeCount: identityState.drift.changes.length
+          }
+        : {
+            checkedAt: identity.capturedAt,
+            baselineId: identityState.baseline.id,
+            score: 100,
+            risk: 'low',
+            driftDetected: false,
+            driftSeverity: 'low',
+            changeCount: 0
+          }))
       : undefined
 
     return {

@@ -992,7 +992,7 @@ export function ProfileEditor({ open, profile, suggestedIndex, saving, extension
       width={720}
       destroyOnHidden
       confirmLoading={saving}
-      okText={profile ? '保存修改' : '创建环境'}
+      okText={profile ? '保存并验证身份' : '创建并验证身份'}
       cancelText="取消"
       onCancel={onCancel}
       onOk={() => void submit()}
