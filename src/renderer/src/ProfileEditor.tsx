@@ -21,6 +21,7 @@ import {
 import { useEffect, useMemo, useState } from 'react'
 import { defaultPlatform, defaultProfileDraft, randomSeed } from '../../shared/defaults'
 import { fingerprintVersionWarning } from '../../shared/fingerprint-consistency'
+import { analyzeIdentityEnvironment } from '../../shared/identity-environment-analysis'
 import { applyAIIdentityConfigProvenance, applyAIIdentityConfigToFingerprint, generateAIIdentityConfig } from '../../shared/identity-ai-generator'
 import { HARDWARE_IDENTITY_FIELDS, markFingerprintConfigSources, normalizeIdentityConfigProvenance } from '../../shared/identity-config-provenance'
 import {
@@ -44,6 +45,7 @@ import type { BrowserExtension, BrowserProfileView, EngineStatus, HardwareProfil
 interface EditorValues extends Omit<ProfileDraft, 'startUrls' | 'color'> {
   startUrlsText: string
   color: string | { toHexString: () => string }
+  targetCountryCode?: string
 }
 
 interface ProfileEditorProps {
@@ -70,6 +72,7 @@ function editorValues(profile: BrowserProfileView | undefined, index: number): E
     extensionIds: [...draft.extensionIds],
     color: draft.color,
     startUrlsText: draft.startUrls.join('\n'),
+    targetCountryCode: '',
     kernelVersion: draft.kernelVersion,
     kernelFamily: draft.kernelFamily,
     environmentType: draft.environmentType ?? 'account',
@@ -95,6 +98,7 @@ export function ProfileEditor({ open, profile, suggestedIndex, saving, extension
   const proxyProtocol = Form.useWatch(['proxy', 'protocol'], form)
   const proxyPassword = Form.useWatch(['proxy', 'password'], form) ?? ''
   const proxyPasswordStored = Form.useWatch(['proxy', 'passwordStored'], form) === true
+  const targetCountryCode = (Form.useWatch('targetCountryCode', form) ?? '').trim().toUpperCase()
   const webrtcPolicy = Form.useWatch(['fingerprint', 'webrtcPolicy'], form) ?? 'proxy_only'
   const fingerprintConfig = Form.useWatch('fingerprint', form)
   const fingerprintTimezone = Form.useWatch(['fingerprint', 'timezone'], form)
@@ -234,11 +238,25 @@ export function ProfileEditor({ open, profile, suggestedIndex, saving, extension
         return
       }
 
+      const environment = analyzeIdentityEnvironment({
+        targetCountryCode,
+        proxyProtocol: effectiveProxyProtocol,
+        proxyCheck: check
+      })
+      if (!environment.canGenerate) {
+        setAiIdentityFeedback({
+          type: 'warning',
+          message: '环境分析未通过，AI 身份配置未应用',
+          description: environment.warnings.join('；')
+        })
+        return
+      }
+
       const current = form.getFieldValue('fingerprint')
       const generated = generateAIIdentityConfig({
         baseFingerprint: current,
         platform: profile ? current.platform : hostPlatform,
-        countryCode: check?.countryCode,
+        countryCode: environment.effectiveCountryCode,
         proxyProtocol: effectiveProxyProtocol,
         proxyCheck: check,
         networkMode: effectiveProxyProtocol === 'direct' ? 'manual' : 'proxy'
@@ -248,6 +266,9 @@ export function ProfileEditor({ open, profile, suggestedIndex, saving, extension
       setIdentityConfigProvenance((currentProvenance) => applyAIIdentityConfigProvenance(currentProvenance, generated))
 
       const details = [
+        environment.targetCountryCode
+          ? `目标国家 ${environment.targetCountryCode}${environment.observedCountryCode ? ` / 代理出口 ${environment.observedCountryCode}` : ''}`
+          : environment.observedCountryCode ? `代理出口国家 ${environment.observedCountryCode}` : undefined,
         generated.personaId ? `Persona ${generated.personaId}` : '保留当前硬件配置',
         effectiveProxyProtocol === 'direct'
           ? '网络保持手动模式，可继续修改'
@@ -547,11 +568,20 @@ export function ProfileEditor({ open, profile, suggestedIndex, saving, extension
           </Row>
         </>
       )}
+      <Form.Item
+        name="targetCountryCode"
+        label="目标国家"
+        extra="输入 ISO 两位国家代码（如 US、GB、DE）。使用代理时会先核对实际出口国家，不匹配则阻止 AI 静默生成错误国家身份。"
+        rules={[{ pattern: /^[A-Za-z]{2}$/, message: '请输入 ISO 两位国家代码，例如 US' }]}
+        normalize={(value: string) => value?.trim().toUpperCase()}
+      >
+        <Input maxLength={2} placeholder="US" />
+      </Form.Item>
       <Alert
         type="info"
         showIcon
-        message="推荐流程：填代理 → AI 一键配置身份 → 手动确认/修改 → 保存 → 环境检测"
-        description="AI 会根据代理出口和当前平台推荐成套硬件 Persona、语言、Accept-Language、时区、WebRTC 和出口策略；所有配置仍可切换到手动模式继续修改。"
+        message="推荐流程：填代理 + 目标国家 → 环境分析 → AI 一键配置身份 → 手动确认/修改 → 保存 → 环境检测"
+        description="AI 会先核对代理实际出口与目标国家，再根据可信出口和当前平台推荐成套硬件 Persona、语言、Accept-Language、时区、WebRTC 和出口策略；所有配置仍可手动修改。"
         action={(
           <Button type="primary" loading={applyingAIIdentity} onClick={() => void applyAIIdentityConfiguration()}>
             {profile ? 'AI 重新分析配置' : 'AI 一键配置身份'}
@@ -575,6 +605,18 @@ export function ProfileEditor({ open, profile, suggestedIndex, saving, extension
         )}
         {proxyResult && !proxyResult.ok && <Typography.Text type="danger">连接失败：{proxyResult.error}</Typography.Text>}
       </Space>
+      {proxyResult?.ok && targetCountryCode && (
+        <Alert
+          type={proxyResult.countryCode?.toUpperCase() === targetCountryCode ? 'success' : 'warning'}
+          showIcon
+          message={proxyResult.countryCode?.toUpperCase() === targetCountryCode
+            ? `目标国家 ${targetCountryCode} 与代理出口一致`
+            : `目标国家 ${targetCountryCode} 与代理出口 ${proxyResult.countryCode?.toUpperCase() ?? '未知'} 不一致`}
+          description={proxyResult.countryCode?.toUpperCase() === targetCountryCode
+            ? '可以继续生成身份配置。'
+            : '请更换符合目标国家的代理，或修改目标国家后重新分析。'}
+        />
+      )}
       {proxyResult?.ok && (
         <div className="proxy-test-result">
           <div className="proxy-result-line">
