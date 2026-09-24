@@ -163,6 +163,319 @@ describe('ProfileStore', () => {
       ip: '203.0.113.44',
       latencyMs: 40,
       checkedAt
-    })).rejects.toThrow('å®žé™…å…®ë–>Œ%@œ¤(€ô¤((€¥Ð ­••ÁÌ„ÁÉ½áäµÁ½½°‰¥¹‘¥¹œÝ¡•¸…¸…½Õ¹ÐÁÉ½™¥±”¥Ì•‘¥Ñ•Ý¥Ñ¡½ÕÐÉ•ÑåÁ¥¹œÑ¡”ÍÑ½É•Á…ÍÍÝ½Éœ°…Íå¹Œ€ ¤€ôøì(€€€½¹ÍÐÉ•Á½Í¥Ñ½Éä€ô…Ý…¥ÐÍÑ½É” ¤(€€€½¹ÍÐ‘É…™Ð€ô‘•™…Õ±ÑAÉ½™¥±•É…™Ð ¤(€€€‘É…™Ð¹ÁÉ½áä€ôìÁÉ½Ñ½½°è€¡ÑÑÀœ°¡½ÍÐè€ÁÉ½áä¹•á…µÁ±”¹½´œ°Á½ÉÐè€àÀàÀ°ÕÍ•É¹…µ”è€ÕÍ•Èœ°Á…ÍÍÝ½Éè€Í•É•Ðœô(€€€½¹ÍÐÉ•…Ñ•€ô…Ý…¥ÐÉ•Á½Í¥Ñ½Éä¹É•…Ñ”¡‘É…™Ð¤(€€€…Ý…¥ÐÉ•Á½Í¥Ñ½Éä¹…ÍÍ¥¹AÉ½áä¡É•…Ñ•¹¥°‘É…™Ð¹ÁÉ½áä°ì(€€€€€½¬èÑÉÕ”°(€€€€€¥Àè€œÈÀÌ¸À¸ÄÄÌ¸ÔÔœ°(€€€€€±…Ñ•¹å5Ìè€ÔÀ°(€€€€€¡•­•‘Ðè¹•Ü…Ñ” ¤¹Ñ½%M=MÑÉ¥¹œ ¤°(€€€€€½Õ¹ÑÉå½‘”è€ULœ°(€€€€€Ñ¥µ•é½¹”è€µ•É¥„½1½Í}¹•±•Ìœ°(€€€€€±…Ñ¥ÑÕ‘”è€ÌÐ¸ÀÔ°(€€€€€±½¹¥ÑÕ‘”è€´ÄÄà¸ÈÐ°(€€€€€•½½¹™¥‘•¹”è€½¹Í•¹ÍÕÌœ(€€€ô°€œÄÄÄÄÄÄÄÄ´ÄÄÄÄ´ÄÄÄÄ´ÄÄÄÄ´ÄÄÄÄÄÄÄÄÄÄÄÄœ¤(€€€½¹ÍÐÁÕ‰±¥É…™Ð€ôÁÕ‰±¥AÉ½™¥±”¡É•Á½Í¥Ñ½Éä¹•Ð¡É•…Ñ•¹¥¤¤(€€€ÁÕ‰±¥É…™Ð¹¹…µ”€ô€É•¹…µ•œ(€€€…Ý…¥ÐÉ•Á½Í¥Ñ½Éä¹ÕÁ‘…Ñ”¡É•…Ñ•¹¥°ÁÕ‰±¥É…™Ð¤(€€€•áÁ•Ð¡É•Á½Í¥Ñ½Éä¹•Ð¡É•…Ñ•¹¥¤¹ÁÉ½áåA½½±¹ÑÉå%¤¹Ñ½	” œÄÄÄÄÄÄÄÄ´ÄÄÄÄ´ÄÄÄÄ´ÄÄÄÄ´ÄÄÄÄÄÄÄÄÄÄÄÄœ¤(€ô¤((€¥Ð ÁÉ•Í•ÉÙ•Ì°É•Á±…•Ì½È±•…ÉÌ„ÍÑ½É•ÁÉ½áäÁ…ÍÍÝ½ÉÝ¥Ñ¡½ÕÐ•áÁ½Í¥¹œ„µ…É­•È½¸‘¥Í¬œ°…Íå¹Œ€ ¤€ôøì(€€€½¹ÍÐÉ•Á½Í¥Ñ½Éä€ô…Ý…¥ÐÍÑ½É” ¤(€€€½¹ÍÐ‘É…™Ð€ô‘•™…Õ±ÑAÉ½™¥±•É…™Ð ¤(€€€‘É…™Ð¹ÁÉ½áä€ôìÁÉ½Ñ½½°è€¡ÑÑÀœ°¡½ÍÐè€ÁÉ½áä¹•á…µÁ±”¹½´œ°Á½ÉÐè€àÀàÀ°ÕÍ•É¹…µ”è€ÕÍ•Èœ°Á…ÍÍÝ½Éè€Í•É•Ðœô(€€€½¹ÍÐÉ•…Ñ•€ô…Ý…¥ÐÉ•Á½Í¥Ñ½Éä¹É•…Ñ”¡‘É…™Ð¤((€€€½¹ÍÐÕ¹¡…¹•€ôÁÕ‰±¥AÉ½™¥±”¡É•…Ñ•¤(€€€…Ý…¥ÐÉ•Á½Í¥Ñ½Éä¹ÕÁ‘…Ñ”¡É•…Ñ•¹¥°Õ¹¡…¹•¤(€€€•áÁ•Ð¡É•Á½Í¥Ñ½Éä¹•Ð¡É•…Ñ•¹¥¤¹ÁÉ½áä¹Á…ÍÍÝ½É¤¹Ñ½	” Í•É•Ðœ¤((€€€½¹ÍÐÉ•Á±…•€ôÁÕ‰±¥AÉ½™¥±”¡É•Á½Í¥Ñ½Éä¹•Ð¡É•…Ñ•¹¥¤¤(€€€…Ý…¥ÐÉ•Á½Í¥Ñ½Éä¹ÕÁ‘…Ñ”¡É•…Ñ•¹¥°ì€¸¸¹É•Á±…•°ÁÉ½áäèì€¸¸¹É•Á±…•¹ÁÉ½áä°Á…ÍÍÝ½Éè€¹•ÜµÍ•É•Ðœôô¤(€€€•áÁ•Ð¡É•Á½Í¥Ñ½Éä¹•Ð¡É•…Ñ•¹¥¤¹ÁÉ½áä¹Á…ÍÍÝ½É¤¹Ñ½	” ¹•ÜµÍ•É•Ðœ¤((€€€½¹ÍÐ±•…É•€ôÁÕ‰±¥AÉ½™¥±”¡É•Á½Í¥Ñ½Éä¹•Ð¡É•…Ñ•¹¥¤¤(€€€±•…É•¹ÁÉ½áä¹Á…ÍÍÝ½É‘MÑ½É•€ô™…±Í”(€€€…Ý…¥ÐÉ•Á½Í¥Ñ½Éä¹ÕÁ‘…Ñ”¡É•…Ñ•¹¥°±•…É•¤(€€€•áÁ•Ð¡É•Á½Í¥Ñ½Éä¹•Ð¡É•…Ñ•¹¥¤¹ÁÉ½áä¹Á…ÍÍÝ½É¤¹Ñ½	” œœ¤(€€€•áÁ•Ð¡…Ý…¥ÐÉ•…‘¥±”¡É•Á½Í¥Ñ½Éä¹ÁÉ½™¥±•ÍA…Ñ °€ÕÑ˜àœ¤¤¹¹½Ð¹Ñ½½¹Ñ…¥¸ Á…ÍÍÝ½É‘MÑ½É•œ¤(€ô¤((€¥Ð ‘½•Ì¹½Ð…ÉÉä„Í…Ù•Á…ÍÍÝ½ÉÑ¼„¡…¹•ÁÉ½áä¥‘•¹Ñ¥Ñäœ°…Íå¹Œ€ ¤€ôøì(€€€½¹ÍÐÉ•Á½Í¥Ñ½Éä€ô…Ý…¥ÐÍÑ½É” ¤(€€€½¹ÍÐ‘É…™Ð€ô‘•™…Õ±ÑAÉ½™¥±•É…™Ð ¤(€€€‘É…™Ð¹ÁÉ½áä€ôìÁÉ½Ñ½½°è€¡ÑÑÀœ°¡½ÍÐè€½¹”¹•á…µÁ±”¹½´œ°Á½ÉÐè€àÀàÀ°ÕÍ•É¹…µ”è€ÕÍ•Èœ°Á…ÍÍÝ½Éè€Í•É•Ðœô(€€€½¹ÍÐÉ•…Ñ•€ô…Ý…¥ÐÉ•Á½Í¥Ñ½Éä¹É•…Ñ”¡‘É…™Ð¤(€€€½¹ÍÐ¡…¹•€ôÁÕ‰±¥AÉ½™¥±”¡É•…Ñ•¤(€€€¡…¹•¹ÁÉ½áä¹¡½ÍÐ€ô€ÑÝ¼¹•á…µÁ±”¹½´œ((€€€…Ý…¥ÐÉ•Á½Í¥Ñ½Éä¹ÕÁ‘…Ñ”¡É•…Ñ•¹¥°¡…¹•¤(€€€•áÁ•Ð¡É•Á½Í¥Ñ½Éä¹•Ð¡É•…Ñ•¹¥¤¹ÁÉ½áä¹Á…ÍÍÝ½É¤¹Ñ½	” œœ¤(€ô¤((€¥Ð µ½Ù•ÌÉ•µ½Ù•ÁÉ½™¥±”‘…Ñ„Ñ¼„É•½Ù•É…‰±”É•å±”‘¥É•Ñ½Éä…¹É•ÍÑ½É•Ì¥Ðœ°…Íå¹Œ€ ¤€ôøì(€€€½¹ÍÐÉ•Á½Í¥Ñ½Éä€ô…Ý…¥ÐÍÑ½É” ¤(€€€½¹ÍÐ‘É…™Ð€ô‘•™…Õ±ÑAÉ½™¥±•É…™Ð ¤(€€€‘É…™Ð¹É½ÕÀ€ô€Ÿ–ê_¦Nëžîœ(€€€‘É…™Ð¹Ñ…Ì€ôlŸ¦7ž
-ät(€€€‘É…™Ð¹•áÑ•¹Í¥½¹%‘Ì€ôlœÄÄÄÄÄÄÄÄ´ÄÄÄÄ´ÄÄÄÄ´ÄÄÄÄ´ÄÄÄÄÄÄÄÄÄÄÄÄt(€€€½¹ÍÐÁÉ½™¥±”€ô…Ý…¥ÐÉ•Á½Í¥Ñ½Éä¹É•…Ñ”¡‘É…™Ð¤(€€€•áÁ•Ð¡…Ý…¥ÐÉ•Á½Í¥Ñ½Éä¹ÕÍ•ÍáÑ•¹Í¥½¸¡‘É…™Ð¹•áÑ•¹Í¥½¹%‘ÍlÁt¤¤¹Ñ½	”¡ÑÉÕ”¤(€€€…Ý…¥ÐÝÉ¥Ñ•¥±”¡©½¥¸¡É•Á½Í¥Ñ½Éä¹ÁÉ½™¥±•…Ñ…A…Ñ ¡ÁÉ½™¥±”¹¥¤°€½½­¥”µÑ•ÍÐœ¤°€ÁÉ•Í•ÉÙ•œ¤(€€€…Ý…¥ÐÉ•Á½Í¥Ñ½Éä¹É•µ½Ù”¡ÁÉ½™¥±”¹¥¤((€€€•áÁ•Ð¡É•Á½Í¥Ñ½Éä¹±¥ÍÐ ¤¤¹Ñ½!…Ù•1•¹Ñ  À¤(€€€…Ý…¥Ð•áÁ•Ð¡É•…‘¥±”¡É•Á½Í¥Ñ½Éä¹ÁÉ½™¥±•ÍA…Ñ °€ÕÑ˜àœ¤¤¹É•Í½±Ù•Ì¹Ñ½½¹Ñ…¥¸ œ‰ÁÉ½™¥±•Ìˆèmtœ¤(€€€½¹ÍÐÑÉ…Í €ô…Ý…¥ÐÉ•Á½Í¥Ñ½Éä¹±¥ÍÑQÉ…Í  ¤(€€€•áÁ•Ð¡ÑÉ…Í ¤¹Ñ½!…Ù•1•¹Ñ  Ä¤(€€€•áÁ•Ð¡ÑÉ…Í¡lÁt¹¹…µ”¤¹Ñ½	”¡ÁÉ½™¥±”¹¹…µ”¤(€€€•áÁ•Ð¡…Ý…¥ÐÉ•Á½Í¥Ñ½Éä¹ÕÍ•ÍáÑ•¹Í¥½¸¡‘É…™Ð¹•áÑ•¹Í¥½¹%‘ÍlÁt¤¤¹Ñ½	”¡ÑÉÕ”¤((€€€½¹ÍÐÉ•ÍÑ½É•€ô…Ý…¥ÐÉ•Á½Í¥Ñ½Éä¹É•ÍÑ½É”¡ÑÉ…Í¡lÁt¹ÑÉ…Í¡%¤(€€€•áÁ•Ð¡É•ÍÑ½É•¹¥¤¹Ñ½	”¡ÁÉ½™¥±”¹¥¤(€€€•áÁ•Ð¡É•ÍÑ½É•¹Í•É¥…±9Õµ‰•È¤¹Ñ½	”¡ÁÉ½™¥±”¹Í•É¥…±9Õµ‰•È¤(€€€•áÁ•Ð¡É•ÍÑ½É•¹É½ÕÀ¤¹Ñ½	” Ÿ–ê_¦Nëžîœ¤(€€€•áÁ•Ð¡É•ÍÑ½É•¹Ñ…Ì¤¹Ñ½ÅÕ…°¡lŸ¦7ž
-ät¤(€€€…Ý…¥Ð•áÁ•Ð¡É•…‘¥±”¡©½¥¸¡É•Á½Í¥Ñ½Éä¹ÁÉ½™¥±•…Ñ…A…Ñ ¡É•ÍÑ½É•¹¥¤°€½½­¥”µÑ•ÍÐœ¤°€ÕÑ˜àœ¤¤¹É•Í½±Ù•Ì¹Ñ½	” ÁÉ•Í•ÉÙ•œ¤(€€€•áÁ•Ð¡…Ý…¥ÐÉ•Á½Í¥Ñ½Éä¹±¥ÍÑQÉ…Í  ¤¤¹Ñ½!…Ù•1•¹Ñ  À¤(€ô¤((€¥Ð ÑÉ…­ÌÁ¥¹¹•­•É¹•°É•™•É•¹•Ì‰ä™…µ¥±ä¥¸…Ñ¥Ù”…¹É•å±…‰±”ÁÉ½™¥±•Ìœ°…Íå¹Œ€ ¤€ôøì(€€€½¹ÍÐÉ•Á½Í¥Ñ½Éä€ô…Ý…¥ÐÍÑ½É” ¤(€€€½¹ÍÐ‘É…™Ð€ô‘•™…Õ±ÑAÉ½™¥±•É…™Ð ¤(€€€‘É…™Ð¹¹…µ”€ô€Ÿ–në–ºk–š‚ãž:¿–Šœ(€€€‘É…™Ð¹­•É¹•±Y•ÉÍ¥½¸€ô€œÄÐÐ¸À¸ÜÔÔä¸ÄÌÈœ(€€€‘É…™Ð¹­•É¹•±…µ¥±ä€ô€™¥¹•ÉÁÉ¥¹Ðµ¡É½µ¥Õ´œ(€€€½¹ÍÐÁÉ½™¥±”€ô…Ý…¥ÐÉ•Á½Í¥Ñ½Éä¹É•…Ñ”¡‘É…™Ð¤((€€€•áÁ•Ð¡…Ý…¥ÐÉ•Á½Í¥Ñ½Éä¹­•É¹•±UÍ•ÉÌ¡‘É…™Ð¹­•É¹•±Y•ÉÍ¥½¸¤¤¹Ñ½ÅÕ…°¡lŸ–në–ºk–š‚ãž:¿–Št¤(€€€•áÁ•Ð¡…Ý…¥ÐÉ•Á½Í¥Ñ½Éä¹­•É¹•±UÍ•ÉÌ¡‘É…™Ð¹­•É¹•±Y•ÉÍ¥½¸°€™¥¹•ÉÁÉ¥¹Ðµ¡É½µ¥Õ´œ¤¤¹Ñ½ÅÕ…°¡lŸ–në–ºk–š‚ãž:¿–Št¤(€€€•áÁ•Ð¡…Ý…¥ÐÉ•Á½Í¥Ñ½Éä¹­•É¹•±UÍ•ÉÌ¡‘É…™Ð¹­•É¹•±Y•ÉÍ¥½¸°€ÕÍÑ½´œ¤¤¹Ñ½ÅÕ…°¡mt¤((€€€…Ý…¥ÐÉ•Á½Í¥Ñ½Éä¹É•µ½Ù”¡ÁÉ½™¥±”¹¥¤(€€€•áÁ•Ð¡…Ý…¥ÐÉ•Á½Í¥Ñ½Éä¹­•É¹•±UÍ•ÉÌ¡‘É…™Ð¹­•É¹•±Y•ÉÍ¥½¸°€™¥¹•ÉÁÉ¥¹Ðµ¡É½µ¥Õ´œ¤¤¹Ñ½ÅÕ…°¡lŸ–në–ºk–š‚ãž:¿–Št¤(€€€•áÁ•Ð¡…Ý…¥ÐÉ•Á½Í¥Ñ½Éä¹­•É¹•±UÍ•ÉÌ¡‘É…™Ð¹­•É¹•±Y•ÉÍ¥½¸°€ÕÍÑ½´œ¤¤¹Ñ½ÅÕ…°¡mt¤(€ô¤((€¥Ð ½¹Í•ÉÙ…Ñ¥Ù•±äÑÉ•…ÑÌ±•…äÙ•ÉÍ¥½¸µ½¹±äÁ¥¹Ì…ÌÕÍ•ÉÌ½˜•¥Ñ¡•È™…µ¥±äœ°…Íå¹Œ€ ¤€ôøì(€€€½¹ÍÐÉ•Á½Í¥Ñ½Éä€ô…Ý…¥ÐÍÑ½É” ¤(€€€½¹ÍÐ‘É…™Ð€ô‘•™…Õ±ÑAÉ½™¥±•É…™Ð ¤(€€€‘É…™Ð¹¹…µ”€ô€Ÿš^Ÿž&#–në–ºkž:¿–Šœ(€€€‘É…™Ð¹­•É¹•±Y•ÉÍ¥½¸€ô€œÄÐÐ¸À¸ÜÔÔä¸ÄÌÈœ(€€€½¹ÍÐÁÉ½™¥±”€ô…Ý…¥ÐÉ•Á½Í¥Ñ½Éä¹É•…Ñ”¡‘É…™Ð¤((€€€•áÁ•Ð¡…Ý…¥ÐÉ•Á½Í¥Ñ½Éä¹­•É¹•±UÍ•ÉÌ¡‘É…™Ð¹­•É¹•±Y•ÉÍ¥½¸°€™¥¹•ÉÁÉ¥¹Ðµ¡É½µ¥Õ´œ¤¤¹Ñ½ÅÕ…°¡lŸš^Ÿž&#–në–ºkž:¿–Št¤(€€€•áÁ•Ð¡…Ý…¥ÐÉ•Á½Í¥Ñ½Éä¹­•É¹•±UÍ•ÉÌ¡‘É…™Ð¹­•É¹•±Y•ÉÍ¥½¸°€ÕÍÑ½´œ¤¤¹Ñ½ÅÕ…°¡lŸš^Ÿž&#–në–ºkž:¿–Št¤((€€€…Ý…¥ÐÉ•Á½Í¥Ñ½Éä¹É•µ½Ù”¡ÁÉ½™¥±”¹¥¤(€€€•áÁ•Ð¡…Ý…¥ÐÉ•Á½Í¥Ñ½Éä¹­•É¹•±UÍ•ÉÌ¡‘É…™Ð¹­•É¹•±Y•ÉÍ¥½¸°€™¥¹•ÉÁÉ¥¹Ðµ¡É½µ¥Õ´œ¤¤¹Ñ½ÅÕ…°¡lŸš^Ÿž&#–në–ºkž:¿–Št¤(€€€•áÁ•Ð¡…Ý…¥ÐÉ•Á½Í¥Ñ½Éä¹­•É¹•±UÍ•ÉÌ¡‘É…™Ð¹­•É¹•±Y•ÉÍ¥½¸°€ÕÍÑ½´œ¤¤¹Ñ½ÅÕ…°¡lŸš^Ÿž&#–në–ºkž:¿–Št¤(€ô¤((€¥Ð …‘Ù…¹•ÌÑ¡”…ÕÑ½µ…Ñ¥Œ­•É¹•°™±½½È½¹±äÝ¥Ñ¡¥¸Ñ¡”Í…µ”™…µ¥±ä…¹µ…©½Èœ°…Íå¹Œ€ ¤€ôøì(€€€½¹ÍÐÉ•Á½Í¥Ñ½Éä€ô…Ý…¥ÐÍÑ½É” ¤(€€€½¹ÍÐ‘É…™Ð€ô‘•™…Õ±ÑAÉ½™¥±•É…™Ð ¤(€€€‘É…™Ð¹¹…µ”€ô€Ÿ¢†—’â–6žêŸž:¿–Šœ(€€€‘É…™Ð¹­•É¹•±Y•ÉÍ¥½¸€ô€œÄÐÐ¸À¸ÜÔÔä¸ÄÌÈœ(€€€‘É…™Ð¹­•É¹•±…µ¥±ä€ô€™¥¹•ÉÁÉ¥¹Ðµ¡É½µ¥Õ´œ(€€€½¹ÍÐÁÉ½™¥±”€ô…Ý…¥ÐÉ•Á½Í¥Ñ½Éä¹É•…Ñ”¡‘É…™Ð¤((€€€…Ý…¥Ð•áÁ•Ð¡É•Á½Í¥Ñ½Éä¹…‘Ù…¹•-•É¹•±±½½È¡ÁÉ½™¥±”¹¥°€œÄÐÐ¸À¸ÜÔÔä¸ÄÔÀœ°€™¥¹•ÉÁÉ¥¹Ðµ¡É½µ¥Õ´œ¤¤(€€€€€€¹É•Í½±Ù•Ì¹Ñ½5…Ñ¡=‰©•Ð¡ì­•É¹•±Y•ÉÍ¥½¸è€œÄÐÐ¸À¸ÜÔÔä¸ÄÔÀœô¤(€€€…Ý…¥Ð•áÁ•Ð¡É•Á½Í¥Ñ½Éä¹…‘Ù…¹•-•É¹•±±½½È¡ÁÉ½™¥±”¹¥°€œÄÐÐ¸À¸ÜÔÔä¸ÄÐäœ°€™¥¹•ÉÁÉ¥¹Ðµ¡É½µ¥Õ´œ¤¤(€€€€€€¹É•©•ÑÌ¹Ñ½Q¡É½Ü Ÿ’ö;’ê;ž:¿–Šž&#šr³’â/¦f@œ¤(€€€…Ý…¥Ð•áÁ•Ð¡É•Á½Í¥Ñ½Éä¹…‘Ù…¹•-•É¹•±±½½È¡ÁÉ½™¥±”¹¥°€œÄÐÔ¸À¸Ä¸Äœ°€™¥¹•ÉÁÉ¥¹Ðµ¡É½µ¥Õ´œ¤¤(€€€€€€¹É•©•ÑÌ¹Ñ½Q¡É½Ü Ÿ’â7¢÷¢Þ£’âïž&#šr°œ¤(€€€…Ý…¥Ð•áÁ•Ð¡É•Á½Í¥Ñ½Éä¹…‘Ù…¹•-•É¹•±±½½È¡ÁÉ½™¥±”¹¥°€œÄÐÐ¸À¸ÜÔÔä¸ÄØÀœ°€ÕÍÑ½´œ¤¤(€€€€€€¹É•©•ÑÌ¹Ñ½Q¡É½Ü Ÿ’â;ž:¿–Š–në–ºkžÎï–"\œ¤(€€€•áÁ•Ð¡É•Á½Í¥Ñ½Éä¹•Ð¡ÁÉ½™¥±”¹¥¤¹­•É¹•±Y•ÉÍ¥½¸¤¹Ñ½	” œÄÐÐ¸À¸ÜÔÔä¸ÄÔÀœ¤(€ô¤((€¥Ð …±±½ÝÌÁ¥¹¹•­•É¹•°ÕÁÉ…‘•Ì‰ÕÐ‰±½­Ì‘½Ý¹É…‘•Ì™½È…¸•á¥ÍÑ¥¹œÁÉ½™¥±”œ°…Íå¹Œ€ ¤€ôøì(€€€½¹ÍÐÉ•Á½Í¥Ñ½Éä€ô…Ý…¥ÐÍÑ½É” ¤(€€€½¹ÍÐ½É¥¥¹…°€ô‘•™…Õ±ÑAÉ½™¥±•É…™Ð ¤(€€€½É¥¥¹…°¹­•É¹•±Y•ÉÍ¥½¸€ô€œÄÐÐ¸À¸ÜÔÔä¸ÄÌÈœ(€€€½¹ÍÐÁÉ½™¥±”€ô…Ý…¥ÐÉ•Á½Í¥Ñ½Éä¹É•…Ñ”¡½É¥¥¹…°¤((€€€½¹ÍÐÕÁÉ…‘•€ô‘•™…Õ±ÑAÉ½™¥±•É…™Ð ¤(€€€ÕÁÉ…‘•¹¹…µ”€ôÁÉ½™¥±”¹¹…µ”(€€€ÕÁÉ…‘•¹­•É¹•±Y•ÉÍ¥½¸€ô€œÄÐà¸À¸ÜÜÜà¸ÈÄÔœ(€€€…Ý…¥Ð•áÁ•Ð¡É•Á½Í¥Ñ½Éä¹ÕÁ‘…Ñ”¡ÁÉ½™¥±”¹¥°ÕÁÉ…‘•¤¤¹É•Í½±Ù•Ì¹Ñ½5…Ñ¡=‰©•Ð¡ì­•É¹•±Y•ÉÍ¥½¸è€œÄÐà¸À¸ÜÜÜà¸ÈÄÔœô¤((€€€½¹ÍÐ‘½Ý¹É…‘•€ô‘•™…Õ±ÑAÉ½™¥±•É…™Ð ¤(€€€‘½Ý¹É…‘•¹¹…µ”€ôÁÉ½™¥±”¹¹…µ”(€€€‘½Ý¹É…‘•¹­•É¹•±Y•ÉÍ¥½¸€ô€œÄÐÐ¸À¸ÜÔÔä¸ÄÌÈœ(€€€…Ý…¥Ð•áÁ•Ð¡É•Á½Í¥Ñ½Éä¹ÕÁ‘…Ñ”¡ÁÉ½™¥±”¹¥°‘½Ý¹É…‘•¤¤¹É•©•ÑÌ¹Ñ½Q¡É½Ü Ÿ–ÞË¦bïš¶‹–š‚ã’î8€ÄÐà¸À¸ÜÜÜà¸ÈÄÔƒ¦f7žêŸ–"À€ÄÐÐ¸À¸ÜÔÔä¸ÄÌÈœ¤(€€€•áÁ•Ð¡É•Á½Í¥Ñ½Éä¹•Ð¡ÁÉ½™¥±”¹¥¤¹­•É¹•±Y•ÉÍ¥½¸¤¹Ñ½	” œÄÐà¸À¸ÜÜÜà¸ÈÄÔœ¤(€ô¤((€¥Ð Á•Éµ…¹•¹Ñ±äÁÕÉ•Ì½¹±äÙ…±¥‘…Ñ•É•å±”•¹ÑÉ¥•Ìœ°…Íå¹Œ€ ¤€ôøì(€€€½¹ÍÐÉ•Á½Í¥Ñ½Éä€ô…Ý…¥ÐÍÑ½É” ¤(€€€½¹ÍÐÁÉ½™¥±”€ô…Ý…¥ÐÉ•Á½Í¥Ñ½Éä¹É•…Ñ”¡‘•™…Õ±ÑAÉ½™¥±•É…™Ð ¤¤(€€€…Ý…¥ÐÝÉ¥Ñ•¥±”¡©½¥¸¡É•Á½Í¥Ñ½Éä¹ÁÉ½™¥±•…Ñ…A…Ñ ¡ÁÉ½™¥±”¹¥¤°€Í¥Ñ”µ‘…Ñ„œ¤°€ÁÉ•Í•ÉÙ•Õ¹Ñ¥°ÁÕÉ”œ¤(€€€…Ý…¥ÐÉ•Á½Í¥Ñ½Éä¹É•µ½Ù”¡ÁÉ½™¥±”¹¥¤(€€€½¹ÍÐm¥Ñ•µt€ô…Ý…¥ÐÉ•Á½Í¥Ñ½Éä¹±¥ÍÑQÉ…Í  ¤(€€€•áÁ•Ð¡¥Ñ•´¹Í¥é•	åÑ•Ì¤¹Ñ½	•É•…Ñ•ÉQ¡…¸ À¤((€€€…Ý…¥ÐÉ•Á½Í¥Ñ½Éä¹ÁÕÉ•QÉ…Í ¡¥Ñ•´¹ÑÉ…Í¡%¤((€€€•áÁ•Ð¡…Ý…¥ÐÉ•Á½Í¥Ñ½Éä¹±¥ÍÑQÉ…Í  ¤¤¹Ñ½ÅÕ…°¡mt¤(€€€…Ý…¥Ð•áÁ•Ð¡É•Á½Í¥Ñ½Éä¹É•ÍÑ½É”¡¥Ñ•´¹ÑÉ…Í¡%¤¤¹É•©•ÑÌ¹Ñ½Q¡É½Ü Ÿ’â7–º3šVÐœ¤(€ô¤((€¥Ð µ¥É…Ñ•Ì•á¥ÍÑ¥¹œÍ¡•µ„€ÄÁÉ½™¥±•ÌÝ¥Ñ •µÁÑäÉ½ÕÁÌ°Ñ…Ì…¹•áÑ•¹Í¥½¹Ìœ°…Íå¹Œ€ ¤€ôøì(€€€½¹ÍÐÁ…Ñ €ô…Ý…¥Ðµ­‘Ñ•µÀ¡©½¥¸¡ÑµÁ‘¥È ¤°€ÁÉ¥Í´µ‰É½ÝÍ•È´œ¤¤(€€€Ñ•µÁ½É…ÉåA…Ñ¡Ì¹ÁÕÍ ¡Á…Ñ ¤(€€€½¹ÍÐ‘É…™Ð€ô‘•™…Õ±ÑAÉ½™¥±•É…™Ð ¤…ÌÕ¹­¹½Ý¸…ÌI•½ÉñÍÑÉ¥¹œ°Õ¹­¹½Ý¸ø(€€€‘•±•Ñ”‘É…™Ð¹É½ÕÀ(€€€‘•±•Ñ”‘É…™Ð¹Ñ…Ì(€€€‘•±•Ñ”‘É…™Ð¹•áÑ•¹Í¥½¹%‘Ì(€€€‘•±•Ñ”‘É…™Ð¹­•É¹•±Y•ÉÍ¥½¸(€€€‘•±•Ñ”€¡‘É…™Ð¹™¥¹•ÉÁÉ¥¹Ð…ÌI•½ÉñÍÑÉ¥¹œ°Õ¹­¹½Ý¸ø¤¹¡…É‘Ý…É•AÉ½™¥±•%(€€€‘•±•Ñ”€¡‘É…™Ð¹™¥¹•ÉÁÉ¥¹Ð…ÌI•½ÉñÍÑÉ¥¹œ°Õ¹­¹½Ý¸ø¤¹¹•ÑÝ½É­%‘•¹Ñ¥Ñå5½‘”(€€€‘•±•Ñ”€¡‘É…™Ð¹™¥¹•ÉÁÉ¥¹Ð…ÌI•½ÉñÍÑÉ¥¹œ°Õ¹­¹½Ý¸ø¤¹ÁÉ½áåá¥ÑA½±¥ä(€€€…Ý…¥ÐÝÉ¥Ñ•¥±”¡©½¥¸¡Á…Ñ °€ÁÉ½™¥±•Ì¹©Í½¸œ¤°)M=8¹ÍÑÉ¥¹¥™ä¡ì(€€€€€Í¡•µ…Y•ÉÍ¥½¸è€Ä°(€€€€€ÁÉ½™¥±•Ìèmì(€€€€€€€€¸¸¹‘É…™Ð°(€€€€€€€¥è€±•…äµÁÉ½™¥±”œ°(€€€€€€€É•…Ñ•‘Ðè€œÈÀÈØ´Àà´ÀÅPÀÀèÀÀèÀÀ¸ÀÀÁhœ°(€€€€€€€ÕÁ‘…Ñ•‘Ðè€œÈÀÈØ´Àà´ÀÅPÀÀèÀÀèÀÀ¸ÀÀÁhœ°(€€€€€€€ÍÑ…ÑÕÌè€±½Í•œ(€€€€€õt(€€€ô¤¤((€€€½¹ÍÐÉ•Á½Í¥Ñ½Éä€ô¹•ÜAÉ½™¥±•MÑ½É”¡Á…Ñ ¤(€€€…Ý…¥ÐÉ•Á½Í¥Ñ½Éä¹¥¹¥Ñ¥…±¥é” ¤((€€€•áÁ•Ð¡É•Á½Í¥Ñ½Éä¹•Ð ±•…äµÁÉ½™¥±”œ¤¹É½ÕÀ¤¹Ñ½	” œœ¤(€€€•áÁ•Ð¡É•Á½Í¥Ñ½Éä¹•Ð ±•…äµÁÉ½™¥±”œ¤¹Í•É¥…±9Õµ‰•È¤¹Ñ½	” Ä¤(€€€•áÁ•Ð¡É•Á½Í¥Ñ½Éä¹•Ð ±•…äµÁÉ½™¥±”œ¤¹Ñ…Ì¤¹Ñ½ÅÕ…°¡mt¤(€€€•áÁ•Ð¡É•Á½Í¥Ñ½Éä¹•Ð ±•…äµÁÉ½™¥±”œ¤¹•áÑ•¹Í¥½¹%‘Ì¤¹Ñ½ÅÕ…°¡mt¤(€€€•áÁ•Ð¡É•Á½Í¥Ñ½Éä¹•Ð ±•…äµÁÉ½™¥±”œ¤¹™¥¹•ÉÁÉ¥¹Ð¹Ý•‰ÉÑA½±¥ä¤¹Ñ½	” ÁÉ½áå}½¹±äœ¤(€€€•áÁ•Ð¡É•Á½Í¥Ñ½Éä¹•Ð ±•…äµÁÉ½™¥±”œ¤¹Ý¥¹‘½Ü¹µ½‘”¤¹Ñ½	” …ÕÑ¼œ¤(€€€•áÁ•Ð¡É•Á½Í¥Ñ½Éä¹•Ð ±•…äµÁÉ½™¥±”œ¤¹™…Ù½É¥Ñ”¤¹Ñ½	”¡™…±Í”¤(€€€•áÁ•Ð¡É•Á½Í¥Ñ½Éä¹•Ð ±•…äµÁÉ½™¥±”œ¤¹­•É¹•±Y•ÉÍ¥½¸¤¹Ñ½	” œœ¤(€€€•áÁ•Ð¡É•Á½Í¥Ñ½Éä¹•Ð ±•…äµÁÉ½™¥±”œ¤¹™¥¹•ÉÁÉ¥¹Ð¹¡…É‘Ý…É•AÉ½™¥±•%¤¹Ñ½	” ±•…äµÕÍÑ½´œ¤(€€€•áÁ•Ð¡É•Á½Í¥Ñ½Éä¹•Ð ±•…äµÁÉ½™¥±”œ¤¹™¥¹•ÉÁÉ¥¹Ð¹¹•ÑÝ½É­%‘•¹Ñ¥Ñå5½‘”¤¹Ñ½	” µ…¹Õ…°œ¤(€€€•áÁ•Ð¡É•Á½Í¥Ñ½Éä¹•Ð ±•…äµÁÉ½™¥±”œ¤¹™¥¹•ÉÁÉ¥¹Ð¹ÁÉ½áåá¥ÑA½±¥ä¤¹Ñ½	” Ý…É¸œ¤(€€€•áÁ•Ð¡)M=8¹Á…ÉÍ”¡…Ý…¥ÐÉ•…‘¥±”¡É•Á½Í¥Ñ½Éä¹ÁÉ½™¥±•=Ý¹•ÉA…Ñ  ±•…äµÁÉ½™¥±”œ¤°€ÕÑ˜àœ¤¤¤¹Ñ½ÅÕ…°¡ì(€€€€€Í¡•µ…Y•ÉÍ¥½¸è€Ä°(€€€€€ÁÉ½™¥±•%è€±•…äµÁÉ½™¥±”œ(€€€ô¤(€€€½¹ÍÐµ¥É…Ñ•€ô)M=8¹Á…ÉÍ”¡…Ý…¥ÐÉ•…‘¥±”¡É•Á½Í¥Ñ½Éä¹ÁÉ½™¥±•ÍA…Ñ °€ÕÑ˜àœ¤¤(€€€•áÁ•Ð¡µ¥É…Ñ•¹Í¡•µ…Y•ÉÍ¥½¸¤¹Ñ½	” ÄÌ¤(€€€•áÁ•Ð¡µ¥É…Ñ•¹¹•áÑM•É¥…±9Õµ‰•È¤¹Ñ½	” È¤(€ô¤((€¥Ð É•Á…¥ÉÌ…¸¥¹Ù…±¥]•‰IQÁ½±¥äÑ¼Ñ¡”Í…™”‘•™…Õ±Ðœ°…Íå¹Œ€ ¤€ôøì(€€€½¹ÍÐÁ…Ñ €ô…Ý…¥Ðµ­‘Ñ•µÀ¡©½¥¸¡ÑµÁ‘¥È ¤°€ÁÉ¥Í´µ‰É½ÝÍ•È´œ¤¤(€€€Ñ•µÁ½É…ÉåA…Ñ¡Ì¹ÁÕÍ ¡Á…Ñ ¤(€€€½¹ÍÐ‘É…™Ð€ô‘•™…Õ±ÑAÉ½™¥±•É…™Ð ¤(€€€‘É…™Ð¹™¥¹•ÉÁÉ¥¹Ð¹Ý•‰ÉÑA½±¥ä€ô€¥¹Ù…±¥œ…ÌÑåÁ•½˜‘É…™Ð¹™¥¹•ÉÁÉ¥¹Ð¹Ý•‰ÉÑA½±¥ä(€€€…Ý…¥ÐÝÉ¥Ñ•¥±”¡©½¥¸¡Á…Ñ °€ÁÉ½™¥±•Ì¹©Í½¸œ¤°)M=8¹ÍÑÉ¥¹¥™ä¡ì(€€€€€Í¡•µ…Y•ÉÍ¥½¸è€Ð°(€€€€€ÁÉ½™¥±•Ìèmì€¸¸¹‘É…™Ð°¥è€‘…µ…•µÁÉ½™¥±”œ°É•…Ñ•‘Ðè€œœ°ÕÁ‘…Ñ•‘Ðè€œœ°ÍÑ…ÑÕÌè€±½Í•œõt(€€€ô¤¤((€€€½¹ÍÐÉ•Á½Í¥Ñ½Éä€ô¹•ÜAÉ½™¥±•MÑ½É”¡Á…Ñ ¤(€€€…Ý…¥ÐÉ•Á½Í¥Ñ½Éä¹¥¹¥Ñ¥…±¥é” ¤((€€€•áÁ•Ð¡É•Á½Í¥Ñ½Éä¹•Ð ‘…µ…•µÁÉ½™¥±”œ¤¹™¥¹•ÉÁÉ¥¹Ð¹Ý•‰ÉÑA½±¥ä¤¹Ñ½	” ÁÉ½áå}½¹±äœ¤(€ô¤((€¥Ð É•½Ù•ÉÌ„½ÉÉÕÁÑ•ÁÉ¥µ…Éä™¥±”™É½´Ñ¡”±…Ñ•ÍÐ‰…­ÕÀ…¹¥Í½±…Ñ•Ì¥Ðœ°…Íå¹Œ€ ¤€ôøì(€€€½¹ÍÐÉ•Á½Í¥Ñ½Éä€ô…Ý…¥ÐÍÑ½É” ¤(€€€½¹ÍÐÁÉ½™¥±”€ô…Ý…¥ÐÉ•Á½Í¥Ñ½Éä¹É•…Ñ”¡‘•™…Õ±ÑAÉ½™¥±•É…™Ð ¤¤(€€€…Ý…¥ÐÝÉ¥Ñ•¥±”¡É•Á½Í¥Ñ½Éä¹ÁÉ½™¥±•ÍA…Ñ °€í‰É½­•¸©Í½¸œ°€ÕÑ˜àœ¤((€€€½¹ÍÐÉ•½Ù•É•€ô¹•ÜAÉ½™¥±•MÑ½É”¡É•Á½Í¥Ñ½Éä¹Ù…Õ±ÑA…Ñ ¤(€€€…Ý…¥ÐÉ•½Ù•É•¹¥¹¥Ñ¥…±¥é” ¤((€€€•áÁ•Ð¡É•½Ù•É•¹•Ð¡ÁÉ½™¥±”¹¥¤¹¹…µ”¤¹Ñ½	”¡ÁÉ½™¥±”¹¹…µ”¤(€€€•áÁ•Ð¡É•½Ù•É•¹ÍÑ½É…•!•…±Ñ  ¤¹É•½Ù•É•‘É½µ	…­ÕÀ¤¹Ñ½	”¡ÑÉÕ”¤(€€€•áÁ•Ð¡É•½Ù•É•¹ÍÑ½É…•!•…±Ñ  ¤¹½ÉÉÕÁÑ¥±•A…Ñ ¤¹Ñ½½¹Ñ…¥¸ ÁÉ½™¥±•Ì¹½ÉÉÕÁÐ´œ¤(€€€…Ý…¥Ð•áÁ•Ð¡É•…‘¥±”¡É•½Ù•É•¹ÍÑ½É…•!•…±Ñ  ¤¹½ÉÉÕÁÑ¥±•A…Ñ „°€ÕÑ˜àœ¤¤¹É•Í½±Ù•Ì¹Ñ½	” í‰É½­•¸©Í½¸œ¤(€ô¤((€¥Ð É•½Ù•ÉÌÝ¡•¸Ñ¡”ÁÉ¥µ…Éä™¥±”¥Ìµ¥ÍÍ¥¹œ‰ÕÐ„‰…­ÕÀ•á¥ÍÑÌœ°…Íå¹Œ€ ¤€ôøì(€€€½¹ÍÐÉ•Á½Í¥Ñ½Éä€ô…Ý…¥ÐÍÑ½É” ¤(€€€½¹ÍÐÁÉ½™¥±”€ô…Ý…¥ÐÉ•Á½Í¥Ñ½Éä¹É•…Ñ”¡‘•™…Õ±ÑAÉ½™¥±•É…™Ð ¤¤(€€€…Ý…¥ÐÉ´¡É•Á½Í¥Ñ½Éä¹ÁÉ½™¥±•ÍA…Ñ ¤((€€€½¹ÍÐÉ•½Ù•É•€ô¹•ÜAÉ½™¥±•MÑ½É”¡É•Á½Í¥Ñ½Éä¹Ù…Õ±ÑA…Ñ ¤(€€€…Ý…¥ÐÉ•½Ù•É•¹¥¹¥Ñ¥…±¥é” ¤((€€€•áÁ•Ð¡É•½Ù•É•¹•Ð¡ÁÉ½™¥±”¹¥¤¹¥¤¹Ñ½	”¡ÁÉ½™¥±”¹¥¤(€€€•áÁ•Ð¡É•½Ù•É•¹ÍÑ½É…•!•…±Ñ  ¤¹É•½Ù•É•‘É½µ	…­ÕÀ¤¹Ñ½	”¡ÑÉÕ”¤(€€€•áÁ•Ð¡É•½Ù•É•¹ÍÑ½É…•!•…±Ñ  ¤¹½ÉÉÕÁÑ¥±•A…Ñ ¤¹Ñ½	•U¹‘•™¥¹• ¤(€ô¤((€¥Ð ÕÍ•ÌÑ¡”ÁÉ•Ù¥½ÕÌ‰…­ÕÀÝ¡•¸Ñ¡”ÁÉ¥µ…Éä…¹±…Ñ•ÍÐ‰…­ÕÀ…É”¥¹Ù…±¥œ°…Íå¹Œ€ ¤€ôøì(€€€½¹ÍÐÉ•Á½Í¥Ñ½Éä€ô…Ý…¥ÐÍÑ½É” ¤(€€€…Ý…¥ÐÉ•Á½Í¥Ñ½Éä¹É•…Ñ”¡‘•™…Õ±ÑAÉ½™¥±•É…™Ð ¤¤(€€€…Ý…¥ÐÝÉ¥Ñ•¥±”¡É•Á½Í¥Ñ½Éä¹ÁÉ½™¥±•ÍA…Ñ °€íôœ°€ÕÑ˜àœ¤(€€€…Ý…¥ÐÝÉ¥Ñ•¥±”¡É•Á½Í¥Ñ½Éä¹‰…­ÕÁA…Ñ °€mtœ°€ÕÑ˜àœ¤((€€€½¹ÍÐÉ•½Ù•É•€ô¹•ÜAÉ½™¥±•MÑ½É”¡É•Á½Í¥Ñ½Éä¹Ù…Õ±ÑA…Ñ ¤(€€€…Ý…¥ÐÉ•½Ù•É•¹¥¹¥Ñ¥…±¥é” ¤((€€€•áÁ•Ð¡É•½Ù•É•¹ÍÑ½É…•!•…±Ñ  ¤¹É•½Ù•Éå5•ÍÍ…”¤¹Ñ½½¹Ñ…¥¸ Ÿ’â+’â’î÷–’’îôœ¤(€€€•áÁ•Ð¡)M=8¹Á…ÉÍ”¡…Ý…¥ÐÉ•…‘¥±”¡É•½Ù•É•¹ÁÉ•Ù¥½ÕÍ	…­ÕÁA…Ñ °€ÕÑ˜àœ¤¤¹Í¡•µ…Y•ÉÍ¥½¸¤¹Ñ½	” ÄÌ¤(€ô¤((€¥Ð É•™ÕÍ•ÌÑ¼É•Á±…”‘…Ñ„Ý¡•¸Ñ¡”ÁÉ¥µ…Éä…¹‰½Ñ ‰…­ÕÁÌ…É”¥¹Ù…±¥œ°…Íå¹Œ€ ¤€ôøì(€€€½¹ÍÐÉ•Á½Í¥Ñ½Éä€ô…Ý…¥ÐÍÑ½É” ¤(€€€…Ý…¥ÐÉ•Á½Í¥Ñ½Éä¹É•…Ñ”¡‘•™…Õ±ÑAÉ½™¥±•É…™Ð ¤¤(€€€…Ý…¥ÐÝÉ¥Ñ•¥±”¡É•Á½Í¥Ñ½Éä¹ÁÉ½™¥±•ÍA…Ñ °€í‰…ÁÉ¥µ…Éäœ°€ÕÑ˜àœ¤(€€€…Ý…¥ÐÝÉ¥Ñ•¥±”¡É•Á½Í¥Ñ½Éä¹‰…­ÕÁA…Ñ °€í‰…‰…­ÕÀœ°€ÕÑ˜àœ¤(€€€…Ý…¥ÐÝÉ¥Ñ•¥±”¡É•Á½Í¥Ñ½Éä¹ÁÉ•Ù¥½ÕÍ	…­ÕÁA…Ñ °€í‰…ÁÉ•Ù¥½ÕÌœ°€ÕÑ˜àœ¤((€€€½¹ÍÐ™…¥±•€ô¹•ÜAÉ½™¥±•MÑ½É”¡É•Á½Í¥Ñ½Éä¹Ù…Õ±ÑA…Ñ ¤(€€€…Ý…¥Ð•áÁ•Ð¡™…¥±•¹¥¹¥Ñ¥…±¥é” ¤¤¹É•©•ÑÌ¹Ñ½Q¡É½Ü Ÿ–šVÃš6»–>+–’’î÷–vš^ƒšÎW¢¾ï–>Xœ¤(€€€…Ý…¥Ð•áÁ•Ð¡É•…‘¥±”¡É•Á½Í¥Ñ½Éä¹ÁÉ½™¥±•ÍA…Ñ °€ÕÑ˜àœ¤¤¹É•Í½±Ù•Ì¹Ñ½	” í‰…ÁÉ¥µ…Éäœ¤(€ô¤((€¥Ð Á•ÉÍ¥ÍÑÌÑ¡”±…Ñ•ÍÐÁÉ½áä¡•¬…¹±•…ÉÌ¥ÐÝ¡•¸ÁÉ½áäÉ•‘•¹Ñ¥…±Ì¡…¹”œ°…Íå¹Œ€ ¤€ôøì(€€€½¹ÍÐÉ•Á½Í¥Ñ½Éä€ô…Ý…¥ÐÍÑ½É” ¤(€€€½¹ÍÐ‘É…™Ð€ô‘•™…Õ±ÑAÉ½™¥±•É…™Ð ¤(€€€‘É…™Ð¹ÁÉ½áä€ôìÁÉ½Ñ½½°è€¡ÑÑÀœ°¡½ÍÐè€ÁÉ½áä¹•á…µÁ±”¹½´œ°Á½ÉÐè€àÀàÀ°ÕÍ•É¹…µ”è€ÕÍ•Èœ°Á…ÍÍÝ½Éè€Í•É•Ðœô(€€€½¹ÍÐÁÉ½™¥±”€ô…Ý…¥ÐÉ•Á½Í¥Ñ½Éä¹É•…Ñ”¡‘É…™Ð¤(€€€…Ý…¥ÐÉ•Á½Í¥Ñ½Éä¹Í•ÑAÉ½áå¡•¬¡ÁÉ½™¥±”¹¥°ì(€€€€€½¬èÑÉÕ”°(€€€€€¥Àè€œÈÀÌ¸À¸ÄÄÌ¸àœ°(€€€€€±…Ñ•¹å5Ìè€àÄ°(€€€€€½Õ¹ÑÉäè€U¹¥Ñ•MÑ…Ñ•Ìœ°(€€€€€¡•­•‘Ðè€œÈÀÈØ´Àà´ÀÉPÄÈèÀÀèÀÀ¸ÀÀÁhœ(€€€ô¤((€€€½¹ÍÐÉ•½Á•¹•€ô¹•ÜAÉ½™¥±•MÑ½É”¡É•Á½Í¥Ñ½Éä¹Ù…Õ±ÑA…Ñ ¤(€€€…Ý…¥ÐÉ•½Á•¹•¹¥¹¥Ñ¥…±¥é” ¤(€€€•áÁ•Ð¡É•½Á•¹•¹•Ð¡ÁÉ½™¥±”¹¥¤¹ÁÉ½áå¡•¬ü¹¥À¤¹Ñ½	” œÈÀÌ¸À¸ÄÄÌ¸àœ¤((€€€½¹ÍÐ¡…¹•€ôÁÕ‰±¥AÉ½™¥±”¡É•½Á•¹•¹•Ð¡ÁÉ½™¥±”¹¥¤¤(€€€…Ý…¥ÐÉ•½Á•¹•¹ÕÁ‘…Ñ”¡ÁÉ½™¥±”¹¥°ì€¸¸¹¡…¹•°ÁÉ½áäèì€¸¸¹¡…¹•¹ÁÉ½áä°Á…ÍÍÝ½Éè€É•Á±…•µ•¹Ðœôô¤(€€€•áÁ•Ð¡É•½Á•¹•¹•Ð¡ÁÉ½™¥±”¹¥¤¹ÁÉ½áå¡•¬¤¹Ñ½	•U¹‘•™¥¹• ¤(€ô¤((€¥Ð µ…É­Ì„¡…¹•ÁÉ½áä•á¥ÐÕ¹Ñ¥°Ñ¡”Í…µ”•á¥Ð¥Ì½¹™¥Éµ•……¥¸œ°…Íå¹Œ€ ¤€ôøì(€€€½¹ÍÐÉ•Á½Í¥Ñ½Éä€ô…Ý…¥ÐÍÑ½É” ¤(€€€½¹ÍÐÁÉ½™¥±”€ô…Ý…¥ÐÉ•Á½Í¥Ñ½Éä¹É•…Ñ”¡‘•™…Õ±ÑAÉ½™¥±•É…™Ð ¤¤(€€€½¹ÍÐ¡•­•‘Ð€ô€œÈÀÈØ´Àà´ÀÉPÄÈèÀÀèÀÀ¸ÀÀÁhœ(€€€…Ý…¥ÐÉ•Á½Í¥Ñ½Éä¹Í•ÑAÉ½áå¡•¬¡ÁÉ½™¥±”¹¥°ì½¬èÑÉÕ”°¥Àè€œÈÀÌ¸À¸ÄÄÌ¸àœ°±…Ñ•¹å5Ìè€ÄÀ°¡•­•‘Ðô¤(€€€½¹ÍÐ¡…¹•€ô…Ý…¥ÐÉ•Á½Í¥Ñ½Éä¹Í•ÑAÉ½áå¡•¬¡ÁÉ½™¥±”¹¥°ì½¬èÑÉÕ”°¥Àè€œÈÀÌ¸À¸ÄÄÌ¸äœ°±…Ñ•¹å5Ìè€ÄÄ°¡•­•‘Ðô¤(€€€•áÁ•Ð¡¡…¹•¹ÁÉ½áå¡•¬¤¹Ñ½5…Ñ¡=‰©•Ð¡ì•á¥Ñ¡…¹•èÑÉÕ”°ÁÉ•Ù¥½ÕÍ%Àè€œÈÀÌ¸À¸ÄÄÌ¸àœô¤((€€€½¹ÍÐ½¹™¥Éµ•€ô…Ý…¥ÐÉ•Á½Í¥Ñ½Éä¹Í•ÑAÉ½áå¡•¬¡ÁÉ½™¥±”¹¥°ì½¬èÑÉÕ”°¥Àè€œÈÀÌ¸À¸ÄÄÌ¸äœ°±…Ñ•¹å5Ìè€ä°¡•­•‘Ðô¤(€€€•áÁ•Ð¡½¹™¥Éµ•¹ÁÉ½áå¡•¬ü¹•á¥Ñ¡…¹•¤¹Ñ½	”¡™…±Í”¤(€€€•áÁ•Ð¡½¹™¥Éµ•¹ÁÉ½áå¡•¬ü¹ÁÉ•Ù¥½ÕÍ%À¤¹Ñ½	•U¹‘•™¥¹• ¤(€ô¤)ô¤
+    })).rejects.toThrow('å®žé™…å‡ºå£ IP')
+  })
+
+  it('keeps a proxy-pool binding when an account profile is edited without retyping the stored password', async () => {
+    const repository = await store()
+    const draft = defaultProfileDraft()
+    draft.proxy = { protocol: 'http', host: 'proxy.example.com', port: 8080, username: 'user', password: 'secret' }
+    const created = await repository.create(draft)
+    await repository.assignProxy(created.id, draft.proxy, {
+      ok: true,
+      ip: '203.0.113.55',
+      latencyMs: 50,
+      checkedAt: new Date().toISOString(),
+      countryCode: 'US',
+      timezone: 'America/Los_Angeles',
+      latitude: 34.05,
+      longitude: -118.24,
+      geoConfidence: 'consensus'
+    }, '11111111-1111-1111-1111-111111111111')
+    const publicDraft = publicProfile(repository.get(created.id))
+    publicDraft.name = 'renamed'
+    await repository.update(created.id, publicDraft)
+    expect(repository.get(created.id).proxyPoolEntryId).toBe('11111111-1111-1111-1111-111111111111')
+  })
+
+  it('preserves, replaces or clears a stored proxy password without exposing a marker on disk', async () => {
+    const repository = await store()
+    const draft = defaultProfileDraft()
+    draft.proxy = { protocol: 'http', host: 'proxy.example.com', port: 8080, username: 'user', password: 'secret' }
+    const created = await repository.create(draft)
+
+    const unchanged = publicProfile(created)
+    await repository.update(created.id, unchanged)
+    expect(repository.get(created.id).proxy.password).toBe('secret')
+
+    const replaced = publicProfile(repository.get(created.id))
+    await repository.update(created.id, { ...replaced, proxy: { ...replaced.proxy, password: 'new-secret' } })
+    expect(repository.get(created.id).proxy.password).toBe('new-secret')
+
+    const cleared = publicProfile(repository.get(created.id))
+    cleared.proxy.passwordStored = false
+    await repository.update(created.id, cleared)
+    expect(repository.get(created.id).proxy.password).toBe('')
+    expect(await readFile(repository.profilesPath, 'utf8')).not.toContain('passwordStored')
+  })
+
+  it('does not carry a saved password to a changed proxy identity', async () => {
+    const repository = await store()
+    const draft = defaultProfileDraft()
+    draft.proxy = { protocol: 'http', host: 'one.example.com', port: 8080, username: 'user', password: 'secret' }
+    const created = await repository.create(draft)
+    const changed = publicProfile(created)
+    changed.proxy.host = 'two.example.com'
+
+    await repository.update(created.id, changed)
+    expect(repository.get(created.id).proxy.password).toBe('')
+  })
+
+  it('moves removed profile data to a recoverable recycle directory and restores it', async () => {
+    const repository = await store()
+    const draft = defaultProfileDraft()
+    draft.group = 'åº—é“ºç»„'
+    draft.tags = ['é‡ç‚¹']
+    draft.extensionIds = ['11111111-1111-1111-1111-111111111111']
+    const profile = await repository.create(draft)
+    expect(await repository.usesExtension(draft.extensionIds[0])).toBe(true)
+    await writeFile(join(repository.profileDataPath(profile.id), 'cookie-test'), 'preserved')
+    await repository.remove(profile.id)
+
+    expect(repository.list()).toHaveLength(0)
+    await expect(readFile(repository.profilesPath, 'utf8')).resolves.toContain('"profiles": []')
+    const trash = await repository.listTrash()
+    expect(trash).toHaveLength(1)
+    expect(trash[0].name).toBe(profile.name)
+    expect(await repository.usesExtension(draft.extensionIds[0])).toBe(true)
+
+    const restored = await repository.restore(trash[0].trashId)
+    expect(restored.id).toBe(profile.id)
+    expect(restored.serialNumber).toBe(profile.serialNumber)
+    expect(restored.group).toBe('åº—é“ºç»„')
+    expect(restored.tags).toEqual(['é‡ç‚¹'])
+    await expect(readFile(join(repository.profileDataPath(restored.id), 'cookie-test'), 'utf8')).resolves.toBe('preserved')
+    expect(await repository.listTrash()).toHaveLength(0)
+  })
+
+  it('tracks pinned kernel references by family in active and recyclable profiles', async () => {
+    const repository = await store()
+    const draft = defaultProfileDraft()
+    draft.name = 'å›ºå®šå†…æ ¸çŽ¯å¢ƒ'
+    draft.kernelVersion = '144.0.7559.132'
+    draft.kernelFamily = 'fingerprint-chromium'
+    const profile = await repository.create(draft)
+
+    expect(await repository.kernelUsers(draft.kernelVersion)).toEqual(['å›ºå®šå†…æ ¸çŽ¯å¢ƒ'])
+    expect(await repository.kernelUsers(draft.kernelVersion, 'fingerprint-chromium')).toEqual(['å›ºå®šå†…æ ¸çŽ¯å¢ƒ'])
+    expect(await repository.kernelUsers(draft.kernelVersion, 'custom')).toEqual([])
+
+    await repository.remove(profile.id)
+    expect(await repository.kernelUsers(draft.kernelVersion, 'fingerprint-chromium')).toEqual(['å›ºå®šå†…æ ¸çŽ¯å¢ƒ'])
+    expect(await repository.kernelUsers(draft.kernelVersion, 'custom')).toEqual([])
+  })
+
+  it('conservatively treats legacy version-only pins as users of either family', async () => {
+    const repository = await store()
+    const draft = defaultProfileDraft()
+    draft.name = 'æ—§ç‰ˆå›ºå®šçŽ¯å¢ƒ'
+    draft.kernelVersion = '144.0.7559.132'
+    const profile = await repository.create(draft)
+
+    expect(await repository.kernelUsers(draft.kernelVersion, 'fingerprint-chromium')).toEqual(['æ—§ç‰ˆå›ºå®šçŽ¯å¢ƒ'])
+    expect(await repository.kernelUsers(draft.kernelVersion, 'custom')).toEqual(['æ—§ç‰ˆå›ºå®šçŽ¯å¢ƒ'])
+
+    await repository.remove(profile.id)
+    expect(await repository.kernelUsers(draft.kernelVersion, 'fingerprint-chromium')).toEqual(['æ—§ç‰ˆå›ºå®šçŽ¯å¢ƒ'])
+    expect(await repository.kernelUsers(draft.kernelVersion, 'custom')).toEqual(['æ—§ç‰ˆå›ºå®šçŽ¯å¢ƒ'])
+  })
+
+  it('advances the automatic kernel floor only within the same family and major', async () => {
+    const repository = await store()
+    const draft = defaultProfileDraft()
+    draft.name = 'è¡¥ä¸å‡çº§çŽ¯å¢ƒ'
+    draft.kernelVersion = '144.0.7559.132'
+    draft.kernelFamily = 'fingerprint-chromium'
+    const profile = await repository.create(draft)
+
+    await expect(repository.advanceKernelFloor(profile.id, '144.0.7559.150', 'fingerprint-chromium'))
+      .resolves.toMatchObject({ kernelVersion: '144.0.7559.150' })
+    await expect(repository.advanceKernelFloor(profile.id, '144.0.7559.149', 'fingerprint-chromium'))
+      .rejects.toThrow('ä½ŽäºŽçŽ¯å¢ƒç‰ˆæœ¬ä¸‹é™')
+    await expect(repository.advanceKernelFloor(profile.id, '145.0.1.1', 'fingerprint-chromium'))
+      .rejects.toThrow('ä¸èƒ½è·¨ä¸»ç‰ˆæœ¬')
+    await expect(repository.advanceKernelFloor(profile.id, '144.0.7559.160', 'custom'))
+      .rejects.toThrow('ä¸ŽçŽ¯å¢ƒå›ºå®šç³»åˆ—')
+    expect(repository.get(profile.id).kernelVersion).toBe('144.0.7559.150')
+  })
+
+  it('allows pinned kernel upgrades but blocks downgrades for an existing profile', async () => {
+    const repository = await store()
+    const original = defaultProfileDraft()
+    original.kernelVersion = '144.0.7559.132'
+    const profile = await repository.create(original)
+
+    const upgraded = defaultProfileDraft()
+    upgraded.name = profile.name
+    upgraded.kernelVersion = '148.0.7778.215'
+    await expect(repository.update(profile.id, upgraded)).resolves.toMatchObject({ kernelVersion: '148.0.7778.215' })
+
+    const downgraded = defaultProfileDraft()
+    downgraded.name = profile.name
+    downgraded.kernelVersion = '144.0.7559.132'
+    await expect(repository.update(profile.id, downgraded)).rejects.toThrow('å·²é˜»æ­¢å†…æ ¸ä»Ž 148.0.7778.215 é™çº§åˆ° 144.0.7559.132')
+    expect(repository.get(profile.id).kernelVersion).toBe('148.0.7778.215')
+  })
+
+  it('permanently purges only validated recycle entries', async () => {
+    const repository = await store()
+    const profile = await repository.create(defaultProfileDraft())
+    await writeFile(join(repository.profileDataPath(profile.id), 'site-data'), 'preserved until purge')
+    await repository.remove(profile.id)
+    const [item] = await repository.listTrash()
+    expect(item.sizeBytes).toBeGreaterThan(0)
+
+    await repository.purgeTrash(item.trashId)
+
+    expect(await repository.listTrash()).toEqual([])
+    await expect(repository.restore(item.trashId)).rejects.toThrow('ä¸å®Œæ•´')
+  })
+
+  it('migrates existing schema 1 profiles with empty groups, tags and extensions', async () => {
+    const path = await mkdtemp(join(tmpdir(), 'prism-browser-'))
+    temporaryPaths.push(path)
+    const draft = defaultProfileDraft() as unknown as Record<string, unknown>
+    delete draft.group
+    delete draft.tags
+    delete draft.extensionIds
+    delete draft.kernelVersion
+    delete (draft.fingerprint as Record<string, unknown>).hardwareProfileId
+    delete (draft.fingerprint as Record<string, unknown>).networkIdentityMode
+    delete (draft.fingerprint as Record<string, unknown>).proxyExitPolicy
+    await writeFile(join(path, 'profiles.json'), JSON.stringify({
+      schemaVersion: 1,
+      profiles: [{
+        ...draft,
+        id: 'legacy-profile',
+        createdAt: '2026-08-01T00:00:00.000Z',
+        updatedAt: '2026-08-01T00:00:00.000Z',
+        status: 'closed'
+      }]
+    }))
+
+    const repository = new ProfileStore(path)
+    await repository.initialize()
+
+    expect(repository.get('legacy-profile').group).toBe('')
+    expect(repository.get('legacy-profile').serialNumber).toBe(1)
+    expect(repository.get('legacy-profile').tags).toEqual([])
+    expect(repository.get('legacy-profile').extensionIds).toEqual([])
+    expect(repository.get('legacy-profile').fingerprint.webrtcPolicy).toBe('proxy_only')
+    expect(repository.get('legacy-profile').window.mode).toBe('auto')
+    expect(repository.get('legacy-profile').favorite).toBe(false)
+    expect(repository.get('legacy-profile').kernelVersion).toBe('')
+    expect(repository.get('legacy-profile').fingerprint.hardwareProfileId).toBe('legacy-custom')
+    expect(repository.get('legacy-profile').fingerprint.networkIdentityMode).toBe('manual')
+    expect(repository.get('legacy-profile').fingerprint.proxyExitPolicy).toBe('warn')
+    expect(JSON.parse(await readFile(repository.profileOwnerPath('legacy-profile'), 'utf8'))).toEqual({
+      schemaVersion: 1,
+      profileId: 'legacy-profile'
+    })
+    const migrated = JSON.parse(await readFile(repository.profilesPath, 'utf8'))
+    expect(migrated.schemaVersion).toBe(13)
+    expect(migrated.nextSerialNumber).toBe(2)
+  })
+
+  it('repairs an invalid WebRTC policy to the safe default', async () => {
+    const path = await mkdtemp(join(tmpdir(), 'prism-browser-'))
+    temporaryPaths.push(path)
+    const draft = defaultProfileDraft()
+    draft.fingerprint.webrtcPolicy = 'invalid' as typeof draft.fingerprint.webrtcPolicy
+    await writeFile(join(path, 'profiles.json'), JSON.stringify({
+      schemaVersion: 4,
+      profiles: [{ ...draft, id: 'damaged-profile', createdAt: '', updatedAt: '', status: 'closed' }]
+    }))
+
+    const repository = new ProfileStore(path)
+    await repository.initialize()
+
+    expect(repository.get('damaged-profile').fingerprint.webrtcPolicy).toBe('proxy_only')
+  })
+
+  it('recovers a corrupted primary file from the latest backup and isolates it', async () => {
+    const repository = await store()
+    const profile = await repository.create(defaultProfileDraft())
+    await writeFile(repository.profilesPath, '{broken json', 'utf8')
+
+    const recovered = new ProfileStore(repository.vaultPath)
+    await recovered.initialize()
+
+    expect(recovered.get(profile.id).name).toBe(profile.name)
+    expect(recovered.storageHealth().recoveredFromBackup).toBe(true)
+    expect(recovered.storageHealth().corruptFilePath).toContain('profiles.corrupt-')
+    await expect(readFile(recovered.storageHealth().corruptFilePath!, 'utf8')).resolves.toBe('{broken json')
+  })
+
+  it('recovers when the primary file is missing but a backup exists', async () => {
+    const repository = await store()
+    const profile = await repository.create(defaultProfileDraft())
+    await rm(repository.profilesPath)
+
+    const recovered = new ProfileStore(repository.vaultPath)
+    await recovered.initialize()
+
+    expect(recovered.get(profile.id).id).toBe(profile.id)
+    expect(recovered.storageHealth().recoveredFromBackup).toBe(true)
+    expect(recovered.storageHealth().corruptFilePath).toBeUndefined()
+  })
+
+  it('uses the previous backup when the primary and latest backup are invalid', async () => {
+    const repository = await store()
+    await repository.create(defaultProfileDraft())
+    await writeFile(repository.profilesPath, '{}', 'utf8')
+    await writeFile(repository.backupPath, '[]', 'utf8')
+
+    const recovered = new ProfileStore(repository.vaultPath)
+    await recovered.initialize()
+
+    expect(recovered.storageHealth().recoveryMessage).toContain('ä¸Šä¸€ä»½å¤‡ä»½')
+    expect(JSON.parse(await readFile(recovered.previousBackupPath, 'utf8')).schemaVersion).toBe(13)
+  })
+
+  it('refuses to replace data when the primary and both backups are invalid', async () => {
+    const repository = await store()
+    await repository.create(defaultProfileDraft())
+    await writeFile(repository.profilesPath, '{bad primary', 'utf8')
+    await writeFile(repository.backupPath, '{bad backup', 'utf8')
+    await writeFile(repository.previousBackupPath, '{bad previous', 'utf8')
+
+    const failed = new ProfileStore(repository.vaultPath)
+    await expect(failed.initialize()).rejects.toThrow('å…ƒæ•°æ®åŠå¤‡ä»½å‡æ— æ³•è¯»å–')
+    await expect(readFile(repository.profilesPath, 'utf8')).resolves.toBe('{bad primary')
+  })
+
+  it('persists the latest proxy check and clears it when proxy credentials change', async () => {
+    const repository = await store()
+    const draft = defaultProfileDraft()
+    draft.proxy = { protocol: 'http', host: 'proxy.example.com', port: 8080, username: 'user', password: 'secret' }
+    const profile = await repository.create(draft)
+    await repository.setProxyCheck(profile.id, {
+      ok: true,
+      ip: '203.0.113.8',
+      latencyMs: 81,
+      country: 'United States',
+      checkedAt: '2026-08-02T12:00:00.000Z'
+    })
+
+    const reopened = new ProfileStore(repository.vaultPath)
+    await reopened.initialize()
+    expect(reopened.get(profile.id).proxyCheck?.ip).toBe('203.0.113.8')
+
+    const changed = publicProfile(reopened.get(profile.id))
+    await reopened.update(profile.id, { ...changed, proxy: { ...changed.proxy, password: 'replacement' } })
+    expect(reopened.get(profile.id).proxyCheck).toBeUndefined()
+  })
+
+  it('marks a changed proxy exit until the same exit is confirmed again', async () => {
+    const repository = await store()
+    const profile = await repository.create(defaultProfileDraft())
+    const checkedAt = '2026-08-02T12:00:00.000Z'
+    await repository.setProxyCheck(profile.id, { ok: true, ip: '203.0.113.8', latencyMs: 10, checkedAt })
+    const changed = await repository.setProxyCheck(profile.id, { ok: true, ip: '203.0.113.9', latencyMs: 11, checkedAt })
+    expect(changed.proxyCheck).toMatchObject({ exitChanged: true, previousIp: '203.0.113.8' })
+
+    const confirmed = await repository.setProxyCheck(profile.id, { ok: true, ip: '203.0.113.9', latencyMs: 9, checkedAt })
+    expect(confirmed.proxyCheck?.exitChanged).toBe(false)
+    expect(confirmed.proxyCheck?.previousIp).toBeUndefined()
+  })
+})
