@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it } from 'vitest'
 import { defaultProfileDraft } from '../shared/defaults'
 import type { BrowserProfile, FingerprintRuntimeDiagnosticReport, IdentitySelfHealingSummary, LaunchDiagnosticReport } from '../shared/types'
 import { LocalApiServer, localApiPortFromEnvironment } from './local-api-server'
+import { IdentityHealthHistoryStore } from './identity-health-history'
 import type { LocalApiProfileRuntime } from './browser-launcher'
 
 const temporaryPaths: string[] = []
@@ -185,6 +186,16 @@ describe('Local API server', () => {
         }
       }
     }
+    const healthHistory = new IdentityHealthHistoryStore(vault)
+    await healthHistory.record(current.id, {
+      checkedAt: '2026-09-22T00:00:00.000Z',
+      baselineId: 'baseline-1',
+      score: 76,
+      risk: 'medium',
+      driftDetected: true,
+      driftSeverity: 'medium',
+      changeCount: 2
+    })
     const token = 'test-local-api-token-0123456789-abcdef'
     const server = new LocalApiServer(vault, profiles, launcher, undefined, { port: 0, token, selfHealing })
     const status = await server.start()
@@ -197,7 +208,7 @@ describe('Local API server', () => {
       port: status.port,
       url: status.url,
       tokenPath: status.tokenPath,
-      capabilities: ['profile-control', 'cdp', 'page-control', 'proxy-test', 'diagnostics', 'self-healing']
+      capabilities: ['profile-control', 'cdp', 'page-control', 'proxy-test', 'diagnostics', 'self-healing', 'identity-health']
     })
     expect(JSON.stringify(server.publicStatus())).not.toContain(token)
 
@@ -302,6 +313,50 @@ describe('Local API server', () => {
           }
         })
       }
+
+      const identityHealthList = await fetch(status.url + '/api/v1/identity-health', { headers: authorization })
+      expect(identityHealthList.status).toBe(200)
+      expect(await identityHealthList.json()).toMatchObject({
+        profiles: {
+          [current.id]: {
+            state: 'attention',
+            score: 76,
+            risk: 'medium',
+            driftDetected: true,
+            changeCount: 2,
+            trend: {
+              sampleCount: 1,
+              currentScore: 76,
+              direction: 'unknown'
+            }
+          }
+        }
+      })
+
+      const identityHealthStatus = await fetch(status.url + '/api/v1/profiles/' + current.id + '/identity-health', { headers: authorization })
+      expect(identityHealthStatus.status).toBe(200)
+      expect(await identityHealthStatus.json()).toMatchObject({
+        profileId: current.id,
+        identityHealth: {
+          state: 'attention',
+          score: 76,
+          driftSeverity: 'medium'
+        }
+      })
+
+      const identityHealthHistory = await fetch(status.url + '/api/v1/profiles/' + current.id + '/identity-health/history', { headers: authorization })
+      expect(identityHealthHistory.status).toBe(200)
+      expect(await identityHealthHistory.json()).toMatchObject({
+        profileId: current.id,
+        history: [{
+          baselineId: 'baseline-1',
+          score: 76,
+          risk: 'medium',
+          driftDetected: true,
+          driftSeverity: 'medium',
+          changeCount: 2
+        }]
+      })
 
       const healingList = await fetch(status.url + '/api/v1/self-healing', { headers: authorization })
       expect(healingList.status).toBe(200)
