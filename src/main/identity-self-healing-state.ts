@@ -252,8 +252,8 @@ export class IdentitySelfHealingStateStore {
     profileId: string,
     signature: string,
     strategyKind: IdentityRepairStrategyKind,
-    trigger: IdentitySelfHealingAttemptTrigger = 'auto',
-    now = new Date()
+    now = new Date(),
+    trigger: IdentitySelfHealingAttemptTrigger = 'auto'
   ): Promise<IdentitySelfHealingAttempt> {
     const data = await this.read(profileId)
     const attempt: IdentitySelfHealingAttempt = {
