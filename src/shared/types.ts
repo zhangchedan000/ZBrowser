@@ -611,7 +611,7 @@ export interface AutomationApiStatus {
   tokenPath: string
   metadataPath: string
   capabilities: string[]
-  mcp: McpAutomationStatus
+  mcp?: McpAutomationStatus
 }
 
 export interface BrowserApi {
