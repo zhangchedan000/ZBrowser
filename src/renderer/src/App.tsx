@@ -68,6 +68,7 @@ import { kernelFamilyForRelease, kernelMajorVersion, kernelReleaseMatchesPin, la
 import { orderBatchLaunchProfiles, waitForBatchLaunchGap } from './batch-launch-order'
 import { profileTableSorters } from './profile-table-sort'
 import { executeBatchKernelUpgrades, planBatchKernelUpgrades } from './batch-kernel-upgrade'
+import { runSelfHealingBatchChecks } from './self-healing-batch'
 
 const { Sider, Content } = Layout
 
@@ -163,6 +164,7 @@ export default function App() {
   const [selfHealingByProfile, setSelfHealingByProfile] = useState<Record<string, IdentitySelfHealingSummary>>({})
   const [selfHealingCenterOpen, setSelfHealingCenterOpen] = useState(false)
   const [selfHealingLoading, setSelfHealingLoading] = useState(false)
+  const [selfHealingBatchLoading, setSelfHealingBatchLoading] = useState(false)
   const [selfHealingExecutingProfileId, setSelfHealingExecutingProfileId] = useState<string>()
   const [repairingDiagnostic, setRepairingDiagnostic] = useState(false)
   const [crashProfile, setCrashProfile] = useState<BrowserProfileView>()
@@ -734,6 +736,46 @@ export default function App() {
       messageApi.error(humanError(error))
     } finally {
       setSelfHealingLoading(false)
+    }
+  }
+
+  async function batchCheckSelfHealing(candidates: BrowserProfileView[]): Promise<void> {
+    setSelfHealingBatchLoading(true)
+    try {
+      const result = await runSelfHealingBatchChecks(
+        candidates,
+        (profile) => window.browserApi.profiles.diagnoseFingerprintRuntime(profile.id),
+        (profile) => window.browserApi.profiles.identityHealth(profile.id)
+      )
+      for (const item of result.successes) {
+        if (item.report.identitySelfHealing) {
+          setSelfHealingByProfile((current) => ({
+            ...current,
+            [item.profile.id]: item.report.identitySelfHealing!
+          }))
+        }
+        setIdentityHealthByProfile((current) => ({
+          ...current,
+          [item.profile.id]: item.health
+        }))
+      }
+
+      const [items, selfHealing] = await Promise.all([
+        window.browserApi.profiles.list(),
+        window.browserApi.profiles.identitySelfHealingAll()
+      ])
+      setProfiles(items)
+      setSelfHealingByProfile(selfHealing)
+
+      if (result.failures.length) {
+        messageApi.warning(`批量检查完成：成功 ${result.successes.length} 个，失败 ${result.failures.length} 个`)
+      } else {
+        messageApi.success(`已完成 ${result.successes.length} 个环境的 Self-Healing 检查`)
+      }
+    } catch (error) {
+      messageApi.error(humanError(error))
+    } finally {
+      setSelfHealingBatchLoading(false)
     }
   }
 
@@ -1443,8 +1485,10 @@ export default function App() {
         profiles={profiles}
         states={selfHealingByProfile}
         loading={selfHealingLoading}
+        batchLoading={selfHealingBatchLoading}
         executingProfileId={selfHealingExecutingProfileId}
         onRefresh={refreshSelfHealingStates}
+        onBatchDiagnose={batchCheckSelfHealing}
         onExecute={executeSelfHealingFromCenter}
         onDiagnose={async (profile) => {
           setSelfHealingCenterOpen(false)
