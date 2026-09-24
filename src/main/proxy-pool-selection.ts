@@ -29,3 +29,17 @@ export function selectBestProxyPoolEntry(
       return Date.parse(b.check!.checkedAt) - Date.parse(a.check!.checkedAt)
     })[0]
 }
+
+
+export function selectBestProxyPoolEntryForCountry(
+  entries: readonly ProxyPoolEntry[],
+  countryCode: string,
+  nowMs = Date.now()
+): ProxyPoolEntry | undefined {
+  const target = countryCode.trim().toUpperCase()
+  if (!/^[A-Z]{2}$/.test(target)) return undefined
+  return selectBestProxyPoolEntry(
+    entries.filter((entry) => entry.check?.countryCode?.trim().toUpperCase() === target),
+    nowMs
+  )
+}

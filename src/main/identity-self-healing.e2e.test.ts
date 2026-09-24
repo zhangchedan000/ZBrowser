@@ -64,6 +64,7 @@ describe('identity self-healing end-to-end', () => {
     const draft = defaultProfileDraft()
     draft.fingerprint.language = 'fr-FR'
     draft.fingerprint.timezone = 'Europe/Paris'
+    draft.identityIntent = { schemaVersion: 1, targetCountryCode: 'US', strategy: 'ai_assisted' }
     draft.identityConfigProvenance = markFingerprintConfigSources(
       emptyIdentityConfigProvenance(),
       ['language', 'timezone'],
@@ -152,6 +153,7 @@ describe('identity self-healing end-to-end', () => {
     expect(repaired.status).toBe('completed')
     expect(profiles.get(profile.id).fingerprint.language).toBe('en-US')
     expect(profiles.get(profile.id).fingerprint.timezone).toBe('America/New_York')
+    expect(profiles.get(profile.id).identityIntent?.targetCountryCode).toBe('US')
     expect(repaired.report.identityHealth?.score).toBe(100)
     expect(repaired.report.identityHealth?.risk).toBe('low')
     expect(repaired.report.identityDrift?.driftDetected).toBe(false)

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { ProxyPoolEntry, ProxyPoolHealth } from '../shared/types'
-import { MAX_PROXY_POOL_CHECK_AGE_MS, selectBestProxyPoolEntry } from './proxy-pool-selection'
+import { MAX_PROXY_POOL_CHECK_AGE_MS, selectBestProxyPoolEntry, selectBestProxyPoolEntryForCountry } from './proxy-pool-selection'
 
 function entry(
   id: string,
@@ -24,7 +24,7 @@ function entry(
     },
     createdAt: checkedAt,
     updatedAt: checkedAt,
-    check: { ok, ip: '203.0.113.10', latencyMs, checkedAt },
+    check: { ok, ip: '203.0.113.10', latencyMs, checkedAt, countryCode: id.startsWith('de') ? 'DE' : 'US' },
     health,
     score,
     stats: {
@@ -56,6 +56,15 @@ describe('selectBestProxyPoolEntry', () => {
     const failed = entry('failed', 'failed', 100, new Date(now - 1_000).toISOString(), 20, false)
     const unchecked = entry('unchecked', 'unchecked', 100, new Date(now - 1_000).toISOString())
     expect(selectBestProxyPoolEntry([stale, future, failed, unchecked], now)).toBeUndefined()
+  })
+
+  it('selects only healthy recent proxies matching the requested country', () => {
+    const us = entry('us-fast', 'healthy', 95, new Date(now - 1_000).toISOString(), 60)
+    const deFast = entry('de-fast', 'healthy', 99, new Date(now - 500).toISOString(), 30)
+    const deSlow = entry('de-slow', 'healthy', 80, new Date(now - 800).toISOString(), 150)
+
+    expect(selectBestProxyPoolEntryForCountry([us, deSlow, deFast], 'de', now)?.id).toBe('de-fast')
+    expect(selectBestProxyPoolEntryForCountry([us], 'DE', now)).toBeUndefined()
   })
 
   it('uses score, current latency and recency as deterministic tie-breakers', () => {

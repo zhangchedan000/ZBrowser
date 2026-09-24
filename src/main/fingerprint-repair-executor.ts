@@ -68,6 +68,7 @@ function profileDraft(profile: BrowserProfile): ProfileDraft {
     kernelVersion: profile.kernelVersion,
     kernelFamily: profile.kernelFamily,
     environmentType: profile.environmentType,
+    identityIntent: profile.identityIntent ? { ...profile.identityIntent } : undefined,
     identityConfigProvenance: normalizeIdentityConfigProvenance(profile.identityConfigProvenance),
     window: { ...profile.window },
     proxy: { ...profile.proxy },
@@ -368,7 +369,7 @@ export class FingerprintRepairExecutor {
       platform: profile.fingerprint.platform,
       proxyProtocol: profile.proxy.protocol,
       proxyCheck: profile.proxyCheck,
-      countryCode: profile.proxyCheck?.countryCode,
+      countryCode: profile.identityIntent?.targetCountryCode ?? profile.proxyCheck?.countryCode,
       networkMode: profile.proxy.protocol === 'direct' ? 'manual' : 'proxy'
     }
   }
@@ -399,6 +400,7 @@ export class FingerprintRepairExecutor {
 
     const diagnosisReport = await this.verifier.diagnoseFingerprintRuntime(profileId)
     const scope = diagnosisRepairScope(diagnosisReport, current)
+    const strategy = diagnosisReport.identityRepairStrategy
     const generated = this.generateIdentity(this.identityRequest(current))
     const nextFingerprint = applyAIIdentityConfigToFingerprint(
       current.fingerprint,
@@ -418,7 +420,8 @@ export class FingerprintRepairExecutor {
         warnings,
         diagnosisSummary: diagnosisReport.identityDiagnosis?.summary,
         diagnosedIssueKeys: scope.issueKeys,
-        protectedUserOverrides: scope.protectedUserOverrides
+        protectedUserOverrides: scope.protectedUserOverrides,
+        strategy
       }
     }
 
@@ -432,6 +435,7 @@ export class FingerprintRepairExecutor {
         sections: [],
         changes: [],
         warnings,
+        strategy,
         blockedReason: 'AI 硬件修复缺少完整 Hardware Persona，已阻止孤立硬件参数覆盖'
       }
     }
@@ -446,7 +450,8 @@ export class FingerprintRepairExecutor {
       warnings,
       diagnosisSummary: diagnosisReport.identityDiagnosis?.summary,
       diagnosedIssueKeys: scope.issueKeys,
-      protectedUserOverrides: scope.protectedUserOverrides
+      protectedUserOverrides: scope.protectedUserOverrides,
+      strategy
     }
     this.pendingPlans.set(publicPlan.planId, { publicPlan, nextFingerprint })
     return publicPlan

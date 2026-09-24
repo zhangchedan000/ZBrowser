@@ -461,6 +461,7 @@ export interface FingerprintRuntimeDiagnosticReport {
   identityDiagnosis?: import('./fingerprint-health-model').AIDiagnosisContext
   identityHealthTrend?: import('./identity-health-trend').IdentityHealthTrendSummary
   identityIntentConsistency?: import('./identity-intent-consistency').IdentityIntentConsistency
+  identityRepairStrategy?: import('./identity-repair-strategy').IdentityRepairStrategy
   checks: LaunchDiagnosticCheck[]
 }
 
@@ -488,6 +489,7 @@ export interface FingerprintRepairPlan {
   diagnosisSummary?: string
   diagnosedIssueKeys?: string[]
   protectedUserOverrides?: number
+  strategy?: import('./identity-repair-strategy').IdentityRepairStrategy
   blockedReason?: string
 }
 

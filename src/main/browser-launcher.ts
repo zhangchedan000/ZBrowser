@@ -2,7 +2,7 @@ import { spawn, type ChildProcess } from 'node:child_process'
 import { access, mkdir, readFile, rename, rm, statfs, writeFile } from 'node:fs/promises'
 import { constants } from 'node:fs'
 import { join } from 'node:path'
-import type { BrowserCrashRecord, BrowserProfile, FingerprintRuntimeDiagnosticReport, LaunchDiagnosticCheck, LaunchDiagnosticReport, ProfileLaunchOptions, ProxyConfig, ProxyTestResult } from '../shared/types'
+import type { BrowserCrashRecord, BrowserProfile, FingerprintRuntimeDiagnosticReport, LaunchDiagnosticCheck, LaunchDiagnosticReport, ProfileLaunchOptions, ProxyConfig, ProxyPoolEntry, ProxyTestResult } from '../shared/types'
 import { locateBrowserForProfile } from './browser-locator'
 import { buildLaunchArgs } from './launch-args'
 import type { ProfileStore } from './profile-store'
@@ -22,6 +22,8 @@ import { BrowserControlSession, PipeCdpTransport, WebSocketCdpTransport } from '
 import { buildRuntimeFingerprintChecks } from '../shared/runtime-fingerprint-diagnostics'
 import { buildRuntimeIdentitySnapshot } from '../shared/runtime-identity-snapshot'
 import { evaluateIdentityIntentConsistency, identityIntentConsistencyChecks } from '../shared/identity-intent-consistency'
+import { resolveIdentityRepairStrategy } from '../shared/identity-repair-strategy'
+import { selectBestProxyPoolEntryForCountry } from './proxy-pool-selection'
 import { IdentityBaselineStore } from './identity-baseline-store'
 import { evaluateRuntimeIdentity } from './identity-drift-runtime'
 import { buildIdentityDriftIntelligence } from '../shared/identity-drift-health'
@@ -114,7 +116,10 @@ export class BrowserLauncher {
     private readonly maxConcurrentLaunches = 3,
     private readonly browserSpawner: typeof spawn = spawn,
     private readonly proxyMonitorIntervalMs = 5 * 60_000,
-    private readonly proxyPoolRecorder?: { recordResult(id: string, result: ProxyTestResult): Promise<unknown> },
+    private readonly proxyPoolRecorder?: {
+      recordResult(id: string, result: ProxyTestResult): Promise<unknown>
+      list?(): ProxyPoolEntry[]
+    },
     private readonly identityMonitorIntervalMs = 5 * 60_000
   ) {
     if (!Number.isInteger(maxConcurrentLaunches) || maxConcurrentLaunches < 1 || maxConcurrentLaunches > 20) {
@@ -1166,6 +1171,27 @@ export class BrowserLauncher {
           current.identityConfigProvenance
         )
       : undefined
+    const targetCountryCode = identityIntentConsistency.targetCountryCode
+    const replacementProxy = targetCountryCode && this.proxyPoolRecorder?.list
+      ? selectBestProxyPoolEntryForCountry(
+          this.proxyPoolRecorder.list().filter((entry) => entry.id !== current.proxyPoolEntryId),
+          targetCountryCode
+        )
+      : undefined
+    const identityRepairStrategy = resolveIdentityRepairStrategy({
+      consistency: identityIntentConsistency,
+      drift: identityState.drift,
+      diagnosis: identityIntelligence?.diagnosis,
+      baselineStatus: identityState.baseline?.status,
+      replacementProxy: replacementProxy && replacementProxy.check?.countryCode
+        ? {
+            id: replacementProxy.id,
+            name: replacementProxy.name,
+            countryCode: replacementProxy.check.countryCode.toUpperCase(),
+            score: replacementProxy.score
+          }
+        : undefined
+    })
     const healthHistory = new IdentityHealthHistoryStore(this.profiles.vaultPath)
     const identityHealthTrend = identityState.baseline
       ? summarizeIdentityHealthTrend(await healthHistory.record(id, identityState.drift && identityIntelligence
@@ -1210,6 +1236,7 @@ export class BrowserLauncher {
       identityDiagnosis: identityIntelligence?.diagnosis,
       identityHealthTrend,
       identityIntentConsistency,
+      identityRepairStrategy,
       checks: [...checks, ...intentChecks]
     }
   }

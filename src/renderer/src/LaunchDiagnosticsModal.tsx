@@ -51,6 +51,15 @@ const sectionView: Record<IdentityConfigSection, string> = {
   browser: '浏览器身份'
 }
 
+const strategyView = {
+  none: { color: 'default', text: '无需修复' },
+  switch_proxy: { color: 'purple', text: '切换代理' },
+  regenerate_identity: { color: 'volcano', text: '重生成 Identity' },
+  repair_configuration: { color: 'blue', text: '修复配置' },
+  replace_baseline: { color: 'cyan', text: '换代 Baseline' },
+  manual_review: { color: 'warning', text: '人工确认' }
+} as const
+
 const phaseView: Record<FingerprintRepairAuditPhase, { color: string; text: string }> = {
   backup: { color: 'processing', text: '已备份' },
   applied: { color: 'blue', text: '已应用' },
@@ -188,6 +197,28 @@ export function LaunchDiagnosticsModal({
             </Typography.Paragraph>
           )}
 
+          {report.identityRepairStrategy && report.identityRepairStrategy.kind !== 'none' && (
+            <Alert
+              style={{ marginTop: 8 }}
+              type={report.identityRepairStrategy.kind === 'manual_review' ? 'warning' : 'info'}
+              showIcon
+              title={`AI 恢复策略 · ${strategyView[report.identityRepairStrategy.kind].text}`}
+              description={
+                <Space direction="vertical" size={2}>
+                  <Typography.Text>{report.identityRepairStrategy.reason}</Typography.Text>
+                  {report.identityRepairStrategy.candidateProxy && (
+                    <Typography.Text type="secondary">
+                      推荐代理：{report.identityRepairStrategy.candidateProxy.name} · {report.identityRepairStrategy.candidateProxy.countryCode} · 评分 {report.identityRepairStrategy.candidateProxy.score}
+                    </Typography.Text>
+                  )}
+                  {!report.identityRepairStrategy.automaticActionAvailable && report.identityRepairStrategy.kind !== 'manual_review' && (
+                    <Typography.Text type="secondary">当前没有可自动执行的候选资源，需要先补充可用代理或人工配置。</Typography.Text>
+                  )}
+                </Space>
+              }
+            />
+          )}
+
           {diagnosis.protectedUserOverrides > 0 && (
             <Alert
               style={{ marginTop: 8 }}
@@ -207,7 +238,16 @@ export function LaunchDiagnosticsModal({
             <Alert type="warning" showIcon title="AI 修复计划已阻止" description={repairPlan.blockedReason} />
           )}
           {!planLoading && repairPlan?.status === 'no_changes' && (
-            <Alert type="success" showIcon title="没有可自动修改的配置" description="当前差异要么已经一致，要么属于受保护的手动配置。" />
+            <Alert
+              type={repairPlan.strategy && repairPlan.strategy.kind !== 'none' ? 'info' : 'success'}
+              showIcon
+              title={repairPlan.strategy && repairPlan.strategy.kind !== 'none'
+                ? `当前策略：${strategyView[repairPlan.strategy.kind].text}`
+                : '没有可自动修改的配置'}
+              description={repairPlan.strategy && repairPlan.strategy.kind !== 'none'
+                ? repairPlan.strategy.reason
+                : '当前差异要么已经一致，要么属于受保护的手动配置。'}
+            />
           )}
           {!planLoading && repairPlan?.status === 'ready' && (
             <Space direction="vertical" style={{ width: '100%' }} size={10}>
