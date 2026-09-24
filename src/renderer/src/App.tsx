@@ -69,7 +69,7 @@ import { orderBatchLaunchProfiles, waitForBatchLaunchGap } from './batch-launch-
 import { profileTableSorters } from './profile-table-sort'
 import { executeBatchKernelUpgrades, planBatchKernelUpgrades } from './batch-kernel-upgrade'
 import { runSelfHealingBatchChecks } from './self-healing-batch'
-import { profileHasSelfHealingAttention } from './self-healing-attention'
+import { profileHasSelfHealingAttention, selfHealingAttentionAction } from './self-healing-attention'
 
 const { Sider, Content } = Layout
 
@@ -786,6 +786,48 @@ export default function App() {
     }
   }
 
+  function handleSelfHealingAttention(profile: BrowserProfileView): void {
+    const state = selfHealingByProfile[profile.id]
+    const action = selfHealingAttentionAction(profile, state)
+    if (!action) {
+      setSelfHealingCenterOpen(true)
+      return
+    }
+    if (action === 'diagnose') {
+      void runDiagnostics(profile)
+      return
+    }
+    if (action === 'review') {
+      setSelfHealingCenterOpen(true)
+      return
+    }
+
+    const strategy = state?.pendingStrategyKind
+    const strategyLabel = {
+      none: '无需修复',
+      switch_proxy: '切换代理',
+      regenerate_identity: '重生成 Identity',
+      repair_configuration: '修复配置',
+      replace_baseline: '换代 Baseline',
+      manual_review: '人工确认'
+    } as const
+    const dangerous = strategy === 'switch_proxy' || strategy === 'regenerate_identity'
+    Modal.confirm({
+      title: `确认处理“${profile.name}”的 Self-Healing？`,
+      content: (
+        <Space direction="vertical" size={4}>
+          <Typography.Text>策略：{strategy ? strategyLabel[strategy] : 'Self-Healing'}</Typography.Text>
+          <Typography.Text type="secondary">{state?.pendingReason ?? state?.reason}</Typography.Text>
+          <Typography.Text type="secondary">执行后会再次验证 Runtime；可回滚策略验证失败时会自动恢复原状态。</Typography.Text>
+        </Space>
+      ),
+      okText: '确认执行',
+      cancelText: '取消',
+      okButtonProps: { danger: dangerous },
+      onOk: () => executeSelfHealingFromCenter(profile)
+    })
+  }
+
   async function executeSelfHealingFromCenter(profile: BrowserProfileView): Promise<void> {
     setSelfHealingExecutingProfileId(profile.id)
     try {
@@ -967,6 +1009,15 @@ export default function App() {
           disabled: !editable
         }] : []),
         { key: 'data', icon: <DatabaseOutlined />, label: '环境数据' },
+        ...(profileHasSelfHealingAttention(profile, selfHealingByProfile[profile.id]) ? [{
+          key: 'self-healing-attention',
+          icon: <RobotOutlined />,
+          label: selfHealingAttentionAction(profile, selfHealingByProfile[profile.id]) === 'execute'
+            ? '处理 Self-Healing'
+            : selfHealingAttentionAction(profile, selfHealingByProfile[profile.id]) === 'diagnose'
+              ? '检查 Self-Healing'
+              : '查看 Self-Healing 状态'
+        }] : []),
         { key: 'diagnose', icon: <SafetyCertificateOutlined />, label: '启动诊断' },
         { key: 'crashes', icon: <WarningFilled />, label: '异常与恢复' },
         { key: 'proxy-check', icon: <ApiOutlined />, label: '检测代理' },
@@ -1005,6 +1056,7 @@ export default function App() {
           })
         }
         if (key === 'data') setDataProfile(profile)
+        if (key === 'self-healing-attention') handleSelfHealingAttention(profile)
         if (key === 'diagnose') void runDiagnostics(profile)
         if (key === 'crashes') void openCrashHistory(profile)
         if (key === 'proxy-check') void runProxyChecks([profile.id])
