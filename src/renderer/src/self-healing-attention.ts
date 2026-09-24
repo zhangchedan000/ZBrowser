@@ -44,6 +44,13 @@ export function classifySelfHealingAttention(
   return null
 }
 
+export function profileHasSelfHealingAttention(
+  profile: BrowserProfileView,
+  state?: IdentitySelfHealingSummary
+): boolean {
+  return Boolean(state && classifySelfHealingAttention(profile, state))
+}
+
 export function selfHealingAttentionItems(
   profiles: BrowserProfileView[],
   states: Record<string, IdentitySelfHealingSummary>,
