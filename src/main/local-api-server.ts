@@ -7,11 +7,13 @@ import type { Logger } from './app-logger'
 import type { LocalApiProfileRuntime } from './browser-launcher'
 import type { BrowserControlSession } from './browser-control-session'
 import { safeErrorText } from './redaction'
+import { IdentityHealthHistoryStore } from './identity-health-history'
+import { summarizeIdentityProfileHealth } from '../shared/identity-profile-health'
 
 export const DEFAULT_LOCAL_API_PORT = 17653
 const LOCAL_API_HOST = '127.0.0.1'
 const MAX_REQUEST_BODY_BYTES = 16 * 1024
-const LOCAL_API_CAPABILITIES = ['profile-control', 'cdp', 'page-control', 'proxy-test', 'diagnostics', 'self-healing']
+const LOCAL_API_CAPABILITIES = ['profile-control', 'cdp', 'page-control', 'proxy-test', 'diagnostics', 'self-healing', 'identity-health']
 
 interface LocalApiProfileStore {
   list(): BrowserProfile[]
@@ -136,6 +138,7 @@ export class LocalApiServer {
   private server?: Server
   private token = ''
   private port?: number
+  private readonly identityHealthHistory: IdentityHealthHistoryStore
   readonly tokenPath: string
   readonly metadataPath: string
 
@@ -148,6 +151,7 @@ export class LocalApiServer {
   ) {
     this.tokenPath = join(vaultPath, 'local-api.token')
     this.metadataPath = join(vaultPath, 'local-api.json')
+    this.identityHealthHistory = new IdentityHealthHistoryStore(vaultPath)
   }
 
   async start(): Promise<LocalApiServerStatus> {
@@ -328,6 +332,34 @@ export class LocalApiServer {
       const profile = await this.launcher.testProfileProxy(id)
       this.sendJson(response, 200, { profile: profileSummary(profile) })
       return
+    }
+
+    if (method === 'GET' && url.pathname === '/api/v1/identity-health') {
+      const entries = await Promise.all(this.profiles.list().map(async (profile) => [
+        profile.id,
+        summarizeIdentityProfileHealth(await this.identityHealthHistory.list(profile.id))
+      ] as const))
+      this.sendJson(response, 200, { profiles: Object.fromEntries(entries) })
+      return
+    }
+
+    const identityHealthRoute = url.pathname.match(/^\/api\/v1\/profiles\/([^/]+)\/identity-health(?:\/(history))?$/)
+    if (identityHealthRoute) {
+      const id = decodeURIComponent(identityHealthRoute[1])
+      this.profile(id)
+      const history = await this.identityHealthHistory.list(id)
+      if (identityHealthRoute[2] === 'history' && method === 'GET') {
+        this.sendJson(response, 200, { profileId: id, history })
+        return
+      }
+      if (!identityHealthRoute[2] && method === 'GET') {
+        this.sendJson(response, 200, {
+          profileId: id,
+          identityHealth: summarizeIdentityProfileHealth(history)
+        })
+        return
+      }
+      throw new LocalApiHttpError(405, 'METHOD_NOT_ALLOWED', 'Method not allowed')
     }
 
     if (method === 'GET' && url.pathname === '/api/v1/self-healing') {
