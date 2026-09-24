@@ -165,6 +165,19 @@ describe('Local API server', () => {
       async statusAll() {
         return { [current.id]: selfHealingStatus }
       },
+      async history(id: string) {
+        expect(id).toBe(current.id)
+        return [{
+          id: 'attempt-1',
+          startedAt: '2026-09-22T00:00:00.000Z',
+          completedAt: '2026-09-22T00:00:01.000Z',
+          signature: 'repair_configuration:test',
+          strategyKind: 'repair_configuration' as const,
+          trigger: 'auto' as const,
+          result: 'completed' as const,
+          message: 'repaired'
+        }]
+      },
       async diagnose(id: string) {
         return {
           ...await launcher.diagnoseFingerprintRuntime(id),
@@ -307,6 +320,20 @@ describe('Local API server', () => {
       expect(await healingStatus.json()).toMatchObject({
         profileId: current.id,
         selfHealing: { mode: 'assisted', decision: 'suggest', pending: true }
+      })
+
+      const healingHistory = await fetch(status.url + '/api/v1/profiles/' + current.id + '/self-healing/history', {
+        headers: authorization
+      })
+      expect(healingHistory.status).toBe(200)
+      expect(await healingHistory.json()).toMatchObject({
+        profileId: current.id,
+        history: [{
+          strategyKind: 'repair_configuration',
+          trigger: 'auto',
+          result: 'completed',
+          message: 'repaired'
+        }]
       })
 
       const healingCheck = await fetch(status.url + '/api/v1/profiles/' + current.id + '/self-healing/check', {
