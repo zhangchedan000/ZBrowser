@@ -554,7 +554,7 @@ export class BrowserControlSession {
   private async waitForDocument(): Promise<void> {
     for (let attempt = 0; attempt < 150; attempt += 1) {
       const state = await this.pageState().catch(() => null)
-      if (state?.readyState === 'complete' && state.url && state.url !== 'about:blank') return
+      if (['interactive', 'complete'].includes(state?.readyState ?? '') && state?.url && state.url !== 'about:blank') return
       await delay(100)
     }
     throw new Error('等待网页加载完成超时')
