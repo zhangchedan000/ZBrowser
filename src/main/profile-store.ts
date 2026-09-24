@@ -361,7 +361,11 @@ export class ProfileStore {
     }
   }
 
-  async update(id: string, input: ProfileDraft): Promise<BrowserProfile> {
+  async update(
+    id: string,
+    input: ProfileDraft,
+    identityChangeReason: ProfileIdentityChangeReason = 'user_config'
+  ): Promise<BrowserProfile> {
     const current = this.get(id)
     if (current.status !== 'closed' && current.status !== 'error') {
       throw new Error('请先关闭浏览器环境再修改配置')
@@ -396,7 +400,7 @@ export class ProfileStore {
     if (!sameProxyIdentity(profile.proxy, current.proxy) || profile.proxy.password !== current.proxy.password) {
       delete profile.proxyCheck
     }
-    return this.persistIdentityChange(current, profile, 'user_config')
+    return this.persistIdentityChange(current, profile, identityChangeReason)
   }
 
   async advanceKernelFloor(id: string, runtimeVersionInput: string, kernelFamily: KernelFamily): Promise<BrowserProfile> {

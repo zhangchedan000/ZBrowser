@@ -66,6 +66,19 @@ describe('profile identity baseline lifecycle wiring', () => {
     expect((await baselines.get(profile.id))?.status).toBe('stale')
   })
 
+  it('allows callers to preserve the exact reason for an explicit kernel upgrade', async () => {
+    const { baselines, profiles, profile } = await harness()
+    const current = profiles.get(profile.id)
+
+    await profiles.update(profile.id, {
+      ...current,
+      kernelVersion: '145.0.7600.1',
+      kernelFamily: 'fingerprint-chromium'
+    }, 'kernel_upgrade')
+
+    expect((await baselines.pendingReplacement(profile.id))?.reasons).toEqual(['kernel_upgrade'])
+  })
+
   it('records kernel upgrade and rollback reasons', async () => {
     const { baselines, profiles, profile } = await harness()
 
