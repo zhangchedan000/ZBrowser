@@ -19,6 +19,7 @@ const api: BrowserApi = {
     identityHealthAll: () => ipcRenderer.invoke('profiles:identity-health-all'),
     identitySelfHealing: (id: string) => ipcRenderer.invoke('profiles:identity-self-healing', id),
     identitySelfHealingAll: () => ipcRenderer.invoke('profiles:identity-self-healing-all'),
+    identitySelfHealingHistory: (id: string) => ipcRenderer.invoke('profiles:identity-self-healing-history', id),
     storageInfo: (id: string) => ipcRenderer.invoke('profiles:storage-info', id),
     storageOverview: () => ipcRenderer.invoke('profiles:storage-overview'),
     openDataFolder: (id: string) => ipcRenderer.invoke('profiles:open-data-folder', id),
