@@ -44,11 +44,25 @@ export function classifySelfHealingAttention(
   return null
 }
 
+export type SelfHealingAttentionAction = 'execute' | 'diagnose' | 'review'
+
+export function selfHealingAttentionAction(
+  profile: BrowserProfileView,
+  state?: IdentitySelfHealingSummary
+): SelfHealingAttentionAction | null {
+  if (!state || !classifySelfHealingAttention(profile, state)) return null
+  if (state.decision === 'blocked' || state.decision === 'cooldown') return 'review'
+  if (state.pendingStrategyKind === 'manual_review') return 'diagnose'
+  if (profile.status !== 'closed' && profile.status !== 'error') return 'review'
+  if (state.pending && state.pendingStrategyKind) return 'execute'
+  return 'review'
+}
+
 export function profileHasSelfHealingAttention(
   profile: BrowserProfileView,
   state?: IdentitySelfHealingSummary
 ): boolean {
-  return Boolean(state && classifySelfHealingAttention(profile, state))
+  return selfHealingAttentionAction(profile, state) !== null
 }
 
 export function selfHealingAttentionItems(
