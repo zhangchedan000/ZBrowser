@@ -1,18 +1,8 @@
 import { spawn } from 'node:child_process'
 import { createInterface } from 'node:readline'
+import type { McpConnectionCheckResult } from '../shared/types'
 import type { McpLaunchConfig } from './mcp-launch-config'
 import { MODERN_PROTOCOL_VERSION } from './mcp-stdio-server'
-
-export interface McpConnectionCheckResult {
-  ok: boolean
-  checkedAt: string
-  latencyMs: number
-  protocolVersion: string
-  serverName?: string
-  serverVersion?: string
-  toolCount: number
-  message: string
-}
 
 interface JsonRpcResponse {
   id?: string | number | null
