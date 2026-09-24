@@ -68,6 +68,9 @@ describe('MCP stdio message handler', () => {
     expect((listed?.result as { tools: unknown[] }).tools).toHaveLength(TOOLS.length)
     expect(TOOLS.map((tool) => tool.name)).toEqual(expect.arrayContaining([
       'page_snapshot',
+      'identity_health_list',
+      'profile_identity_health',
+      'profile_identity_health_history',
       'self_healing_list',
       'profile_self_healing_status',
       'profile_self_healing_check',
@@ -108,6 +111,40 @@ describe('MCP stdio message handler', () => {
       }
     })
     expect((response?.result as { isError?: boolean }).isError).toBeUndefined()
+  })
+
+  it('maps Identity Health tools only to fixed read-only Local API routes', async () => {
+    const client = new FakeClient()
+    await handleMcpMessage({
+      jsonrpc: '2.0',
+      id: 21,
+      method: 'tools/call',
+      params: { name: 'identity_health_list', arguments: {} }
+    }, client, '1.0.0')
+    await handleMcpMessage({
+      jsonrpc: '2.0',
+      id: 22,
+      method: 'tools/call',
+      params: {
+        name: 'profile_identity_health',
+        arguments: { profileId: '11111111-1111-1111-1111-111111111111' }
+      }
+    }, client, '1.0.0')
+    await handleMcpMessage({
+      jsonrpc: '2.0',
+      id: 23,
+      method: 'tools/call',
+      params: {
+        name: 'profile_identity_health_history',
+        arguments: { profileId: '11111111-1111-1111-1111-111111111111' }
+      }
+    }, client, '1.0.0')
+
+    expect(client.calls).toEqual([
+      { path: '/api/v1/identity-health', options: undefined },
+      { path: '/api/v1/profiles/11111111-1111-1111-1111-111111111111/identity-health', options: undefined },
+      { path: '/api/v1/profiles/11111111-1111-1111-1111-111111111111/identity-health/history', options: undefined }
+    ])
   })
 
   it('maps Self-Healing tools only to fixed policy-gated Local API routes', async () => {
