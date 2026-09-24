@@ -208,7 +208,7 @@ describe('Local API server', () => {
       port: status.port,
       url: status.url,
       tokenPath: status.tokenPath,
-      capabilities: ['profile-control', 'cdp', 'page-control', 'proxy-test', 'diagnostics', 'self-healing', 'identity-health']
+      capabilities: ['profile-control', 'cdp', 'page-control', 'proxy-test', 'diagnostics', 'self-healing', 'identity-health', 'attention-queue']
     })
     expect(JSON.stringify(server.publicStatus())).not.toContain(token)
 
@@ -313,6 +313,24 @@ describe('Local API server', () => {
           }
         })
       }
+
+      const attention = await fetch(status.url + '/api/v1/attention', { headers: authorization })
+      expect(attention.status).toBe(200)
+      expect(await attention.json()).toMatchObject({
+        count: 1,
+        criticalCount: 0,
+        warningCount: 1,
+        items: [{
+          profileId: current.id,
+          serialNumber: current.serialNumber,
+          name: current.name,
+          level: 'warning',
+          issues: expect.arrayContaining([
+            expect.objectContaining({ source: 'identity_health', level: 'warning' }),
+            expect.objectContaining({ source: 'self_healing', level: 'warning' })
+          ])
+        }]
+      })
 
       const identityHealthList = await fetch(status.url + '/api/v1/identity-health', { headers: authorization })
       expect(identityHealthList.status).toBe(200)
