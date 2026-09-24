@@ -82,6 +82,29 @@ describe('profile identity baseline lifecycle wiring', () => {
     expect((await baselines.pendingReplacement(profile.id))?.reasons).toEqual(['kernel_rollback'])
   })
 
+  it('rolls profile data back on disk when the lifecycle hook fails', async () => {
+    const vault = await mkdtemp(join(tmpdir(), 'zbrowser-profile-lifecycle-rollback-'))
+    temporaryPaths.push(vault)
+    const profiles = new ProfileStore(vault, undefined, async () => {
+      throw new Error('baseline write failed')
+    })
+    await profiles.initialize()
+
+    const draft = defaultProfileDraft()
+    const profile = await profiles.create(draft)
+    const originalLanguage = profile.fingerprint.language
+
+    await expect(profiles.update(profile.id, {
+      ...profile,
+      fingerprint: { ...profile.fingerprint, language: 'ja-JP' }
+    })).rejects.toThrow('baseline write failed')
+    expect(profiles.get(profile.id).fingerprint.language).toBe(originalLanguage)
+
+    const reloaded = new ProfileStore(vault)
+    await reloaded.initialize()
+    expect(reloaded.get(profile.id).fingerprint.language).toBe(originalLanguage)
+  })
+
   it('records proxy reassignment after a validated assignment', async () => {
     const { baselines, profiles, profile } = await harness()
 

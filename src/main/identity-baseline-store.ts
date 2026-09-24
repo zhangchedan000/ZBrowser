@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto'
-import { mkdir, readFile, writeFile } from 'node:fs/promises'
+import { mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import type { IdentityBaseline, IdentityBaselineSnapshot } from '../shared/identity-baseline-model'
 import type { IdentityConfigProvenance } from '../shared/types'
@@ -58,7 +58,15 @@ export class IdentityBaselineStore {
 
   private async write(profileId: string, data: IdentityBaselineFile): Promise<void> {
     await mkdir(join(this.rootPath, profileId), { recursive: true })
-    await writeFile(this.path(profileId), JSON.stringify(data, null, 2), 'utf8')
+    const target = this.path(profileId)
+    const temporary = `${target}.tmp`
+    try {
+      await writeFile(temporary, JSON.stringify(data, null, 2), 'utf8')
+      await rename(temporary, target)
+    } catch (error) {
+      await rm(temporary, { force: true }).catch(() => undefined)
+      throw error
+    }
   }
 
   async create(

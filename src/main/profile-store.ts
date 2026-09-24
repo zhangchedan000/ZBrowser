@@ -280,6 +280,36 @@ export class ProfileStore {
     return profile
   }
 
+  private async persistIdentityChange(
+    current: BrowserProfile,
+    profile: BrowserProfile,
+    reason: ProfileIdentityChangeReason
+  ): Promise<BrowserProfile> {
+    this.profiles.set(profile.id, profile)
+    try {
+      await this.persist()
+    } catch (error) {
+      this.profiles.set(current.id, current)
+      throw error
+    }
+
+    try {
+      await this.identityLifecycleHook?.(current, profile, reason)
+      return profile
+    } catch (error) {
+      this.profiles.set(current.id, current)
+      try {
+        await this.persist()
+      } catch (rollbackError) {
+        throw new AggregateError(
+          [error, rollbackError],
+          '身份生命周期更新失败，且环境配置回滚失败'
+        )
+      }
+      throw error
+    }
+  }
+
   async create(input: ProfileDraft): Promise<BrowserProfile> {
     return (await this.createMany([input]))[0]
   }
@@ -366,10 +396,7 @@ export class ProfileStore {
     if (!sameProxyIdentity(profile.proxy, current.proxy) || profile.proxy.password !== current.proxy.password) {
       delete profile.proxyCheck
     }
-    this.profiles.set(id, profile)
-    await this.persist()
-    await this.identityLifecycleHook?.(current, profile, 'user_config')
-    return profile
+    return this.persistIdentityChange(current, profile, 'user_config')
   }
 
   async advanceKernelFloor(id: string, runtimeVersionInput: string, kernelFamily: KernelFamily): Promise<BrowserProfile> {
@@ -396,15 +423,7 @@ export class ProfileStore {
       kernelVersion: runtimeVersion,
       updatedAt: new Date().toISOString()
     }
-    this.profiles.set(id, profile)
-    try {
-      await this.persist()
-      await this.identityLifecycleHook?.(current, profile, 'kernel_upgrade')
-      return profile
-    } catch (error) {
-      this.profiles.set(id, current)
-      throw error
-    }
+    return this.persistIdentityChange(current, profile, 'kernel_upgrade')
   }
 
   async restoreKernelBinding(id: string, kernelVersionInput: string, kernelFamily?: KernelFamily): Promise<BrowserProfile> {
@@ -424,15 +443,7 @@ export class ProfileStore {
       kernelFamily: kernelVersion ? kernelFamily : undefined,
       updatedAt: new Date().toISOString()
     }
-    this.profiles.set(id, profile)
-    try {
-      await this.persist()
-      await this.identityLifecycleHook?.(current, profile, 'kernel_rollback')
-      return profile
-    } catch (error) {
-      this.profiles.set(id, current)
-      throw error
-    }
+    return this.persistIdentityChange(current, profile, 'kernel_rollback')
   }
 
   async duplicate(id: string): Promise<BrowserProfile> {
@@ -746,15 +757,7 @@ export class ProfileStore {
       fingerprint,
       updatedAt: new Date().toISOString()
     }
-    this.profiles.set(id, profile)
-    try {
-      await this.persist()
-      await this.identityLifecycleHook?.(current, profile, 'proxy_reassignment')
-      return profile
-    } catch (error) {
-      this.profiles.set(id, current)
-      throw error
-    }
+    return this.persistIdentityChange(current, profile, 'proxy_reassignment')
   }
 
   async setProxyCheck(id: string, check: ProxyCheckSummary, baselineIp?: string): Promise<BrowserProfile> {
