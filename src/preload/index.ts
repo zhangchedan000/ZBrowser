@@ -110,7 +110,8 @@ const api: BrowserApi = {
     test: (config, profileId) => ipcRenderer.invoke('proxy:test', config, profileId)
   },
   automation: {
-    status: () => ipcRenderer.invoke('automation-api:status')
+    status: () => ipcRenderer.invoke('automation-api:status'),
+    checkMcp: () => ipcRenderer.invoke('automation-api:mcp-check')
   },
   diagnostics: {
     sessionHealth: () => ipcRenderer.invoke('diagnostics:session-health'),
