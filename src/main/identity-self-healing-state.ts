@@ -3,7 +3,7 @@ import { mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import type { IdentityRepairStrategyKind } from '../shared/identity-repair-strategy'
 import type { IdentitySelfHealingPolicyAction } from '../shared/identity-self-healing-policy'
-import type { IdentitySelfHealingAttemptResult } from '../shared/types'
+import type { IdentitySelfHealingAttemptResult, IdentitySelfHealingAttemptTrigger } from '../shared/types'
 
 export const IDENTITY_SELF_HEALING_COOLDOWN_MS = 10 * 60_000
 export const IDENTITY_SELF_HEALING_WINDOW_MS = 60 * 60_000
@@ -25,6 +25,7 @@ export interface IdentitySelfHealingAttempt {
   completedAt?: string
   signature: string
   strategyKind: IdentityRepairStrategyKind
+  trigger: IdentitySelfHealingAttemptTrigger
   result?: IdentitySelfHealingAttemptResult
   message?: string
 }
@@ -53,6 +54,7 @@ export interface IdentitySelfHealingStateSnapshot {
   cooldownUntil?: string
   lastAttemptAt?: string
   lastResult?: IdentitySelfHealingAttemptResult
+  lastAttemptTrigger?: IdentitySelfHealingAttemptTrigger
   lastStrategyKind?: IdentityRepairStrategyKind
   lastMessage?: string
 }
@@ -89,6 +91,7 @@ function safeFile(value: unknown): IdentitySelfHealingFile {
         && validKind(item.strategyKind)
       )).map((item) => ({
         ...item,
+        trigger: item.trigger === 'user' ? 'user' : 'auto',
         completedAt: validDate(item.completedAt) ? item.completedAt : undefined,
         result: validResult(item.result) ? item.result : undefined,
         message: typeof item.message === 'string' ? item.message.slice(0, 500) : undefined
@@ -249,6 +252,7 @@ export class IdentitySelfHealingStateStore {
     profileId: string,
     signature: string,
     strategyKind: IdentityRepairStrategyKind,
+    trigger: IdentitySelfHealingAttemptTrigger = 'auto',
     now = new Date()
   ): Promise<IdentitySelfHealingAttempt> {
     const data = await this.read(profileId)
@@ -256,7 +260,8 @@ export class IdentitySelfHealingStateStore {
       id: randomUUID(),
       startedAt: now.toISOString(),
       signature,
-      strategyKind
+      strategyKind,
+      trigger
     }
     data.attempts = [...data.attempts, attempt].slice(-20)
     await this.write(profileId, data)
@@ -317,6 +322,7 @@ export class IdentitySelfHealingStateStore {
       cooldownUntil,
       lastAttemptAt: last?.startedAt,
       lastResult: last?.result,
+      lastAttemptTrigger: last?.trigger,
       lastStrategyKind: last?.strategyKind,
       lastMessage: last?.message
     }
