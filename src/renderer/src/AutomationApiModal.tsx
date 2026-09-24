@@ -142,7 +142,7 @@ export function AutomationApiModal({ open, onClose }: AutomationApiModalProps) {
               </>
             ) : (
               <Alert type="warning" showIcon message="当前版本未返回 MCP 配置" />
-            )>
+            )}
           </Space>
         )}
       </Spin>
