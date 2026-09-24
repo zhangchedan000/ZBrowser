@@ -610,6 +610,7 @@ export interface McpAutomationStatus {
   protocolVersion: string
   command: string
   args: string[]
+  env?: Record<string, string>
   toolCount: number
 }
 
