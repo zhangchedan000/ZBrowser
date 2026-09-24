@@ -107,6 +107,31 @@ const TOOLS: ToolDefinition[] = [
     }
   },
   {
+    name: 'identity_health_list',
+    description: 'List current persisted Identity Health summaries for all ZBrowser profiles. Read-only.',
+    inputSchema: { type: 'object', properties: {}, additionalProperties: false }
+  },
+  {
+    name: 'profile_identity_health',
+    description: 'Get one profile Identity Health summary including score, risk, drift and trend direction. Read-only.',
+    inputSchema: {
+      type: 'object',
+      properties: { profileId: PROFILE_ID_SCHEMA },
+      required: ['profileId'],
+      additionalProperties: false
+    }
+  },
+  {
+    name: 'profile_identity_health_history',
+    description: 'Read recent Identity Health trend records for one profile. Read-only and does not start the browser.',
+    inputSchema: {
+      type: 'object',
+      properties: { profileId: PROFILE_ID_SCHEMA },
+      required: ['profileId'],
+      additionalProperties: false
+    }
+  },
+  {
     name: 'self_healing_list',
     description: 'List persisted Self-Healing mode, pending work, cooldown and loop-guard status for all ZBrowser profiles.',
     inputSchema: { type: 'object', properties: {}, additionalProperties: false }
@@ -240,6 +265,13 @@ async function callTool(client: McpApiClient, name: string, rawArguments: unknow
       return client.request(toolPathProfile(profileId(args), '/diagnostics/kernel-runtime'), { method: 'POST' })
     case 'profile_diagnose_fingerprint_runtime':
       return client.request(toolPathProfile(profileId(args), '/diagnostics/fingerprint-runtime'), { method: 'POST', timeoutMs: 120000 })
+    case 'identity_health_list':
+      if (Object.keys(args).length) throw new McpLocalApiError('INVALID_ARGUMENTS', 'identity_health_list does not accept arguments')
+      return client.request('/api/v1/identity-health')
+    case 'profile_identity_health':
+      return client.request(toolPathProfile(profileId(args), '/identity-health'))
+    case 'profile_identity_health_history':
+      return client.request(toolPathProfile(profileId(args), '/identity-health/history'))
     case 'self_healing_list':
       if (Object.keys(args).length) throw new McpLocalApiError('INVALID_ARGUMENTS', 'self_healing_list does not accept arguments')
       return client.request('/api/v1/self-healing')
