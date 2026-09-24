@@ -1,5 +1,6 @@
 import { Button, Modal, Space, Table, Tag, Tooltip, Typography, type TableColumnsType } from 'antd'
-import type { BrowserProfileView, IdentitySelfHealingSummary } from '../../shared/types'
+import { useState } from 'react'
+import type { BrowserProfileView, IdentitySelfHealingAttemptRecord, IdentitySelfHealingSummary } from '../../shared/types'
 
 interface SelfHealingControlCenterModalProps {
   open: boolean
@@ -59,6 +60,26 @@ export function SelfHealingControlCenterModal({
   onDiagnose,
   onClose
 }: SelfHealingControlCenterModalProps) {
+  const [historyProfile, setHistoryProfile] = useState<BrowserProfileView>()
+  const [historyRecords, setHistoryRecords] = useState<IdentitySelfHealingAttemptRecord[]>([])
+  const [historyLoading, setHistoryLoading] = useState(false)
+
+  async function openHistory(profile: BrowserProfileView): Promise<void> {
+    setHistoryProfile(profile)
+    setHistoryRecords([])
+    setHistoryLoading(true)
+    try {
+      setHistoryRecords(await window.browserApi.profiles.identitySelfHealingHistory(profile.id))
+    } catch (error) {
+      Modal.error({
+        title: '读取 Self-Healing 历史失败',
+        content: error instanceof Error ? error.message : String(error)
+      })
+    } finally {
+      setHistoryLoading(false)
+    }
+  }
+
   const rows = profiles.map((profile) => ({
     profile,
     state: states[profile.id] ?? fallback(profile)
@@ -154,7 +175,7 @@ export function SelfHealingControlCenterModal({
     {
       title: '操作',
       key: 'action',
-      width: 190,
+      width: 250,
       fixed: 'right',
       render: (_value, row) => {
         const executable = row.state.pending
@@ -200,13 +221,70 @@ export function SelfHealingControlCenterModal({
             >
               检查
             </Button>
+            <Button size="small" onClick={() => void openHistory(row.profile)}>
+              历史
+            </Button>
           </Space>
         )
       }
     }
   ]
 
+  const historyColumns: TableColumnsType<IdentitySelfHealingAttemptRecord> = [
+    {
+      title: '开始时间',
+      dataIndex: 'startedAt',
+      width: 180,
+      render: (value: string) => new Date(value).toLocaleString()
+    },
+    {
+      title: '来源',
+      dataIndex: 'trigger',
+      width: 100,
+      render: (value: IdentitySelfHealingAttemptRecord['trigger']) => (
+        <Tag color={value === 'user' ? 'blue' : 'success'}>{value === 'user' ? '人工确认' : 'Auto'}</Tag>
+      )
+    },
+    {
+      title: '策略',
+      dataIndex: 'strategyKind',
+      width: 160,
+      render: (value: IdentitySelfHealingAttemptRecord['strategyKind']) => strategyText[value]
+    },
+    {
+      title: '结果',
+      dataIndex: 'result',
+      width: 120,
+      render: (value: IdentitySelfHealingAttemptRecord['result']) => {
+        if (!value) return <Tag color="processing">执行中</Tag>
+        const color = value === 'completed' ? 'success'
+          : value === 'rolled_back' ? 'warning'
+            : value === 'failed' ? 'error'
+              : 'default'
+        return <Tag color={color}>{value}</Tag>
+      }
+    },
+    {
+      title: '耗时',
+      key: 'duration',
+      width: 100,
+      render: (_value, record) => {
+        if (!record.completedAt) return <Typography.Text type="secondary">—</Typography.Text>
+        const milliseconds = Math.max(0, Date.parse(record.completedAt) - Date.parse(record.startedAt))
+        return milliseconds < 1000 ? `${milliseconds} ms` : `${(milliseconds / 1000).toFixed(1)} s`
+      }
+    },
+    {
+      title: '消息',
+      dataIndex: 'message',
+      render: (value?: string) => value
+        ? <Tooltip title={value}><Typography.Text ellipsis style={{ maxWidth: 300 }}>{value}</Typography.Text></Tooltip>
+        : <Typography.Text type="secondary">—</Typography.Text>
+    }
+  ]
+
   return (
+    <>
     <Modal
       open={open}
       width={1180}
@@ -231,8 +309,35 @@ export function SelfHealingControlCenterModal({
         columns={columns}
         dataSource={rows}
         pagination={rows.length > 10 ? { pageSize: 10 } : false}
-        scroll={{ x: 1350 }}
+        scroll={{ x: 1410 }}
       />
     </Modal>
+    <Modal
+      open={Boolean(historyProfile)}
+      width={920}
+      title={historyProfile ? `Self-Healing 历史 · #${historyProfile.serialNumber} · ${historyProfile.name}` : 'Self-Healing 历史'}
+      onCancel={() => {
+        setHistoryProfile(undefined)
+        setHistoryRecords([])
+      }}
+      footer={[
+        <Button key="close" type="primary" onClick={() => {
+          setHistoryProfile(undefined)
+          setHistoryRecords([])
+        }}>关闭</Button>
+      ]}
+    >
+      <Table
+        size="small"
+        rowKey="id"
+        columns={historyColumns}
+        dataSource={historyRecords}
+        loading={historyLoading}
+        pagination={historyRecords.length > 10 ? { pageSize: 10 } : false}
+        scroll={{ x: 900 }}
+        locale={{ emptyText: '暂无 Self-Healing 执行记录' }}
+      />
+    </Modal>
+    </>
   )
 }
