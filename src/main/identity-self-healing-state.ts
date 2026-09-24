@@ -91,7 +91,7 @@ function safeFile(value: unknown): IdentitySelfHealingFile {
         && validKind(item.strategyKind)
       )).map((item) => ({
         ...item,
-        trigger: item.trigger === 'user' ? 'user' : 'auto',
+        trigger: (item.trigger === 'user' ? 'user' : 'auto') as IdentitySelfHealingAttemptTrigger,
         completedAt: validDate(item.completedAt) ? item.completedAt : undefined,
         result: validResult(item.result) ? item.result : undefined,
         message: typeof item.message === 'string' ? item.message.slice(0, 500) : undefined
