@@ -1,6 +1,6 @@
 import { Alert, Button, Divider, Modal, Space, Spin, Tag, Typography } from 'antd'
 import { useCallback, useEffect, useState } from 'react'
-import type { AutomationApiStatus } from '../../shared/types'
+import type { AutomationApiStatus, McpConnectionCheckResult } from '../../shared/types'
 
 interface AutomationApiModalProps {
   open: boolean
@@ -11,6 +11,8 @@ export function AutomationApiModal({ open, onClose }: AutomationApiModalProps) {
   const [status, setStatus] = useState<AutomationApiStatus>()
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
+  const [mcpChecking, setMcpChecking] = useState(false)
+  const [mcpCheck, setMcpCheck] = useState<McpConnectionCheckResult>()
 
   const refresh = useCallback(async () => {
     setLoading(true)
@@ -25,8 +27,30 @@ export function AutomationApiModal({ open, onClose }: AutomationApiModalProps) {
   }, [])
 
   useEffect(() => {
-    if (open) void refresh()
+    if (open) {
+      setMcpCheck(undefined)
+      void refresh()
+    }
   }, [open, refresh])
+
+  const runMcpCheck = useCallback(async () => {
+    setMcpChecking(true)
+    setMcpCheck(undefined)
+    try {
+      setMcpCheck(await window.browserApi.automation.checkMcp())
+    } catch (reason) {
+      setMcpCheck({
+        ok: false,
+        checkedAt: new Date().toISOString(),
+        latencyMs: 0,
+        protocolVersion: status?.mcp?.protocolVersion ?? 'unknown',
+        toolCount: 0,
+        message: reason instanceof Error ? reason.message : String(reason)
+      })
+    } finally {
+      setMcpChecking(false)
+    }
+  }, [status?.mcp?.protocolVersion])
 
   return (
     <Modal
@@ -91,11 +115,36 @@ export function AutomationApiModal({ open, onClose }: AutomationApiModalProps) {
                 <Alert
                   type={status.mcp.available ? 'success' : 'warning'}
                   showIcon
-                  message={status.mcp.available ? 'MCP stdio 已可用' : 'MCP 后端可启动，但当前 Local API 未运行'}
+                  message={status.mcp.available ? 'MCP stdio 已准备好' : 'MCP 后端可启动，但当前 Local API 未运行'}
                   description={status.mcp.available
-                    ? `支持 MCP ${status.mcp.protocolVersion}，当前提供 ${status.mcp.toolCount} 个本地工具。启动 ZBrowser 后，MCP 子进程会通过受保护的 Local API 控制环境。`
+                    ? `支持 MCP ${status.mcp.protocolVersion}，当前提供 ${status.mcp.toolCount} 个本地工具。可运行下面的真实连接自检确认当前安装包可被 AI 客户端拉起。`
                     : 'MCP stdio 依赖正在运行的 ZBrowser Local API。先解决上方 Local API 状态后再连接 AI 客户端。'}
                 />
+                <Space wrap>
+                  <Button
+                    type="primary"
+                    loading={mcpChecking}
+                    disabled={!status.mcp.available}
+                    onClick={() => void runMcpCheck()}
+                  >
+                    运行 MCP 自检
+                  </Button>
+                  {mcpCheck && (
+                    <Tag color={mcpCheck.ok ? 'success' : 'error'}>
+                      {mcpCheck.ok ? '连接通过' : '连接失败'}
+                    </Tag>
+                  )}
+                </Space>
+                {mcpCheck && (
+                  <Alert
+                    type={mcpCheck.ok ? 'success' : 'error'}
+                    showIcon
+                    message={mcpCheck.message}
+                    description={mcpCheck.ok
+                      ? `服务 ${mcpCheck.serverName ?? 'unknown'} ${mcpCheck.serverVersion ?? ''} · 协议 ${mcpCheck.protocolVersion} · 工具 ${mcpCheck.toolCount} 个 · ${mcpCheck.latencyMs} ms`
+                      : `协议 ${mcpCheck.protocolVersion} · ${mcpCheck.latencyMs} ms · 请确认 ZBrowser 主程序仍在运行，并检查 Local API 状态。`}
+                  />
+                )}
                 <div>
                   <Typography.Text strong>传输方式：</Typography.Text>{' '}
                   <Tag>STDIO</Tag>
