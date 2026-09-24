@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { BrowserProfileView, IdentitySelfHealingSummary } from '../../shared/types'
-import { classifySelfHealingAttention, profileHasSelfHealingAttention, selfHealingAttentionItems } from './self-healing-attention'
+import { classifySelfHealingAttention, profileHasSelfHealingAttention, selfHealingAttentionAction, selfHealingAttentionItems } from './self-healing-attention'
 
 function profile(id: string): BrowserProfileView {
   return { id, name: id, status: 'closed' } as BrowserProfileView
@@ -48,6 +48,28 @@ describe('self-healing attention classification', () => {
       decision: 'auto_execute'
     }))).toBe(false)
     expect(profileHasSelfHealingAttention(item, undefined)).toBe(false)
+  })
+
+  it('maps workspace attention to the safest direct action', () => {
+    expect(selfHealingAttentionAction(profile('execute'), state({
+      pending: true,
+      pendingStrategyKind: 'switch_proxy',
+      decision: 'suggest'
+    }))).toBe('execute')
+    expect(selfHealingAttentionAction(profile('manual'), state({
+      pending: true,
+      pendingStrategyKind: 'manual_review',
+      decision: 'suggest'
+    }))).toBe('diagnose')
+    expect(selfHealingAttentionAction(profile('blocked'), state({
+      pending: true,
+      pendingStrategyKind: 'repair_configuration',
+      decision: 'blocked'
+    }))).toBe('review')
+    expect(selfHealingAttentionAction(
+      { ...profile('running'), status: 'running' },
+      state({ pending: true, pendingStrategyKind: 'repair_configuration', decision: 'suggest' })
+    )).toBe('review')
   })
 
   it('ignores healthy low-risk auto work and sorts critical attention first', () => {
