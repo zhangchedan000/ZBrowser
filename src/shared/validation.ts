@@ -1,5 +1,6 @@
 import { applyHardwareProfile, HARDWARE_PROFILES } from './hardware-profiles'
 import { normalizeIdentityConfigProvenance } from './identity-config-provenance'
+import { normalizeIdentityIntent } from './identity-intent'
 import type { HardwareProfileId, ProfileDraft, ProxyConfig } from './types'
 import { domainToASCII } from 'node:url'
 import { isIP } from 'node:net'
@@ -153,6 +154,7 @@ export function validateProfileDraft(draft: ProfileDraft): ProfileDraft {
     kernelVersion,
     ...(kernelVersion ? (kernelFamily ? { kernelFamily } : {}) : { kernelFamily: undefined }),
     environmentType,
+    identityIntent: normalizeIdentityIntent(draft.identityIntent),
     identityConfigProvenance: normalizeIdentityConfigProvenance(draft.identityConfigProvenance),
     window: {
       mode: rawWindow.mode,

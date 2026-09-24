@@ -22,6 +22,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { defaultPlatform, defaultProfileDraft, randomSeed } from '../../shared/defaults'
 import { fingerprintVersionWarning } from '../../shared/fingerprint-consistency'
 import { analyzeIdentityEnvironment } from '../../shared/identity-environment-analysis'
+import { normalizeIdentityIntent } from '../../shared/identity-intent'
 import { applyAIIdentityConfigProvenance, applyAIIdentityConfigToFingerprint, generateAIIdentityConfig } from '../../shared/identity-ai-generator'
 import { HARDWARE_IDENTITY_FIELDS, markFingerprintConfigSources, normalizeIdentityConfigProvenance } from '../../shared/identity-config-provenance'
 import {
@@ -40,7 +41,7 @@ import {
 } from '../../shared/hardware-profiles'
 import { applyRecommendedProxyNetworkIdentity, effectiveNetworkIdentity, networkIdentityPlan } from '../../shared/network-identity'
 import { isKernelDowngrade, kernelFamilyForRelease, kernelMajorVersion, kernelReleaseMatchesPin, latestSameMajorCompatibleKernelVersion, newerCompatibleKernelVersion } from '../../shared/kernel-version'
-import type { BrowserExtension, BrowserProfileView, EngineStatus, HardwareProfileId, IdentityConfigProvenance, KernelRelease, ProfileDraft, ProxyTestResult } from '../../shared/types'
+import type { BrowserExtension, BrowserProfileView, EngineStatus, HardwareProfileId, IdentityConfigProvenance, IdentityIntent, KernelRelease, ProfileDraft, ProxyTestResult } from '../../shared/types'
 
 interface EditorValues extends Omit<ProfileDraft, 'startUrls' | 'color'> {
   startUrlsText: string
@@ -72,7 +73,7 @@ function editorValues(profile: BrowserProfileView | undefined, index: number): E
     extensionIds: [...draft.extensionIds],
     color: draft.color,
     startUrlsText: draft.startUrls.join('\n'),
-    targetCountryCode: '',
+    targetCountryCode: draft.identityIntent?.targetCountryCode ?? '',
     kernelVersion: draft.kernelVersion,
     kernelFamily: draft.kernelFamily,
     environmentType: draft.environmentType ?? 'account',
@@ -115,6 +116,7 @@ export function ProfileEditor({ open, profile, suggestedIndex, saving, extension
   const [testingProxy, setTestingProxy] = useState(false)
   const [applyingAIIdentity, setApplyingAIIdentity] = useState(false)
   const [aiIdentityFeedback, setAiIdentityFeedback] = useState<{ type: 'success' | 'warning'; message: string; description: string } | null>(null)
+  const [identityIntent, setIdentityIntent] = useState<IdentityIntent>(() => normalizeIdentityIntent(profile?.identityIntent))
   const [identityConfigProvenance, setIdentityConfigProvenance] = useState<IdentityConfigProvenance>(() => normalizeIdentityConfigProvenance(profile?.identityConfigProvenance))
   const [proxyResult, setProxyResult] = useState<ProxyTestResult | null>(null)
   const pinnedKernel = kernels.find((kernel) => kernelReleaseMatchesPin(kernel, kernelVersion, kernelFamily))
@@ -198,6 +200,7 @@ export function ProfileEditor({ open, profile, suggestedIndex, saving, extension
       form.setFieldsValue(editorValues(profile, suggestedIndex))
       setProxyResult(null)
       setAiIdentityFeedback(null)
+      setIdentityIntent(normalizeIdentityIntent((profile ?? defaultProfileDraft(suggestedIndex)).identityIntent))
       setIdentityConfigProvenance(normalizeIdentityConfigProvenance((profile ?? defaultProfileDraft(suggestedIndex)).identityConfigProvenance))
     }
   }, [form, open, profile, suggestedIndex])
@@ -263,6 +266,15 @@ export function ProfileEditor({ open, profile, suggestedIndex, saving, extension
       })
       const applied = applyAIIdentityConfigToFingerprint(current, generated, identityConfigProvenance)
       form.setFieldValue('fingerprint', applied)
+      setIdentityIntent({
+        schemaVersion: 1,
+        targetCountryCode: environment.targetCountryCode,
+        strategy: 'ai_assisted',
+        lastGeneratedAt: new Date().toISOString(),
+        lastGenerator: 'identity-ai-v1',
+        lastGeneratedPersonaId: generated.personaId,
+        lastGeneratedCountryCode: environment.effectiveCountryCode
+      })
       setIdentityConfigProvenance((currentProvenance) => applyAIIdentityConfigProvenance(currentProvenance, generated))
 
       const details = [
@@ -330,6 +342,10 @@ export function ProfileEditor({ open, profile, suggestedIndex, saving, extension
     const selectedKernelFamily = values.kernelVersion
       ? values.kernelFamily ?? (selectedKernel ? kernelFamilyForRelease(selectedKernel) : undefined)
       : undefined
+    const normalizedTarget = values.targetCountryCode?.trim().toUpperCase() || undefined
+    const intent = normalizedTarget === identityIntent.targetCountryCode
+      ? normalizeIdentityIntent({ ...identityIntent, targetCountryCode: normalizedTarget })
+      : normalizeIdentityIntent({ schemaVersion: 1, targetCountryCode: normalizedTarget, strategy: 'manual' })
     await onSave({
       name: values.name,
       note: values.note,
@@ -340,6 +356,7 @@ export function ProfileEditor({ open, profile, suggestedIndex, saving, extension
       kernelVersion: values.kernelVersion,
       kernelFamily: selectedKernelFamily,
       environmentType: values.environmentType ?? 'account',
+      identityIntent: intent,
       identityConfigProvenance,
       window: values.window,
       proxy: values.proxy,

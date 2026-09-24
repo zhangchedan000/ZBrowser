@@ -49,6 +49,34 @@ describe('profile validation', () => {
     })
   })
 
+  it('normalizes persisted identity intent country and generation metadata', () => {
+    const draft = defaultProfileDraft()
+    draft.identityIntent = {
+      schemaVersion: 1,
+      targetCountryCode: ' us ',
+      strategy: 'ai_assisted',
+      lastGeneratedAt: '2026-09-24T00:00:00.000Z',
+      lastGenerator: 'identity-ai-v1',
+      lastGeneratedPersonaId: 'persona-1',
+      lastGeneratedCountryCode: 'us'
+    }
+    expect(validateProfileDraft(draft).identityIntent).toEqual({
+      schemaVersion: 1,
+      targetCountryCode: 'US',
+      strategy: 'ai_assisted',
+      lastGeneratedAt: '2026-09-24T00:00:00.000Z',
+      lastGenerator: 'identity-ai-v1',
+      lastGeneratedPersonaId: 'persona-1',
+      lastGeneratedCountryCode: 'US'
+    })
+  })
+
+  it('rejects malformed identity intent target countries', () => {
+    const draft = defaultProfileDraft()
+    draft.identityIntent = { schemaVersion: 1, targetCountryCode: 'USA', strategy: 'manual' }
+    expect(() => validateProfileDraft(draft)).toThrow('目标国家')
+  })
+
   it('keeps fingerprint inputs stable', () => {
     const draft = defaultProfileDraft()
     draft.fingerprint.seed = 123456

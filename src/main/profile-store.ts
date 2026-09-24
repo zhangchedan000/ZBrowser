@@ -13,7 +13,7 @@ import { privateProxyConfig, sameProxyIdentity } from './profile-secrets'
 import { safePathSize } from './profile-data'
 
 interface StoreFile {
-  schemaVersion: 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12
+  schemaVersion: 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 | 13
   nextSerialNumber?: number
   profiles: BrowserProfile[]
 }
@@ -189,7 +189,7 @@ export class ProfileStore {
     }
     if (!value || typeof value !== 'object') throw new Error('环境元数据结构无效')
     const data = value as Partial<StoreFile>
-    if (![1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].includes(Number(data.schemaVersion)) || !Array.isArray(data.profiles)) {
+    if (![1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13].includes(Number(data.schemaVersion)) || !Array.isArray(data.profiles)) {
       throw new Error('环境元数据版本或列表结构无效')
     }
     const result: BrowserProfile[] = []
@@ -218,6 +218,7 @@ export class ProfileStore {
         window: stored.window ?? defaultProfileWindow(),
         proxy: { ...stored.proxy, password: this.secrets.decode(stored.proxy.password) },
         environmentType: stored.environmentType === 'temporary' ? 'temporary' : 'account',
+        identityIntent: stored.identityIntent,
         identityConfigProvenance: normalizeIdentityConfigProvenance(stored.identityConfigProvenance),
         fingerprint: {
           ...stored.fingerprint,
@@ -464,6 +465,9 @@ export class ProfileStore {
       kernelVersion: source.kernelVersion,
       kernelFamily: source.kernelFamily,
       environmentType: source.environmentType ?? 'account',
+      identityIntent: source.identityIntent
+        ? { schemaVersion: 1, targetCountryCode: source.identityIntent.targetCountryCode, strategy: 'manual' }
+        : undefined,
       identityConfigProvenance: normalizeIdentityConfigProvenance(source.identityConfigProvenance),
       window: { ...source.window },
       proxy: (source.environmentType ?? 'account') === 'account'
@@ -501,6 +505,7 @@ export class ProfileStore {
         kernelVersion: current.kernelVersion,
         kernelFamily: current.kernelFamily,
         environmentType: current.environmentType ?? 'account',
+        identityIntent: current.identityIntent,
         identityConfigProvenance: normalizeIdentityConfigProvenance(current.identityConfigProvenance),
         window: current.window,
         proxy: current.proxy,
@@ -859,7 +864,7 @@ export class ProfileStore {
 
   private persist(): Promise<void> {
     const data: StoreFile = {
-      schemaVersion: 12,
+      schemaVersion: 13,
       nextSerialNumber: this.nextSerialNumber,
       profiles: this.list().map((profile) => ({
         ...profile,

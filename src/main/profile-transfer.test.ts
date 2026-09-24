@@ -8,6 +8,14 @@ describe('profile config transfer', () => {
     const draft = defaultProfileDraft()
     draft.kernelVersion = '144.0.7559.132'
     draft.kernelFamily = 'custom'
+    draft.identityIntent = {
+      schemaVersion: 1,
+      targetCountryCode: 'US',
+      strategy: 'ai_assisted',
+      lastGeneratedAt: '2026-09-24T00:00:00.000Z',
+      lastGenerator: 'identity-ai-v1',
+      lastGeneratedCountryCode: 'US'
+    }
     const profile: BrowserProfile = {
       ...draft,
       id: 'profile-transfer-kernel-family',
@@ -21,11 +29,19 @@ describe('profile config transfer', () => {
     const serialized = serializeProfileConfig(profile)
     expect(JSON.parse(serialized).profile).toMatchObject({
       kernelVersion: '144.0.7559.132',
-      kernelFamily: 'custom'
+      kernelFamily: 'custom',
+      identityIntent: {
+        schemaVersion: 1,
+        targetCountryCode: 'US',
+        strategy: 'ai_assisted',
+        lastGenerator: 'identity-ai-v1'
+      }
     })
 
     const imported = parseProfileConfig(serialized)
     expect(imported.kernelVersion).toBe('144.0.7559.132')
     expect(imported.kernelFamily).toBe('custom')
+    expect(imported.identityIntent?.targetCountryCode).toBe('US')
+    expect(imported.identityIntent?.strategy).toBe('ai_assisted')
   })
 })

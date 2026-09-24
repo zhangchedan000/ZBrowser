@@ -19,6 +19,16 @@ export type ProxyExitPolicy = 'warn' | 'block'
 export type ProfileEnvironmentType = 'account' | 'temporary'
 export type IdentityConfigSource = 'default' | 'ai' | 'user'
 export type IdentityConfigSection = 'fingerprint' | 'network' | 'locale' | 'browser'
+export type IdentityIntentStrategy = 'manual' | 'ai_assisted'
+export interface IdentityIntent {
+  schemaVersion: 1
+  targetCountryCode?: string
+  strategy: IdentityIntentStrategy
+  lastGeneratedAt?: string
+  lastGenerator?: 'identity-ai-v1'
+  lastGeneratedPersonaId?: string
+  lastGeneratedCountryCode?: string
+}
 export interface IdentityConfigProvenance {
   schemaVersion: 1
   fingerprint: Record<string, IdentityConfigSource>
@@ -104,6 +114,8 @@ export interface BrowserProfile {
   environmentType?: ProfileEnvironmentType
   /** Internal binding to a managed proxy-pool entry. */
   proxyPoolEntryId?: string
+  /** Desired long-lived identity target, separate from observed runtime state. */
+  identityIntent?: IdentityIntent
   /** Field-level provenance keeps manual overrides above AI/default recommendations across restarts. */
   identityConfigProvenance?: IdentityConfigProvenance
   fingerprint: FingerprintConfig
@@ -124,7 +136,7 @@ export type BrowserProfileView = Omit<BrowserProfile, 'proxy'> & { proxy: Public
 
 export type ProfileDraft = Pick<
   BrowserProfile,
-  'name' | 'note' | 'group' | 'tags' | 'extensionIds' | 'color' | 'startUrls' | 'kernelVersion' | 'kernelFamily' | 'window' | 'proxy' | 'environmentType' | 'identityConfigProvenance' | 'fingerprint'
+  'name' | 'note' | 'group' | 'tags' | 'extensionIds' | 'color' | 'startUrls' | 'kernelVersion' | 'kernelFamily' | 'window' | 'proxy' | 'environmentType' | 'identityIntent' | 'identityConfigProvenance' | 'fingerprint'
 >
 
 export interface ProfileBatchClassification {
@@ -448,6 +460,7 @@ export interface FingerprintRuntimeDiagnosticReport {
   identityHealth?: import('./fingerprint-health-model').FingerprintHealthModel
   identityDiagnosis?: import('./fingerprint-health-model').AIDiagnosisContext
   identityHealthTrend?: import('./identity-health-trend').IdentityHealthTrendSummary
+  identityIntentConsistency?: import('./identity-intent-consistency').IdentityIntentConsistency
   checks: LaunchDiagnosticCheck[]
 }
 

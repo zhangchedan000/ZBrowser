@@ -62,6 +62,7 @@ export function defaultProfileDraft(index = 1): ProfileDraft {
     startUrls: [],
     kernelVersion: '',
     environmentType: 'account',
+    identityIntent: { schemaVersion: 1, strategy: 'manual' },
     identityConfigProvenance: emptyIdentityConfigProvenance(),
     window: defaultProfileWindow(),
     proxy: {

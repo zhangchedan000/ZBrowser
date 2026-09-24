@@ -21,6 +21,7 @@ import { sameProxyIdentity } from './profile-secrets'
 import { BrowserControlSession, PipeCdpTransport, WebSocketCdpTransport } from './browser-control-session'
 import { buildRuntimeFingerprintChecks } from '../shared/runtime-fingerprint-diagnostics'
 import { buildRuntimeIdentitySnapshot } from '../shared/runtime-identity-snapshot'
+import { evaluateIdentityIntentConsistency, identityIntentConsistencyChecks } from '../shared/identity-intent-consistency'
 import { IdentityBaselineStore } from './identity-baseline-store'
 import { evaluateRuntimeIdentity } from './identity-drift-runtime'
 import { buildIdentityDriftIntelligence } from '../shared/identity-drift-health'
@@ -1132,14 +1133,32 @@ export class BrowserLauncher {
       engine,
       network: current.proxyCheck
     })
-    const ready = !checks.some((check) => check.status === 'error')
+    const baselineStore = new IdentityBaselineStore(this.profiles.vaultPath)
+    const existingBaseline = await baselineStore.get(id)
+    const preliminaryIntentConsistency = evaluateIdentityIntentConsistency({
+      intent: current.identityIntent,
+      proxyProtocol: current.proxy.protocol,
+      proxyCheck: current.proxyCheck,
+      runtimeSnapshot: identity.snapshot,
+      baselineSnapshot: existingBaseline?.snapshot
+    })
+    const preliminaryIntentChecks = identityIntentConsistencyChecks(preliminaryIntentConsistency)
+    const ready = ![...checks, ...preliminaryIntentChecks].some((check) => check.status === 'error')
     const identityState = await evaluateRuntimeIdentity(
-      new IdentityBaselineStore(this.profiles.vaultPath),
+      baselineStore,
       id,
       identity.snapshot,
       current.identityConfigProvenance,
       { allowCreateBaseline: ready }
     )
+    const identityIntentConsistency = evaluateIdentityIntentConsistency({
+      intent: current.identityIntent,
+      proxyProtocol: current.proxy.protocol,
+      proxyCheck: current.proxyCheck,
+      runtimeSnapshot: identity.snapshot,
+      baselineSnapshot: identityState.baseline?.snapshot
+    })
+    const intentChecks = identityIntentConsistencyChecks(identityIntentConsistency)
     const identityIntelligence = identityState.drift
       ? buildIdentityDriftIntelligence(
           identityState.drift,
@@ -1190,7 +1209,8 @@ export class BrowserLauncher {
       identityHealth: identityIntelligence?.health,
       identityDiagnosis: identityIntelligence?.diagnosis,
       identityHealthTrend,
-      checks
+      identityIntentConsistency,
+      checks: [...checks, ...intentChecks]
     }
   }
 
