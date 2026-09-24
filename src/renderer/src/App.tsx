@@ -37,6 +37,7 @@ import {
   Layout,
   message,
   Modal,
+  notification,
   Select,
   Space,
   Spin,
@@ -47,7 +48,7 @@ import {
   type MenuProps,
   type TableColumnsType
 } from 'antd'
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import type { AppRecoveryStatus, AppUpdateStatus, BrowserCrashRecord, BrowserExtension, BrowserProfileView, EngineStatus, FingerprintRuntimeDiagnosticReport, IdentityConfigSection, IdentityProfileHealthSummary, IdentitySelfHealingSummary, KernelRelease, ProfileDraft, ProfileLaunchOptions, ProfileStoreHealth, StorageOverview } from '../../shared/types'
 import { ProfileEditor } from './ProfileEditor'
 import { KernelManagerModal } from './KernelManagerModal'
@@ -71,6 +72,7 @@ import { executeBatchKernelUpgrades, planBatchKernelUpgrades } from './batch-ker
 import { runSelfHealingBatchChecks } from './self-healing-batch'
 import { profileHasSelfHealingAttention, selfHealingAttentionAction } from './self-healing-attention'
 import { selfHealingResultView } from './self-healing-result-view'
+import { selfHealingStateNotices } from './self-healing-notifications'
 
 const { Sider, Content } = Layout
 
@@ -184,6 +186,9 @@ export default function App() {
   const [migrationBusy, setMigrationBusy] = useState(false)
   const [exportingDiagnostics, setExportingDiagnostics] = useState(false)
   const [messageApi, contextHolder] = message.useMessage()
+  const [notificationApi, notificationContextHolder] = notification.useNotification()
+  const selfHealingNoticeBaseline = useRef<Record<string, IdentitySelfHealingSummary> | null>(null)
+  const profileLabels = useRef<Record<string, string>>({})
 
   useEffect(() => {
     void Promise.all([
@@ -200,6 +205,7 @@ export default function App() {
     ])
       .then(([items, engineStatus, extensionItems, storageHealth, installedKernels, bundled, recoveryStatus, applicationUpdate, identityHealth, selfHealing]) => {
         setProfiles(items)
+        profileLabels.current = Object.fromEntries(items.map((profile) => [profile.id, `#${profile.serialNumber} · ${profile.name}`]))
         setEngine(engineStatus)
         setExtensions(extensionItems)
         setProfileStorageHealth(storageHealth)
@@ -208,6 +214,7 @@ export default function App() {
         setAppRecoveryStatus(recoveryStatus)
         setUpdateStatus(applicationUpdate)
         setIdentityHealthByProfile(identityHealth)
+        if (!selfHealingNoticeBaseline.current) selfHealingNoticeBaseline.current = selfHealing
         setSelfHealingByProfile(selfHealing)
       })
       .catch((error) => messageApi.error(humanError(error)))
@@ -216,6 +223,10 @@ export default function App() {
     void refreshStorageOverview()
 
     const removeProfileListener = window.browserApi.profiles.onChanged((changed) => {
+      profileLabels.current = {
+        ...profileLabels.current,
+        [changed.id]: `#${changed.serialNumber} · ${changed.name}`
+      }
       setProfiles((current) => current.map((profile) => profile.id === changed.id ? changed : profile))
       void Promise.all([
         window.browserApi.profiles.identityHealth(changed.id),
@@ -233,6 +244,39 @@ export default function App() {
       removeUpdateListener()
     }
   }, [messageApi])
+
+  useEffect(() => {
+    let active = true
+
+    const refreshAndNotify = async (): Promise<void> => {
+      try {
+        const next = await window.browserApi.profiles.identitySelfHealingAll()
+        if (!active) return
+
+        const previous = selfHealingNoticeBaseline.current
+        if (previous) {
+          for (const notice of selfHealingStateNotices(previous, next)) {
+            const label = profileLabels.current[notice.profileId] ?? notice.profileId.slice(0, 8)
+            notificationApi[notice.level]({
+              message: `${label} · ${notice.title}`,
+              description: notice.detail,
+              duration: notice.level === 'error' ? 8 : 5
+            })
+          }
+        }
+        selfHealingNoticeBaseline.current = next
+        setSelfHealingByProfile(next)
+      } catch {
+        // Background notification polling is best-effort while the app is shutting down.
+      }
+    }
+
+    const timer = window.setInterval(() => void refreshAndNotify(), 15_000)
+    return () => {
+      active = false
+      window.clearInterval(timer)
+    }
+  }, [notificationApi])
 
   useEffect(() => {
     if (!selfHealingCenterOpen) return
@@ -1310,6 +1354,7 @@ export default function App() {
   return (
     <Layout className="app-shell">
       {contextHolder}
+      {notificationContextHolder}
       <Sider width={224} className="sidebar">
         <div className="brand">
           <div className="brand-mark">Z</div>
