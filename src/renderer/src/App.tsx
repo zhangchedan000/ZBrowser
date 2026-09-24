@@ -163,6 +163,7 @@ export default function App() {
   const [selfHealingByProfile, setSelfHealingByProfile] = useState<Record<string, IdentitySelfHealingSummary>>({})
   const [selfHealingCenterOpen, setSelfHealingCenterOpen] = useState(false)
   const [selfHealingLoading, setSelfHealingLoading] = useState(false)
+  const [selfHealingExecutingProfileId, setSelfHealingExecutingProfileId] = useState<string>()
   const [repairingDiagnostic, setRepairingDiagnostic] = useState(false)
   const [crashProfile, setCrashProfile] = useState<BrowserProfileView>()
   const [crashRecords, setCrashRecords] = useState<BrowserCrashRecord[]>([])
@@ -733,6 +734,28 @@ export default function App() {
       messageApi.error(humanError(error))
     } finally {
       setSelfHealingLoading(false)
+    }
+  }
+
+  async function executeSelfHealingFromCenter(profile: BrowserProfileView): Promise<void> {
+    setSelfHealingExecutingProfileId(profile.id)
+    try {
+      const result = await window.browserApi.profiles.executeIdentityRepairStrategy(profile.id, true)
+      upsert(result.profile)
+      const [health, selfHealing] = await Promise.all([
+        window.browserApi.profiles.identityHealth(profile.id),
+        window.browserApi.profiles.identitySelfHealing(profile.id)
+      ])
+      setIdentityHealthByProfile((current) => ({ ...current, [profile.id]: health }))
+      setSelfHealingByProfile((current) => ({ ...current, [profile.id]: selfHealing }))
+      if (result.status === 'completed') messageApi.success(result.message)
+      else if (result.status === 'rolled_back') messageApi.warning(result.message)
+      else messageApi.info(result.message)
+    } catch (error) {
+      messageApi.error(humanError(error))
+      throw error
+    } finally {
+      setSelfHealingExecutingProfileId(undefined)
     }
   }
 
@@ -1420,7 +1443,9 @@ export default function App() {
         profiles={profiles}
         states={selfHealingByProfile}
         loading={selfHealingLoading}
+        executingProfileId={selfHealingExecutingProfileId}
         onRefresh={refreshSelfHealingStates}
+        onExecute={executeSelfHealingFromCenter}
         onDiagnose={async (profile) => {
           setSelfHealingCenterOpen(false)
           await runDiagnostics(profile)
