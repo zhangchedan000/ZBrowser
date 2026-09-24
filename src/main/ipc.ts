@@ -25,6 +25,8 @@ import type { UpdateManager } from './update-manager'
 import type { WorkspaceMigrationManager } from './workspace-migration'
 import type { EnvironmentCheckHistoryStore } from './environment-check-history'
 import type { LocalApiServer } from './local-api-server'
+import { MODERN_PROTOCOL_VERSION, TOOLS as MCP_TOOLS } from './mcp-stdio-server'
+import { mcpLaunchConfig } from './mcp-launch-config'
 import type { ProxyPoolStore } from './proxy-pool-store'
 import { createStoredZip, diagnosticProfileSummary, redactDiagnosticText } from './diagnostic-bundle'
 import { selectBestProxyPoolEntry } from './proxy-pool-selection'
@@ -566,7 +568,25 @@ export function registerIpc({
     const profile = profileId ? profiles.get(profileId) : undefined
     return testProxy(proxyForTest(validated, profile))
   })
-  ipcMain.handle('automation-api:status', () => localApi.publicStatus())
+  ipcMain.handle('automation-api:status', () => {
+    const status = localApi.publicStatus()
+    const launch = mcpLaunchConfig({
+      packaged: app.isPackaged,
+      execPath: process.execPath,
+      appPath: app.getAppPath()
+    })
+    return {
+      ...status,
+      mcp: {
+        available: status.running,
+        transport: launch.transport,
+        protocolVersion: MODERN_PROTOCOL_VERSION,
+        command: launch.command,
+        args: launch.args,
+        toolCount: MCP_TOOLS.length
+      }
+    }
+  })
   ipcMain.handle('diagnostics:session-health', () => appSession.recoveryStatus())
   ipcMain.handle('diagnostics:export-bundle', async () => {
     const owner = BrowserWindow.getFocusedWindow()
