@@ -2,7 +2,7 @@ import { randomBytes, timingSafeEqual } from 'node:crypto'
 import { mkdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http'
 import { join } from 'node:path'
-import type { AutomationApiStatus, BrowserProfile, FingerprintRuntimeDiagnosticReport, IdentitySelfHealingSummary, LaunchDiagnosticReport } from '../shared/types'
+import type { AutomationApiStatus, BrowserProfile, FingerprintRuntimeDiagnosticReport, IdentitySelfHealingAttemptRecord, IdentitySelfHealingSummary, LaunchDiagnosticReport } from '../shared/types'
 import type { Logger } from './app-logger'
 import type { LocalApiProfileRuntime } from './browser-launcher'
 import type { BrowserControlSession } from './browser-control-session'
@@ -34,6 +34,7 @@ interface LocalApiLauncher {
 interface LocalApiSelfHealing {
   status(profileId: string): Promise<IdentitySelfHealingSummary>
   statusAll(): Promise<Record<string, IdentitySelfHealingSummary>>
+  history(profileId: string): Promise<IdentitySelfHealingAttemptRecord[]>
   diagnose(profileId: string): Promise<FingerprintRuntimeDiagnosticReport>
 }
 
@@ -335,13 +336,17 @@ export class LocalApiServer {
       return
     }
 
-    const selfHealingRoute = url.pathname.match(/^\/api\/v1\/profiles\/([^/]+)\/self-healing(?:\/(check))?$/)
+    const selfHealingRoute = url.pathname.match(/^\/api\/v1\/profiles\/([^/]+)\/self-healing(?:\/(check|history))?$/)
     if (selfHealingRoute) {
       const id = decodeURIComponent(selfHealingRoute[1])
       this.profile(id)
       if (!this.options.selfHealing) throw new LocalApiHttpError(503, 'SELF_HEALING_UNAVAILABLE', 'Self-Healing controller is unavailable')
       if (!selfHealingRoute[2] && method === 'GET') {
         this.sendJson(response, 200, { profileId: id, selfHealing: await this.options.selfHealing.status(id) })
+        return
+      }
+      if (selfHealingRoute[2] === 'history' && method === 'GET') {
+        this.sendJson(response, 200, { profileId: id, history: await this.options.selfHealing.history(id) })
         return
       }
       if (selfHealingRoute[2] === 'check' && method === 'POST') {
