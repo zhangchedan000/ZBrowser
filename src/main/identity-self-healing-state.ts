@@ -3,7 +3,7 @@ import { mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import type { IdentityRepairStrategyKind } from '../shared/identity-repair-strategy'
 import type { IdentitySelfHealingPolicyAction } from '../shared/identity-self-healing-policy'
-import type { IdentitySelfHealingAttemptResult, IdentitySelfHealingAttemptTrigger } from '../shared/types'
+import type { IdentitySelfHealingAttemptRecord, IdentitySelfHealingAttemptResult, IdentitySelfHealingAttemptTrigger } from '../shared/types'
 
 export const IDENTITY_SELF_HEALING_COOLDOWN_MS = 10 * 60_000
 export const IDENTITY_SELF_HEALING_WINDOW_MS = 60 * 60_000
@@ -302,6 +302,22 @@ export class IdentitySelfHealingStateStore {
 
     if (result === 'completed' || result === 'no_action') data.pending = undefined
     await this.write(profileId, data)
+  }
+
+  async history(profileId: string): Promise<IdentitySelfHealingAttemptRecord[]> {
+    const data = await this.read(profileId)
+    return [...data.attempts]
+      .reverse()
+      .map((attempt) => ({
+        id: attempt.id,
+        startedAt: attempt.startedAt,
+        completedAt: attempt.completedAt,
+        signature: attempt.signature,
+        strategyKind: attempt.strategyKind,
+        trigger: attempt.trigger,
+        result: attempt.result,
+        message: attempt.message
+      }))
   }
 
   async snapshot(profileId: string, nowMs = Date.now()): Promise<IdentitySelfHealingStateSnapshot> {
