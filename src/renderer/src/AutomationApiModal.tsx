@@ -168,7 +168,9 @@ export function AutomationApiModal({ open, onClose }: AutomationApiModalProps) {
                         mcpServers: {
                           zbrowser: {
                             command: status.mcp.command,
-                            args: status.mcp.args
+                            args: status.mcp.args,
+                            ...(status.mcp.env ? { env: status.mcp.env } : {}),
+                            ...(status.mcp.env ? { env: status.mcp.env } : {})
                           }
                         }
                       }, null, 2)
