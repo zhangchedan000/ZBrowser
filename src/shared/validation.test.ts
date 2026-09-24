@@ -64,6 +64,7 @@ describe('profile validation', () => {
       schemaVersion: 1,
       targetCountryCode: 'US',
       strategy: 'ai_assisted',
+      selfHealingMode: 'assisted',
       lastGeneratedAt: '2026-09-24T00:00:00.000Z',
       lastGenerator: 'identity-ai-v1',
       lastGeneratedPersonaId: 'persona-1',
