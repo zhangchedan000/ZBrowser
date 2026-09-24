@@ -27,6 +27,7 @@ import type { EnvironmentCheckHistoryStore } from './environment-check-history'
 import type { LocalApiServer } from './local-api-server'
 import { MODERN_PROTOCOL_VERSION, TOOLS as MCP_TOOLS } from './mcp-stdio-server'
 import { mcpLaunchConfig } from './mcp-launch-config'
+import { checkMcpConnection } from './mcp-connection-check'
 import type { ProxyPoolStore } from './proxy-pool-store'
 import { createStoredZip, diagnosticProfileSummary, redactDiagnosticText } from './diagnostic-bundle'
 import { selectBestProxyPoolEntry } from './proxy-pool-selection'
@@ -586,6 +587,24 @@ export function registerIpc({
         toolCount: MCP_TOOLS.length
       }
     }
+  })
+  ipcMain.handle('automation-api:mcp-check', async () => {
+    const status = localApi.publicStatus()
+    if (!status.running) {
+      return {
+        ok: false,
+        checkedAt: new Date().toISOString(),
+        latencyMs: 0,
+        protocolVersion: MODERN_PROTOCOL_VERSION,
+        toolCount: 0,
+        message: 'Local API 未运行，MCP 无法连接到 ZBrowser'
+      }
+    }
+    return checkMcpConnection(mcpLaunchConfig({
+      packaged: app.isPackaged,
+      execPath: process.execPath,
+      appPath: app.getAppPath()
+    }))
   })
   ipcMain.handle('diagnostics:session-health', () => appSession.recoveryStatus())
   ipcMain.handle('diagnostics:export-bundle', async () => {
