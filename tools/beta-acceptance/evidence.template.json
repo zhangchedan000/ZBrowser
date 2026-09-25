@@ -31,10 +31,7 @@
     }
   },
   "recoveryDrill": {
-    "passed": false,
-    "recoveryVersion": "0.2.0-beta.5",
-    "signedManifestVerified": false,
-    "profileDataPreserved": false
+    "reportSha256": "replace-with-64-lowercase-hex"
   },
   "rolloutGate": {
     "requestedPhase": "internal",
