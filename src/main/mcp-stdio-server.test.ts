@@ -69,6 +69,7 @@ describe('MCP stdio message handler', () => {
     expect(TOOLS.map((tool) => tool.name)).toEqual(expect.arrayContaining([
       'page_snapshot',
       'attention_queue',
+      'attention_plan',
       'identity_health_list',
       'profile_identity_health',
       'profile_identity_health_history',
@@ -79,7 +80,7 @@ describe('MCP stdio message handler', () => {
     ]))
   })
 
-  it('maps the unified attention queue to one fixed read-only route', async () => {
+  it('maps unified attention tools to fixed read-only routes', async () => {
     const client = new FakeClient()
     await handleMcpMessage({
       jsonrpc: '2.0',
@@ -87,9 +88,16 @@ describe('MCP stdio message handler', () => {
       method: 'tools/call',
       params: { name: 'attention_queue', arguments: {} }
     }, client, '1.0.0')
+    await handleMcpMessage({
+      jsonrpc: '2.0',
+      id: 21,
+      method: 'tools/call',
+      params: { name: 'attention_plan', arguments: {} }
+    }, client, '1.0.0')
 
     expect(client.calls).toEqual([
-      { path: '/api/v1/attention', options: undefined }
+      { path: '/api/v1/attention', options: undefined },
+      { path: '/api/v1/attention/plan', options: undefined }
     ])
   })
 
