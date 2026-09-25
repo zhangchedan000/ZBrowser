@@ -1,0 +1,121 @@
+name: Beta Signed Candidate Gate
+
+on:
+  workflow_dispatch:
+    inputs:
+      manifest_url:
+        description: HTTPS URL to signed beta update manifest JSON
+        required: true
+        type: string
+      public_key_url:
+        description: HTTPS URL to Ed25519 public key PEM
+        required: true
+        type: string
+      windows_artifact_url:
+        description: HTTPS URL to signed Windows EXE candidate
+        required: true
+        type: string
+      windows_acceptance_url:
+        description: HTTPS URL to Windows signed release acceptance JSON
+        required: true
+        type: string
+      macos_artifact_url:
+        description: HTTPS URL to notarized macOS DMG candidate
+        required: true
+        type: string
+      macos_acceptance_url:
+        description: HTTPS URL to macOS signed release acceptance JSON
+        required: true
+        type: string
+      evidence_url:
+        description: HTTPS URL to beta evidence JSON
+        required: true
+        type: string
+      windows_evidence_bundle_url:
+        description: HTTPS URL to Windows evidence bundle
+        required: true
+        type: string
+      macos_evidence_bundle_url:
+        description: HTTPS URL to macOS evidence bundle
+        required: true
+        type: string
+      recovery_report_url:
+        description: HTTPS URL to verified recovery drill report JSON
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  verify-beta-gate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Download gate inputs
+        shell: bash
+        env:
+          MANIFEST_URL: ${{ inputs.manifest_url }}
+          PUBLIC_KEY_URL: ${{ inputs.public_key_url }}
+          WINDOWS_ARTIFACT_URL: ${{ inputs.windows_artifact_url }}
+          WINDOWS_ACCEPTANCE_URL: ${{ inputs.windows_acceptance_url }}
+          MACOS_ARTIFACT_URL: ${{ inputs.macos_artifact_url }}
+          MACOS_ACCEPTANCE_URL: ${{ inputs.macos_acceptance_url }}
+          EVIDENCE_URL: ${{ inputs.evidence_url }}
+          WINDOWS_EVIDENCE_BUNDLE_URL: ${{ inputs.windows_evidence_bundle_url }}
+          MACOS_EVIDENCE_BUNDLE_URL: ${{ inputs.macos_evidence_bundle_url }}
+          RECOVERY_REPORT_URL: ${{ inputs.recovery_report_url }}
+        run: |
+          set -euo pipefail
+          mkdir -p beta-gate
+
+          download() {
+            local url="$1"
+            local output="$2"
+            case "$url" in
+              https://*) ;;
+              *) echo "Only HTTPS gate input URLs are allowed: $url" >&2; exit 2 ;;
+            esac
+            curl --fail --location --silent --show-error               --proto '=https' --tlsv1.2               --retry 3 --retry-all-errors               --output "$output" "$url"
+            test -s "$output"
+          }
+
+          download "$MANIFEST_URL" beta-gate/manifest.json
+          download "$PUBLIC_KEY_URL" beta-gate/public-key.pem
+          download "$WINDOWS_ARTIFACT_URL" beta-gate/windows-candidate.exe
+          download "$WINDOWS_ACCEPTANCE_URL" beta-gate/windows-acceptance.json
+          download "$MACOS_ARTIFACT_URL" beta-gate/macos-candidate.dmg
+          download "$MACOS_ACCEPTANCE_URL" beta-gate/macos-acceptance.json
+          download "$EVIDENCE_URL" beta-gate/evidence.json
+          download "$WINDOWS_EVIDENCE_BUNDLE_URL" beta-gate/windows-evidence.zip
+          download "$MACOS_EVIDENCE_BUNDLE_URL" beta-gate/macos-evidence.zip
+          download "$RECOVERY_REPORT_URL" beta-gate/recovery-report.json
+
+      - name: Verify signed beta candidate
+        run: |
+          npm run beta:verify-candidate --             --manifest beta-gate/manifest.json             --public-key beta-gate/public-key.pem             --artifact darwin-arm64,beta-gate/macos-candidate.dmg             --artifact win32-x64,beta-gate/windows-candidate.exe             --acceptance darwin-arm64,beta-gate/macos-acceptance.json             --acceptance win32-x64,beta-gate/windows-acceptance.json             --require-channel beta             --output beta-gate/candidate-report.json
+
+      - name: Validate rollout evidence
+        run: |
+          npm run beta:validate-evidence --             --candidate beta-gate/candidate-report.json             --evidence beta-gate/evidence.json             --policy build/beta-rollout-policy.json             --recovery-report beta-gate/recovery-report.json             --evidence-bundle darwin-arm64,beta-gate/macos-evidence.zip             --evidence-bundle win32-x64,beta-gate/windows-evidence.zip             --output beta-gate/rollout-gate-report.json
+
+      - name: Upload verified Beta gate report
+        uses: actions/upload-artifact@v4
+        with:
+          name: ZBrowser-Beta-Signed-Candidate-Gate
+          path: |
+            beta-gate/candidate-report.json
+            beta-gate/rollout-gate-report.json
+          if-no-files-found: error
