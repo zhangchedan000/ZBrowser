@@ -10,19 +10,20 @@ const TARGETS = ['darwin-arm64', 'win32-x64']
 const VERSION_PATTERN = /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/
 
 function parseArguments(argv) {
-  const options = { candidate: '', evidence: '', policy: '', output: '', evidenceBundles: [] }
+  const options = { candidate: '', evidence: '', policy: '', recoveryReport: '', output: '', evidenceBundles: [] }
   for (let index = 0; index < argv.length; index++) {
     const argument = argv[index]
     if (argument === '--candidate') options.candidate = resolve(argv[++index] ?? '')
     else if (argument === '--evidence') options.evidence = resolve(argv[++index] ?? '')
     else if (argument === '--policy') options.policy = resolve(argv[++index] ?? '')
+    else if (argument === '--recovery-report') options.recoveryReport = resolve(argv[++index] ?? '')
     else if (argument === '--output') options.output = resolve(argv[++index] ?? '')
     else if (argument === '--evidence-bundle') options.evidenceBundles.push(argv[++index] ?? '')
     else throw new Error(`Unknown argument: ${argument}`)
   }
-  if (!options.candidate || !options.evidence || !options.policy || !options.output
+  if (!options.candidate || !options.evidence || !options.policy || !options.recoveryReport || !options.output
     || options.evidenceBundles.length !== 2) {
-    throw new Error('--candidate, --evidence, --policy, --output and two --evidence-bundle values are required')
+    throw new Error('--candidate, --evidence, --policy, --recovery-report, --output and two --evidence-bundle values are required')
   }
   return options
 }
@@ -93,7 +94,7 @@ function validatePolicy(policy) {
   }
 }
 
-function evaluateEvidence(candidate, evidence, policy, evidenceBundles) {
+function evaluateEvidence(candidate, evidence, policy, evidenceBundles, recoveryReport, recoveryReportSha256) {
   const failures = []
   if (candidate.schemaVersion !== 1 || candidate.passed !== true || candidate.channel !== 'beta'
     || candidate.distributionMode !== 'signed'
@@ -138,13 +139,26 @@ function evaluateEvidence(candidate, evidence, policy, evidenceBundles) {
       evidenceSize: evidenceBundles?.[target]?.size
     }
   }
-  const recovery = evidence.recoveryDrill
-  if (!recovery || recovery.passed !== true || recovery.signedManifestVerified !== true
-    || recovery.profileDataPreserved !== true
-    || typeof recovery.recoveryVersion !== 'string' || !VERSION_PATTERN.test(recovery.recoveryVersion)
-    || compareVersions(recovery.recoveryVersion, candidate.version) <= 0) {
-    failures.push('newer_recovery_build_drill')
-  }
+  const recoveryReference = evidence.recoveryDrill
+  const recoveryValid = recoveryReference
+    && /^[a-f\d]{64}$/.test(recoveryReference.reportSha256 ?? '')
+    && recoveryReference.reportSha256 === recoveryReportSha256
+    && recoveryReport?.schemaVersion === 1
+    && recoveryReport?.passed === true
+    && recoveryReport?.baselineVersion === candidate.version
+    && recoveryReport?.signedManifestVerified === true
+    && recoveryReport?.profileDataPreserved === true
+    && typeof recoveryReport?.recoveryVersion === 'string'
+    && VERSION_PATTERN.test(recoveryReport.recoveryVersion)
+    && compareVersions(recoveryReport.recoveryVersion, candidate.version) > 0
+    && TARGETS.every((target) => {
+      const value = recoveryReport.targets?.[target]
+      return value?.profileDataPreserved === true
+        && value?.identityBaselinePreserved === true
+        && value?.settingsPreserved === true
+        && value?.launchAfterRecoveryPassed === true
+    })
+  if (!recoveryValid) failures.push('newer_recovery_build_drill')
 
   const rolloutGate = evidence.rolloutGate
   const requestedPhaseIndex = policy.phases.findIndex((phase) => phase.name === rolloutGate?.requestedPhase)
@@ -171,7 +185,7 @@ function evaluateEvidence(candidate, evidence, policy, evidenceBundles) {
     version: candidate.version,
     failures,
     platformResults,
-    recoveryVersion: recovery?.recoveryVersion,
+    recoveryVersion: recoveryReport?.recoveryVersion,
     rollout: failures.length === 0 ? {
       authorizedPhase: rolloutGate.requestedPhase,
       phases: policy.phases,
@@ -183,14 +197,23 @@ function evaluateEvidence(candidate, evidence, policy, evidenceBundles) {
 
 async function main() {
   const options = parseArguments(process.argv.slice(2))
-  const [candidate, evidence, policy] = await Promise.all([
+  const [candidate, evidence, policy, recoveryText] = await Promise.all([
     readFile(options.candidate, 'utf8').then(JSON.parse),
     readFile(options.evidence, 'utf8').then(JSON.parse),
-    readFile(options.policy, 'utf8').then(JSON.parse)
+    readFile(options.policy, 'utf8').then(JSON.parse),
+    readFile(options.recoveryReport, 'utf8')
   ])
   validatePolicy(policy)
   const evidenceBundles = await hashEvidenceBundles(options.evidenceBundles)
-  const report = evaluateEvidence(candidate, evidence, policy, evidenceBundles)
+  const recoveryReportSha256 = createHash('sha256').update(recoveryText).digest('hex')
+  const report = evaluateEvidence(
+    candidate,
+    evidence,
+    policy,
+    evidenceBundles,
+    JSON.parse(recoveryText),
+    recoveryReportSha256
+  )
   await writeFile(options.output, `${JSON.stringify(report, null, 2)}\n`)
   process.stdout.write(`${JSON.stringify(report, null, 2)}\n`)
   if (!report.passed) process.exitCode = 1
