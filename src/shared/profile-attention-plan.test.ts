@@ -99,6 +99,7 @@ describe('profile attention plan', () => {
       action: 'confirm_self_healing',
       risk: 'confirmation_required',
       recommendedTool: 'profile_self_healing_status',
+      strategyKind: 'regenerate_identity',
       requiresUserConfirmation: true
     })
   })
