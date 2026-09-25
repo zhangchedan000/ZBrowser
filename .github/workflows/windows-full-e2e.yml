@@ -201,6 +201,12 @@ jobs:
           Write-Host "ZIP:"
           $zip | Select-Object Name,Length
 
+      - name: Generate Windows Beta evidence preflight
+        shell: pwsh
+        run: |
+          npm run beta:windows-preflight -- --release release --e2e test-results/app-e2e-packaged.json --output test-results/windows-beta-preflight.json
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
       - name: Export and verify Beta acceptance kit
         shell: pwsh
         run: |
