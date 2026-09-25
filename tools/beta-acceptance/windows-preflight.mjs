@@ -4,7 +4,7 @@ import { createHash } from 'node:crypto'
 import { createReadStream } from 'node:fs'
 import { readFile, readdir, stat, writeFile } from 'node:fs/promises'
 import { basename, dirname, join, resolve } from 'node:path'
-import { pathToFileURL } from 'node:url'
+import { fileURLToPath, pathToFileURL } from 'node:url'
 
 async function sha256(path) {
   const hash = createHash('sha256')
@@ -64,7 +64,7 @@ async function collectArtifacts(releaseRoot, version) {
 }
 
 async function runPreflight(options) {
-  const projectRoot = resolve(dirname(new URL(import.meta.url).pathname), '..', '..')
+  const projectRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..')
   const [packageJson, betaRelease, e2e] = await Promise.all([
     readFile(join(projectRoot, 'package.json'), 'utf8').then(JSON.parse),
     readFile(join(projectRoot, 'build', 'beta-release.json'), 'utf8').then(JSON.parse),
