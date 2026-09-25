@@ -2,7 +2,7 @@ import { randomBytes, timingSafeEqual } from 'node:crypto'
 import { mkdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http'
 import { join } from 'node:path'
-import type { AutomationApiStatus, BrowserProfile, FingerprintRuntimeDiagnosticReport, IdentityRepairStrategyExecutionSummary, IdentitySelfHealingAttemptRecord, IdentitySelfHealingSummary, LaunchDiagnosticReport } from '../shared/types'
+import type { AutomationApiStatus, AutomationAttentionAuditResult, BrowserProfile, FingerprintRuntimeDiagnosticReport, IdentityRepairStrategyExecutionSummary, IdentitySelfHealingAttemptRecord, IdentitySelfHealingSummary, LaunchDiagnosticReport } from '../shared/types'
 import type { Logger } from './app-logger'
 import type { LocalApiProfileRuntime } from './browser-launcher'
 import type { BrowserControlSession } from './browser-control-session'
@@ -147,6 +147,7 @@ export class LocalApiServer {
   private port?: number
   private readonly identityHealthHistory: IdentityHealthHistoryStore
   private readonly attentionAuditHistory: AttentionAuditHistoryStore
+  private attentionAuditRun?: Promise<AutomationAttentionAuditResult>
   readonly tokenPath: string
   readonly metadataPath: string
 
@@ -353,7 +354,18 @@ export class LocalApiServer {
     }
   }
 
-  async executeAttentionAudit() {
+  async executeAttentionAudit(): Promise<AutomationAttentionAuditResult> {
+    if (this.attentionAuditRun) return this.attentionAuditRun
+    const run = this.performAttentionAudit()
+    this.attentionAuditRun = run
+    try {
+      return await run
+    } finally {
+      if (this.attentionAuditRun === run) this.attentionAuditRun = undefined
+    }
+  }
+
+  private async performAttentionAudit(): Promise<AutomationAttentionAuditResult> {
     const beforeState = await this.attentionPlanningState()
     const beforeQueue = profileAttentionQueue(
       beforeState.profiles,
