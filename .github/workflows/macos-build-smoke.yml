@@ -12,6 +12,7 @@ on:
       - "build/entitlements.mac.inherit.plist"
       - "tools/release/**"
       - ".github/workflows/macos-build-smoke.yml"
+      - ".github/workflows/macos-signed-release.yml"
   workflow_dispatch:
 
 permissions:
