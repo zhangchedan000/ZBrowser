@@ -108,6 +108,33 @@ describe('AttentionPatrolScheduler', () => {
     })
   })
 
+  it('restores an enabled patrol after an application restart', async () => {
+    const vault = await mkdtemp(join(tmpdir(), 'zbrowser-patrol-'))
+    temporaryPaths.push(vault)
+    const firstSettings = new SettingsStore(vault)
+    await firstSettings.initialize()
+    const firstScheduler = new AttentionPatrolScheduler(firstSettings, async () => auditResult())
+
+    await firstScheduler.configure(true, 30)
+    firstScheduler.stop()
+
+    const reopenedSettings = new SettingsStore(vault)
+    await reopenedSettings.initialize()
+    const runAudit = vi.fn(async () => auditResult())
+    const restartedScheduler = new AttentionPatrolScheduler(reopenedSettings, runAudit)
+
+    restartedScheduler.start()
+    expect(restartedScheduler.status()).toMatchObject({
+      enabled: true,
+      intervalMinutes: 30,
+      running: false,
+      nextRunAt: '2026-09-25T12:30:00.000Z'
+    })
+
+    await vi.advanceTimersByTimeAsync(30 * 60_000)
+    expect(runAudit).toHaveBeenCalledTimes(1)
+  })
+
   it('persists configuration and can be disabled without running a pending timer', async () => {
     const vault = await mkdtemp(join(tmpdir(), 'zbrowser-patrol-'))
     temporaryPaths.push(vault)
