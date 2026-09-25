@@ -119,8 +119,7 @@ export class AttentionAuditHistoryStore {
     this.path = join(vaultPath, 'attention-audit-history.json')
   }
 
-  private async read(): Promise<AttentionAuditHistoryRecord[]> {
-    await this.writeQueue.catch(() => undefined)
+  private async readFile(): Promise<AttentionAuditHistoryRecord[]> {
     try {
       const parsed = JSON.parse(await readFile(this.path, 'utf8')) as unknown
       if (!Array.isArray(parsed)) return []
@@ -131,6 +130,11 @@ export class AttentionAuditHistoryStore {
     } catch {
       return []
     }
+  }
+
+  private async read(): Promise<AttentionAuditHistoryRecord[]> {
+    await this.writeQueue.catch(() => undefined)
+    return this.readFile()
   }
 
   async list(): Promise<AttentionAuditHistoryRecord[]> {
@@ -159,7 +163,7 @@ export class AttentionAuditHistoryStore {
     }
 
     const operation = async (): Promise<void> => {
-      const existing = await this.read()
+      const existing = await this.readFile()
       const next = [...existing, record].slice(-MAX_RECORDS)
       await mkdir(join(this.path, '..'), { recursive: true })
       const temporary = this.path + '.tmp'
