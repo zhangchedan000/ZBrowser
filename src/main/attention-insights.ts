@@ -1,12 +1,9 @@
 import type { BrowserProfile } from '../shared/types'
 import type { IdentityProfileHealthSummary } from '../shared/identity-profile-health'
 import type { AttentionAuditHistoryRecord } from './attention-audit-history'
+import type { AttentionPlanHistoryContext, AttentionPlanHistorySignal } from '../shared/profile-attention-plan'
 
-export type AttentionInsightSignal =
-  | 'repeated_attention'
-  | 'repeated_failure'
-  | 'repeated_confirmation'
-  | 'identity_degrading'
+export type AttentionInsightSignal = AttentionPlanHistorySignal
 
 export interface AttentionInsightItem {
   profileId: string
@@ -95,4 +92,18 @@ export function attentionInsights(
     if (first.appearances !== second.appearances) return second.appearances - first.appearances
     return first.serialNumber - second.serialNumber
   })
+}
+
+
+export function attentionInsightContext(
+  items: AttentionInsightItem[]
+): Record<string, AttentionPlanHistoryContext> {
+  return Object.fromEntries(items.map((item) => [item.profileId, {
+    level: item.level,
+    signals: item.signals,
+    appearances: item.appearances,
+    failures: item.failures,
+    confirmationRequired: item.confirmationRequired,
+    reason: item.reason
+  }]))
 }
