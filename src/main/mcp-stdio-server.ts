@@ -42,6 +42,11 @@ const TOOLS: ToolDefinition[] = [
     inputSchema: { type: 'object', properties: {}, additionalProperties: false }
   },
   {
+    name: 'attention_plan',
+    description: 'Return a prioritized read-only handling plan for profiles that need attention, including recommended existing tools and whether the user must confirm the next action.',
+    inputSchema: { type: 'object', properties: {}, additionalProperties: false }
+  },
+  {
     name: 'profile_status',
     description: 'Get one profile status and local runtime state.',
     inputSchema: {
@@ -259,6 +264,9 @@ async function callTool(client: McpApiClient, name: string, rawArguments: unknow
     case 'attention_queue':
       if (Object.keys(args).length) throw new McpLocalApiError('INVALID_ARGUMENTS', 'attention_queue does not accept arguments')
       return client.request('/api/v1/attention')
+    case 'attention_plan':
+      if (Object.keys(args).length) throw new McpLocalApiError('INVALID_ARGUMENTS', 'attention_plan does not accept arguments')
+      return client.request('/api/v1/attention/plan')
     case 'profile_status':
       return client.request(toolPathProfile(profileId(args), '/status'))
     case 'profile_start':
