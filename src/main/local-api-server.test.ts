@@ -204,7 +204,7 @@ describe('Local API server', () => {
           strategy: {
             kind: 'repair_configuration' as const,
             reason: 'repair locale',
-            affectedSections: ['locale'] as const,
+            affectedSections: ['locale' as const],
             requiresUserConfirmation: true,
             automaticActionAvailable: true
           },
