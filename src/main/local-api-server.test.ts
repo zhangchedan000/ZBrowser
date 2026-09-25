@@ -467,27 +467,6 @@ describe('Local API server', () => {
         }]
       })
 
-      const confirmedAttention = await server.confirmAttentionStep(current.id)
-      expect(confirmedAttention).toMatchObject({
-        profileId: current.id,
-        status: 'completed',
-        strategyKind: 'repair_configuration',
-        message: 'confirmed repair completed',
-        review: {
-          resolvedCount: 1,
-          remainingCount: 1,
-          newCount: 0,
-          resolved: [
-            expect.objectContaining({ profileId: current.id, source: 'self_healing' })
-          ],
-          remaining: [
-            expect.objectContaining({ profileId: current.id, source: 'identity_health' })
-          ]
-        }
-      })
-
-      await expect(server.confirmAttentionStep(current.id)).rejects.toThrow('当前已不是需要人工确认')
-
       const identityHealthList = await fetch(status.url + '/api/v1/identity-health', { headers: authorization })
       expect(identityHealthList.status).toBe(200)
       expect(await identityHealthList.json()).toMatchObject({
@@ -575,6 +554,27 @@ describe('Local API server', () => {
         selfHealing: { mode: 'assisted', pending: true },
         ready: true
       })
+
+      const confirmedAttention = await server.confirmAttentionStep(current.id)
+      expect(confirmedAttention).toMatchObject({
+        profileId: current.id,
+        status: 'completed',
+        strategyKind: 'repair_configuration',
+        message: 'confirmed repair completed',
+        review: {
+          resolvedCount: 1,
+          remainingCount: 1,
+          newCount: 0,
+          resolved: [
+            expect.objectContaining({ profileId: current.id, source: 'self_healing' })
+          ],
+          remaining: [
+            expect.objectContaining({ profileId: current.id, source: 'identity_health' })
+          ]
+        }
+      })
+
+      await expect(server.confirmAttentionStep(current.id)).rejects.toThrow('当前已不是需要人工确认')
 
       const stopped = await fetch(status.url + '/api/profile/stop', {
         method: 'POST',
