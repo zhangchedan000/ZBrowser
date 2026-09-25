@@ -1,0 +1,36 @@
+{
+  "schemaVersion": 1,
+  "channel": "beta",
+  "minimumSoakHoursPerPlatform": 12,
+  "minimumLaunchesPerPlatform": 50,
+  "minimumUpdateAttemptsPerPlatform": 3,
+  "minimumCrashFreeRate": 0.99,
+  "minimumUpdateSuccessRate": 1,
+  "phases": [
+    {
+      "name": "internal",
+      "audiencePercent": 5,
+      "minimumHours": 8
+    },
+    {
+      "name": "limited",
+      "audiencePercent": 25,
+      "minimumHours": 24
+    },
+    {
+      "name": "broad",
+      "audiencePercent": 100,
+      "minimumHours": 48
+    }
+  ],
+  "pauseOn": [
+    "startup_crash",
+    "profile_data_loss",
+    "fingerprint_regression",
+    "proxy_identity_leak",
+    "update_failure",
+    "self_healing_loop",
+    "attention_patrol_regression"
+  ],
+  "rollbackStrategy": "publish_newer_recovery_build"
+}
