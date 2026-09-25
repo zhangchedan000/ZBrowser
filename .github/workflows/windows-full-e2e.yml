@@ -209,6 +209,13 @@ jobs:
           npm run beta:verify-kit -- release/beta-acceptance-kit
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
+      - name: Upload Beta acceptance kit
+        uses: actions/upload-artifact@v4
+        with:
+          name: ZBrowser-Beta-Acceptance-Kit
+          path: release/beta-acceptance-kit
+          if-no-files-found: error
+
       - name: Publish immutable GitHub prerelease
         shell: pwsh
         env:
