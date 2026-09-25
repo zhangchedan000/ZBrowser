@@ -1,10 +1,12 @@
-import { Alert, Button, Divider, Modal, Space, Spin, Tag, Typography } from 'antd'
+import { Alert, Button, Divider, Modal, Select, Space, Spin, Switch, Tag, Typography } from 'antd'
 import { useCallback, useEffect, useState } from 'react'
 import type {
+  AttentionPatrolIntervalMinutes,
   AutomationApiStatus,
   AutomationAttentionAuditResult,
   AutomationAttentionConfirmationResult,
   AutomationAttentionDashboard,
+  AutomationAttentionPatrolStatus,
   McpConnectionCheckResult
 } from '../../shared/types'
 
@@ -26,6 +28,8 @@ export function AutomationApiModal({ open, onClose }: AutomationApiModalProps) {
   const [attentionDashboard, setAttentionDashboard] = useState<AutomationAttentionDashboard>()
   const [attentionAudit, setAttentionAudit] = useState<AutomationAttentionAuditResult>()
   const [attentionConfirmation, setAttentionConfirmation] = useState<AutomationAttentionConfirmationResult>()
+  const [attentionPatrol, setAttentionPatrol] = useState<AutomationAttentionPatrolStatus>()
+  const [attentionPatrolSaving, setAttentionPatrolSaving] = useState(false)
 
   const refresh = useCallback(async () => {
     setLoading(true)
@@ -43,7 +47,12 @@ export function AutomationApiModal({ open, onClose }: AutomationApiModalProps) {
     setAttentionLoading(true)
     setAttentionError('')
     try {
-      setAttentionDashboard(await window.browserApi.automation.attentionDashboard())
+      const [dashboard, patrol] = await Promise.all([
+        window.browserApi.automation.attentionDashboard(),
+        window.browserApi.automation.attentionPatrolStatus()
+      ])
+      setAttentionDashboard(dashboard)
+      setAttentionPatrol(patrol)
     } catch (reason) {
       setAttentionError(reason instanceof Error ? reason.message : String(reason))
     } finally {
@@ -60,6 +69,11 @@ export function AutomationApiModal({ open, onClose }: AutomationApiModalProps) {
       void refreshAttention()
     }
   }, [open, refresh, refreshAttention])
+
+  useEffect(() => window.browserApi.automation.onAttentionPatrolChanged((next) => {
+    setAttentionPatrol(next)
+    if (!next.running && next.lastCompletedAt) void refreshAttention()
+  }), [refreshAttention])
 
   const runMcpCheck = useCallback(async () => {
     setMcpChecking(true)
@@ -91,6 +105,21 @@ export function AutomationApiModal({ open, onClose }: AutomationApiModalProps) {
       setAttentionError(reason instanceof Error ? reason.message : String(reason))
     } finally {
       setAttentionRunning(false)
+    }
+  }, [])
+
+  const configureAttentionPatrol = useCallback(async (
+    enabled: boolean,
+    intervalMinutes: AttentionPatrolIntervalMinutes
+  ) => {
+    setAttentionPatrolSaving(true)
+    setAttentionError('')
+    try {
+      setAttentionPatrol(await window.browserApi.automation.configureAttentionPatrol(enabled, intervalMinutes))
+    } catch (reason) {
+      setAttentionError(reason instanceof Error ? reason.message : String(reason))
+    } finally {
+      setAttentionPatrolSaving(false)
     }
   }, [])
 
@@ -249,6 +278,53 @@ export function AutomationApiModal({ open, onClose }: AutomationApiModalProps) {
                       长期异常 {attentionDashboard.insights.count}
                     </Tag>
                   </Space>
+
+                  {attentionPatrol && (
+                    <div style={{ border: '1px solid rgba(5, 5, 5, 0.12)', borderRadius: 8, padding: '10px 12px' }}>
+                      <Space direction="vertical" size={8} style={{ width: '100%' }}>
+                        <Space wrap>
+                          <Typography.Text strong>周期自动巡检</Typography.Text>
+                          <Switch
+                            checked={attentionPatrol.enabled}
+                            loading={attentionPatrolSaving}
+                            onChange={(enabled) => void configureAttentionPatrol(enabled, attentionPatrol.intervalMinutes)}
+                          />
+                          <Select<AttentionPatrolIntervalMinutes>
+                            value={attentionPatrol.intervalMinutes}
+                            disabled={attentionPatrolSaving}
+                            style={{ width: 130 }}
+                            options={[
+                              { value: 15, label: '每 15 分钟' },
+                              { value: 30, label: '每 30 分钟' },
+                              { value: 60, label: '每 1 小时' },
+                              { value: 180, label: '每 3 小时' }
+                            ]}
+                            onChange={(minutes) => void configureAttentionPatrol(attentionPatrol.enabled, minutes)}
+                          />
+                          {attentionPatrol.running && <Tag color="processing">巡检中</Tag>}
+                          {!attentionPatrol.enabled && <Tag>已关闭</Tag>}
+                        </Space>
+                        <Typography.Text type="secondary">
+                          仅自动执行现有安全巡检与低风险 Policy；高风险项仍只进入待确认，不会由定时任务自动执行。
+                        </Typography.Text>
+                        {attentionPatrol.enabled && attentionPatrol.nextRunAt && (
+                          <Typography.Text type="secondary">
+                            下次巡检：{new Date(attentionPatrol.nextRunAt).toLocaleString()}
+                          </Typography.Text>
+                        )}
+                        {attentionPatrol.lastResult && (
+                          <Typography.Text type="secondary">
+                            最近自动巡检：完成 {attentionPatrol.lastResult.completed} · 待确认 {attentionPatrol.lastResult.confirmationRequired} ·
+                            失败 {attentionPatrol.lastResult.failed} · 已解决 {attentionPatrol.lastResult.resolved} ·
+                            仍存在 {attentionPatrol.lastResult.remaining} · 新出现 {attentionPatrol.lastResult.newlyDetected}
+                          </Typography.Text>
+                        )}
+                        {attentionPatrol.lastError && (
+                          <Typography.Text type="danger">最近自动巡检失败：{attentionPatrol.lastError}</Typography.Text>
+                        )}
+                      </Space>
+                    </div>
+                  )}
 
                   {attentionAudit && (
                     <Alert
