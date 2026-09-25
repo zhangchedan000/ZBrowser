@@ -592,6 +592,8 @@ export function registerIpc({
       }
     }
   })
+  ipcMain.handle('automation-api:attention-dashboard', () => localApi.attentionDashboard())
+  ipcMain.handle('automation-api:attention-audit', () => localApi.executeAttentionAudit())
   ipcMain.handle('automation-api:mcp-check', async () => {
     const status = localApi.publicStatus()
     if (!status.running) {
