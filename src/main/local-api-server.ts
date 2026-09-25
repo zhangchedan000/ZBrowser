@@ -286,11 +286,105 @@ export class LocalApiServer {
       this.attentionAuditHistory.list()
     ])
     const identityHealth = Object.fromEntries(healthEntries)
+    const insights = attentionInsights(profiles, history, identityHealth)
     return {
       profiles,
       identityHealth,
       selfHealing,
-      historyContext: attentionInsightContext(attentionInsights(profiles, history, identityHealth))
+      history,
+      insights,
+      historyContext: attentionInsightContext(insights)
+    }
+  }
+
+  async attentionPlanSummary() {
+    const state = await this.attentionPlanningState()
+    const steps = profileAttentionPlan(
+      state.profiles,
+      state.identityHealth,
+      state.selfHealing,
+      state.historyContext
+    )
+    return {
+      count: steps.length,
+      confirmationRequiredCount: steps.filter((step) => step.requiresUserConfirmation).length,
+      recurringPriorityCount: steps.filter((step) => step.historyContext).length,
+      steps
+    }
+  }
+
+  async attentionInsightsSummary() {
+    const state = await this.attentionPlanningState()
+    return {
+      count: state.insights.length,
+      criticalCount: state.insights.filter((item) => item.level === 'critical').length,
+      warningCount: state.insights.filter((item) => item.level === 'warning').length,
+      items: state.insights
+    }
+  }
+
+  async attentionAuditHistorySummary() {
+    return this.attentionAuditHistory.list()
+  }
+
+  async attentionDashboard() {
+    const state = await this.attentionPlanningState()
+    const steps = profileAttentionPlan(
+      state.profiles,
+      state.identityHealth,
+      state.selfHealing,
+      state.historyContext
+    )
+    return {
+      plan: {
+        count: steps.length,
+        confirmationRequiredCount: steps.filter((step) => step.requiresUserConfirmation).length,
+        recurringPriorityCount: steps.filter((step) => step.historyContext).length,
+        steps
+      },
+      insights: {
+        count: state.insights.length,
+        criticalCount: state.insights.filter((item) => item.level === 'critical').length,
+        warningCount: state.insights.filter((item) => item.level === 'warning').length,
+        items: state.insights
+      },
+      history: state.history.slice(0, 10)
+    }
+  }
+
+  async executeAttentionAudit() {
+    const beforeState = await this.attentionPlanningState()
+    const beforeQueue = profileAttentionQueue(
+      beforeState.profiles,
+      beforeState.identityHealth,
+      beforeState.selfHealing
+    )
+    const plan = profileAttentionPlan(
+      beforeState.profiles,
+      beforeState.identityHealth,
+      beforeState.selfHealing,
+      beforeState.historyContext
+    )
+    const audit = await runAttentionAudit(plan, {
+      inspectProcess: (profileId) => this.launcher.localApiRuntime(profileId),
+      reviewSelfHealing: async (profileId) => {
+        if (!this.options.selfHealing) throw new Error('Self-Healing controller is unavailable')
+        return this.options.selfHealing.status(profileId)
+      },
+      runIdentityCheck: (profileId) => this.options.selfHealing
+        ? this.options.selfHealing.diagnose(profileId)
+        : this.launcher.diagnoseFingerprintRuntime(profileId)
+    })
+    const record = await this.attentionAuditHistory.record(audit)
+    const afterState = await this.attentionPlanningState()
+    const afterQueue = profileAttentionQueue(
+      afterState.profiles,
+      afterState.identityHealth,
+      afterState.selfHealing
+    )
+    return {
+      ...record,
+      review: reviewAttentionAudit(beforeQueue, afterQueue)
     }
   }
 
@@ -362,84 +456,22 @@ export class LocalApiServer {
     }
 
     if (method === 'GET' && url.pathname === '/api/v1/attention/insights') {
-      const profiles = this.profiles.list()
-      const [history, healthEntries] = await Promise.all([
-        this.attentionAuditHistory.list(),
-        Promise.all(profiles.map(async (profile) => [
-          profile.id,
-          summarizeIdentityProfileHealth(await this.identityHealthHistory.list(profile.id))
-        ] as const))
-      ])
-      const items = attentionInsights(
-        profiles,
-        history,
-        Object.fromEntries(healthEntries)
-      )
-      this.sendJson(response, 200, {
-        count: items.length,
-        criticalCount: items.filter((item) => item.level === 'critical').length,
-        warningCount: items.filter((item) => item.level === 'warning').length,
-        items
-      })
+      this.sendJson(response, 200, await this.attentionInsightsSummary())
       return
     }
 
     if (method === 'GET' && url.pathname === '/api/v1/attention/audit/history') {
-      this.sendJson(response, 200, { history: await this.attentionAuditHistory.list() })
+      this.sendJson(response, 200, { history: await this.attentionAuditHistorySummary() })
       return
     }
 
     if (method === 'POST' && url.pathname === '/api/v1/attention/audit') {
-      const beforeState = await this.attentionPlanningState()
-      const beforeQueue = profileAttentionQueue(
-        beforeState.profiles,
-        beforeState.identityHealth,
-        beforeState.selfHealing
-      )
-      const plan = profileAttentionPlan(
-        beforeState.profiles,
-        beforeState.identityHealth,
-        beforeState.selfHealing,
-        beforeState.historyContext
-      )
-      const audit = await runAttentionAudit(plan, {
-        inspectProcess: (profileId) => this.launcher.localApiRuntime(profileId),
-        reviewSelfHealing: async (profileId) => {
-          if (!this.options.selfHealing) throw new Error('Self-Healing controller is unavailable')
-          return this.options.selfHealing.status(profileId)
-        },
-        runIdentityCheck: (profileId) => this.options.selfHealing
-          ? this.options.selfHealing.diagnose(profileId)
-          : this.launcher.diagnoseFingerprintRuntime(profileId)
-      })
-      const record = await this.attentionAuditHistory.record(audit)
-      const afterState = await this.attentionPlanningState()
-      const afterQueue = profileAttentionQueue(
-        afterState.profiles,
-        afterState.identityHealth,
-        afterState.selfHealing
-      )
-      this.sendJson(response, 200, {
-        ...record,
-        review: reviewAttentionAudit(beforeQueue, afterQueue)
-      })
+      this.sendJson(response, 200, await this.executeAttentionAudit())
       return
     }
 
     if (method === 'GET' && url.pathname === '/api/v1/attention/plan') {
-      const { profiles, identityHealth, selfHealing, historyContext } = await this.attentionPlanningState()
-      const steps = profileAttentionPlan(
-        profiles,
-        identityHealth,
-        selfHealing,
-        historyContext
-      )
-      this.sendJson(response, 200, {
-        count: steps.length,
-        confirmationRequiredCount: steps.filter((step) => step.requiresUserConfirmation).length,
-        recurringPriorityCount: steps.filter((step) => step.historyContext).length,
-        steps
-      })
+      this.sendJson(response, 200, await this.attentionPlanSummary())
       return
     }
 
