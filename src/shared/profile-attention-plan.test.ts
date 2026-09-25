@@ -103,6 +103,38 @@ describe('profile attention plan', () => {
     })
   })
 
+  it('promotes recurring critical history ahead of one-off attention', () => {
+    const plan = profileAttentionPlan(
+      [profile('one-off', 1), profile('recurring', 9)],
+      {
+        'one-off': { state: 'attention', score: 82 },
+        recurring: { state: 'attention', score: 61 }
+      },
+      {},
+      {
+        recurring: {
+          level: 'critical',
+          signals: ['repeated_failure', 'identity_degrading'],
+          appearances: 5,
+          failures: 2,
+          confirmationRequired: 0,
+          reason: '最近多次失败并持续下降'
+        }
+      }
+    )
+
+    expect(plan.map((step) => step.profileId)).toEqual(['recurring', 'one-off'])
+    expect(plan[0]).toMatchObject({
+      priority: 1,
+      profileId: 'recurring',
+      historyContext: {
+        level: 'critical',
+        failures: 2,
+        signals: expect.arrayContaining(['repeated_failure', 'identity_degrading'])
+      }
+    })
+  })
+
   it('uses read-only review while self-healing is blocked', () => {
     const plan = profileAttentionPlan(
       [profile('blocked', 1)],
