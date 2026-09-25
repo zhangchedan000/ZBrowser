@@ -1,6 +1,11 @@
 import { Alert, Button, Divider, Modal, Space, Spin, Tag, Typography } from 'antd'
 import { useCallback, useEffect, useState } from 'react'
-import type { AutomationApiStatus, McpConnectionCheckResult } from '../../shared/types'
+import type {
+  AutomationApiStatus,
+  AutomationAttentionAuditResult,
+  AutomationAttentionDashboard,
+  McpConnectionCheckResult
+} from '../../shared/types'
 
 interface AutomationApiModalProps {
   open: boolean
@@ -13,6 +18,11 @@ export function AutomationApiModal({ open, onClose }: AutomationApiModalProps) {
   const [error, setError] = useState('')
   const [mcpChecking, setMcpChecking] = useState(false)
   const [mcpCheck, setMcpCheck] = useState<McpConnectionCheckResult>()
+  const [attentionLoading, setAttentionLoading] = useState(false)
+  const [attentionRunning, setAttentionRunning] = useState(false)
+  const [attentionError, setAttentionError] = useState('')
+  const [attentionDashboard, setAttentionDashboard] = useState<AutomationAttentionDashboard>()
+  const [attentionAudit, setAttentionAudit] = useState<AutomationAttentionAuditResult>()
 
   const refresh = useCallback(async () => {
     setLoading(true)
@@ -26,12 +36,26 @@ export function AutomationApiModal({ open, onClose }: AutomationApiModalProps) {
     }
   }, [])
 
+  const refreshAttention = useCallback(async () => {
+    setAttentionLoading(true)
+    setAttentionError('')
+    try {
+      setAttentionDashboard(await window.browserApi.automation.attentionDashboard())
+    } catch (reason) {
+      setAttentionError(reason instanceof Error ? reason.message : String(reason))
+    } finally {
+      setAttentionLoading(false)
+    }
+  }, [])
+
   useEffect(() => {
     if (open) {
       setMcpCheck(undefined)
+      setAttentionAudit(undefined)
       void refresh()
+      void refreshAttention()
     }
-  }, [open, refresh])
+  }, [open, refresh, refreshAttention])
 
   const runMcpCheck = useCallback(async () => {
     setMcpChecking(true)
@@ -51,6 +75,20 @@ export function AutomationApiModal({ open, onClose }: AutomationApiModalProps) {
       setMcpChecking(false)
     }
   }, [status?.mcp?.protocolVersion])
+
+  const runAttentionAudit = useCallback(async () => {
+    setAttentionRunning(true)
+    setAttentionError('')
+    try {
+      const audit = await window.browserApi.automation.runAttentionAudit()
+      setAttentionAudit(audit)
+      setAttentionDashboard(await window.browserApi.automation.attentionDashboard())
+    } catch (reason) {
+      setAttentionError(reason instanceof Error ? reason.message : String(reason))
+    } finally {
+      setAttentionRunning(false)
+    }
+  }, [])
 
   return (
     <Modal
@@ -106,6 +144,128 @@ export function AutomationApiModal({ open, onClose }: AutomationApiModalProps) {
             <Typography.Paragraph type="secondary" style={{ marginBottom: 0 }}>
               Token 明文不会显示在 ZBrowser 页面或日志中。脚本、Playwright、Puppeteer 通过本机 Token 文件访问 Local API。
             </Typography.Paragraph>
+
+            <Divider style={{ marginBlock: 4 }} />
+
+            <Typography.Title level={5} style={{ margin: 0 }}>AI 多环境巡检</Typography.Title>
+            {attentionError && (
+              <Alert
+                type="error"
+                showIcon
+                message="无法读取巡检状态"
+                description={attentionError}
+              />
+            )}
+            <Spin spinning={attentionLoading && !attentionDashboard}>
+              {attentionDashboard && (
+                <Space direction="vertical" size={10} style={{ width: '100%' }}>
+                  <Alert
+                    type={attentionDashboard.plan.count === 0 ? 'success' : attentionDashboard.insights.criticalCount > 0 ? 'error' : 'warning'}
+                    showIcon
+                    message={attentionDashboard.plan.count === 0
+                      ? '当前没有需要处理的环境'
+                      : `当前有 ${attentionDashboard.plan.count} 个环境需要处理`}
+                    description={attentionDashboard.plan.count === 0
+                      ? '巡检队列为空；后续出现进程异常、Identity Health 风险或 Self-Healing 待处理项时会自动进入队列。'
+                      : `长期异常 ${attentionDashboard.insights.count} 个 · 待人工确认 ${attentionDashboard.plan.confirmationRequiredCount} 个 · 历史优先 ${attentionDashboard.plan.recurringPriorityCount} 个`}
+                  />
+                  <Space wrap>
+                    <Button
+                      type="primary"
+                      loading={attentionRunning}
+                      onClick={() => void runAttentionAudit()}
+                    >
+                      运行安全巡检
+                    </Button>
+                    <Button
+                      loading={attentionLoading}
+                      onClick={() => void refreshAttention()}
+                    >
+                      刷新巡检视图
+                    </Button>
+                    <Tag>计划 {attentionDashboard.plan.count}</Tag>
+                    <Tag color={attentionDashboard.plan.confirmationRequiredCount ? 'warning' : undefined}>
+                      待确认 {attentionDashboard.plan.confirmationRequiredCount}
+                    </Tag>
+                    <Tag color={attentionDashboard.insights.criticalCount ? 'error' : undefined}>
+                      长期异常 {attentionDashboard.insights.count}
+                    </Tag>
+                  </Space>
+
+                  {attentionAudit && (
+                    <Alert
+                      type={attentionAudit.review.remainingCount === 0 && attentionAudit.review.newCount === 0 ? 'success' : 'info'}
+                      showIcon
+                      message="本轮巡检已完成并自动复查"
+                      description={`已解决 ${attentionAudit.review.resolvedCount} · 仍存在 ${attentionAudit.review.remainingCount} · 新出现 ${attentionAudit.review.newCount} · 待人工确认 ${attentionAudit.confirmationRequired} · 失败 ${attentionAudit.failed}`}
+                    />
+                  )}
+
+                  {attentionDashboard.plan.steps.length > 0 && (
+                    <div>
+                      <Typography.Text strong>当前处理顺序</Typography.Text>
+                      <Space direction="vertical" size={6} style={{ width: '100%', marginTop: 8 }}>
+                        {attentionDashboard.plan.steps.slice(0, 5).map((step) => (
+                          <div
+                            key={step.profileId}
+                            style={{ border: '1px solid rgba(5, 5, 5, 0.12)', borderRadius: 8, padding: '8px 10px' }}
+                          >
+                            <Space wrap size={6}>
+                              <Tag>#{step.priority}</Tag>
+                              <Typography.Text strong>{step.serialNumber} · {step.name}</Typography.Text>
+                              <Tag color={step.level === 'critical' ? 'error' : 'warning'}>
+                                {step.level === 'critical' ? 'Critical' : 'Warning'}
+                              </Tag>
+                              {step.requiresUserConfirmation && <Tag color="warning">需要确认</Tag>}
+                              {step.historyContext && <Tag color={step.historyContext.level === 'critical' ? 'error' : 'processing'}>长期异常</Tag>}
+                            </Space>
+                            <Typography.Paragraph type="secondary" style={{ margin: '6px 0 0' }}>
+                              {step.reason}
+                            </Typography.Paragraph>
+                            {step.historyContext && (
+                              <Typography.Text type="secondary">
+                                最近出现 {step.historyContext.appearances} 次 · 失败 {step.historyContext.failures} 次 · 需确认 {step.historyContext.confirmationRequired} 次
+                              </Typography.Text>
+                            )}
+                          </div>
+                        ))}
+                      </Space>
+                    </div>
+                  )}
+
+                  {attentionDashboard.insights.items.length > 0 && (
+                    <div>
+                      <Typography.Text strong>长期异常信号</Typography.Text>
+                      <Space direction="vertical" size={6} style={{ width: '100%', marginTop: 8 }}>
+                        {attentionDashboard.insights.items.slice(0, 5).map((item) => (
+                          <div key={item.profileId}>
+                            <Space wrap size={6}>
+                              <Typography.Text>{item.serialNumber} · {item.name}</Typography.Text>
+                              <Tag color={item.level === 'critical' ? 'error' : 'warning'}>
+                                {item.level === 'critical' ? 'Critical' : 'Warning'}
+                              </Tag>
+                              {item.identityScore !== undefined && <Tag>Identity {item.identityScore}</Tag>}
+                            </Space>
+                            <Typography.Paragraph type="secondary" style={{ margin: '2px 0 0' }}>
+                              {item.reason}
+                            </Typography.Paragraph>
+                          </div>
+                        ))}
+                      </Space>
+                    </div>
+                  )}
+
+                  {attentionDashboard.history[0] && (
+                    <Typography.Text type="secondary">
+                      最近巡检：{new Date(attentionDashboard.history[0].completedAt).toLocaleString()} ·
+                      完成 {attentionDashboard.history[0].completed} ·
+                      待确认 {attentionDashboard.history[0].confirmationRequired} ·
+                      失败 {attentionDashboard.history[0].failed}
+                    </Typography.Text>
+                  )}
+                </Space>
+              )}
+            </Spin>
 
             <Divider style={{ marginBlock: 4 }} />
 
@@ -169,7 +329,6 @@ export function AutomationApiModal({ open, onClose }: AutomationApiModalProps) {
                           zbrowser: {
                             command: status.mcp.command,
                             args: status.mcp.args,
-                            ...(status.mcp.env ? { env: status.mcp.env } : {}),
                             ...(status.mcp.env ? { env: status.mcp.env } : {})
                           }
                         }
@@ -181,7 +340,8 @@ export function AutomationApiModal({ open, onClose }: AutomationApiModalProps) {
                       mcpServers: {
                         zbrowser: {
                           command: status.mcp.command,
-                          args: status.mcp.args
+                          args: status.mcp.args,
+                          ...(status.mcp.env ? { env: status.mcp.env } : {})
                         }
                       }
                     }, null, 2)}
