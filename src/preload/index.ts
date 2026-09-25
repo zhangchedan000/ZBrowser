@@ -111,7 +111,9 @@ const api: BrowserApi = {
   },
   automation: {
     status: () => ipcRenderer.invoke('automation-api:status'),
-    checkMcp: () => ipcRenderer.invoke('automation-api:mcp-check')
+    checkMcp: () => ipcRenderer.invoke('automation-api:mcp-check'),
+    attentionDashboard: () => ipcRenderer.invoke('automation-api:attention-dashboard'),
+    runAttentionAudit: () => ipcRenderer.invoke('automation-api:attention-audit')
   },
   diagnostics: {
     sessionHealth: () => ipcRenderer.invoke('diagnostics:session-health'),
