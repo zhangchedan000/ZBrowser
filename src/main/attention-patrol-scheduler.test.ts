@@ -86,6 +86,28 @@ describe('AttentionPatrolScheduler', () => {
     })
   })
 
+  it('records a failed patrol and schedules the next run instead of stopping', async () => {
+    const vault = await mkdtemp(join(tmpdir(), 'zbrowser-patrol-'))
+    temporaryPaths.push(vault)
+    const settings = new SettingsStore(vault)
+    await settings.initialize()
+    const runAudit = vi.fn(async () => {
+      throw new Error('runtime unavailable')
+    })
+    const scheduler = new AttentionPatrolScheduler(settings, runAudit)
+
+    await scheduler.configure(true, 15)
+    await vi.advanceTimersByTimeAsync(15 * 60_000)
+
+    expect(runAudit).toHaveBeenCalledTimes(1)
+    expect(scheduler.status()).toMatchObject({
+      enabled: true,
+      running: false,
+      lastError: 'runtime unavailable',
+      nextRunAt: '2026-09-25T12:30:00.000Z'
+    })
+  })
+
   it('persists configuration and can be disabled without running a pending timer', async () => {
     const vault = await mkdtemp(join(tmpdir(), 'zbrowser-patrol-'))
     temporaryPaths.push(vault)
