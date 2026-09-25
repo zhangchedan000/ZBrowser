@@ -26,7 +26,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
   group: windows-full-e2e-${{ github.ref }}
@@ -237,34 +237,6 @@ jobs:
           name: ZBrowser-Beta-Acceptance-Kit
           path: release/beta-acceptance-kit
           if-no-files-found: error
-
-      - name: Publish immutable GitHub prerelease
-        shell: pwsh
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          $version = (Get-Content package.json -Raw | ConvertFrom-Json).version
-          $tag = "v$version"
-          $title = "ZBrowser $version"
-          $sha = "${{ github.sha }}"
-          $assets = Get-ChildItem release -File | Where-Object { $_.Extension -in @(".msi", ".exe", ".zip") } | ForEach-Object { $_.FullName }
-
-          if (-not $assets) {
-            throw "No Windows release assets were found."
-          }
-
-          $existingTarget = gh release view $tag --repo "${{ github.repository }}" --json targetCommitish --jq '.targetCommitish' 2>$null
-          if ($LASTEXITCODE -eq 0) {
-            if ($existingTarget -ne $sha) {
-              Write-Host "Release $tag is immutable and already points to $existingTarget. This dev build is $sha, so publishing is skipped until package.json is bumped to a new version."
-              exit 0
-            }
-            Write-Host "Release $tag already points to this commit. Existing assets are immutable; skipping publish."
-            exit 0
-          }
-
-          gh release create $tag @assets --repo "${{ github.repository }}" --target $sha --title $title --prerelease --notes-file RELEASE_NOTES.md
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Upload full E2E reports
         if: always()

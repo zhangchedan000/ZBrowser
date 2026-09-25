@@ -1,4 +1,4 @@
-# ZBrowser 0.2.0-beta.4
+# ZBrowser 0.2.0-beta.5
 
 ## 重点变化
 
@@ -42,6 +42,14 @@
 - 周期巡检失败恢复和重启恢复已有自动化测试。
 - Windows Development Runtime 和 Packaged App Full E2E 均为发布门槛。
 
+### Signed Beta 发布链
+
+- Windows 与 macOS 正式签名构建改为独立手动工作流，不再由普通 dev Full E2E 直接发布候选。
+- Windows signed release 会验证 Authenticode、时间戳、嵌入的 signed update config 和 Packaged App E2E。
+- macOS signed release 会验证 Developer ID、Gatekeeper、notarization staple 和 signed update config。
+- 普通 Full E2E 只负责构建、测试和 Beta acceptance kit，不占用正式 Beta tag。
+- `0.2.0-beta.5` 预留给新的双平台 signed candidate，避免覆盖已发布的 `0.2.0-beta.4`。
+
 ## Beta 安全边界
 
 - Local API / CDP 仅监听回环地址。
@@ -64,4 +72,4 @@ Windows CI 生成：
 
 - 当前仍属于 Beta，建议先在非关键 Profile 上验证再扩大使用范围。
 - 正式 staged rollout 需要额外的平台 evidence、soak、更新成功率和 recovery drill。
-- macOS 正式签名 / notarization acceptance 仍需在对应发布环境完成。
+- Windows / macOS 正式 signed candidate、平台 acceptance、soak evidence 与 recovery drill 仍需在对应签名发布环境完成。

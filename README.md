@@ -205,8 +205,9 @@ Windows MSI / Portable / ZIP
 Packaged-app Full E2E
 Release Deliverable Verification
 Beta Acceptance Kit Export + Integrity Verification
-Immutable GitHub Prerelease
 ```
+
+普通 `dev` Full E2E 不再创建 GitHub prerelease，避免未签名产物占用正式 Beta tag。正式候选由 Windows / macOS signed release 流程生成，并在完成签名候选验收后使用新的 Beta 版本号发布。
 
 当前 Windows 发布物：
 
@@ -238,7 +239,7 @@ npm run beta:verify-kit -- release/beta-acceptance-kit
 tools/beta-acceptance/README.md
 ```
 
-macOS 正式签名 / notarization 可通过手动 `macOS Signed Release` GitHub Actions 工作流执行，并输出供 Beta signed candidate gate 使用的平台 acceptance 报告。
+Windows 正式 Authenticode 候选可通过手动 `Windows Signed Release` 工作流执行；macOS 正式 Developer ID / notarization 候选可通过手动 `macOS Signed Release` 工作流执行。两个流程都会输出供 Beta signed candidate gate 使用的平台 acceptance 报告。
 
 Beta release/tag 是不可变的。已有版本不会被后续 `dev` 构建覆盖；需要发布新候选时必须提升版本号。
 
