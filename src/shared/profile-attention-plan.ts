@@ -87,7 +87,8 @@ function planStep(
         recommendedTool: 'profile_self_healing_status',
         requiresUserConfirmation: true,
         reason: healingIssue.reason,
-        sources
+        sources,
+        historyContext
       }
     }
 
