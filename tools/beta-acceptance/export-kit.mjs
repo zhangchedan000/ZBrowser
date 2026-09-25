@@ -59,6 +59,7 @@ async function exportKit(output) {
     await cp(join(projectRoot, 'tools', 'beta-acceptance', 'validate-evidence.mjs'), join(staging, 'validate-evidence.mjs'))
     await cp(join(projectRoot, 'tools', 'beta-acceptance', 'verify-kit.mjs'), join(staging, 'verify-kit.mjs'))
     await cp(join(projectRoot, 'tools', 'beta-acceptance', 'windows-preflight.mjs'), join(staging, 'windows-preflight.mjs'))
+    await cp(join(projectRoot, 'tools', 'beta-acceptance', 'verify-recovery-drill.mjs'), join(staging, 'verify-recovery-drill.mjs'))
     await cp(join(projectRoot, 'tools', 'release', 'verify-update-candidate.mjs'), join(staging, 'verify-update-candidate.mjs'))
     await cp(join(projectRoot, 'tools', 'release', 'create-update-manifest.mjs'), join(staging, 'create-update-manifest.mjs'))
     await cp(join(projectRoot, 'build', 'beta-rollout-policy.json'), join(staging, 'beta-rollout-policy.json'))
