@@ -20,6 +20,9 @@ on:
       - "package.json"
       - "package-lock.json"
       - ".github/workflows/windows-full-e2e.yml"
+      - ".github/workflows/windows-signed-release.yml"
+      - ".github/workflows/macos-signed-release.yml"
+      - ".github/workflows/beta-signed-candidate-gate.yml"
   workflow_dispatch:
 
 permissions:
