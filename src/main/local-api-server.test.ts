@@ -148,7 +148,7 @@ describe('Local API server', () => {
         }
       }
     }
-    const selfHealingStatus: IdentitySelfHealingSummary = {
+    let selfHealingStatus: IdentitySelfHealingSummary = {
       mode: 'assisted',
       decision: 'suggest',
       reason: 'test pending repair',
@@ -183,6 +183,37 @@ describe('Local API server', () => {
         return {
           ...await launcher.diagnoseFingerprintRuntime(id),
           identitySelfHealing: selfHealingStatus
+        }
+      },
+      async executeApproved(id: string) {
+        expect(id).toBe(current.id)
+        selfHealingStatus = {
+          ...selfHealingStatus,
+          decision: 'suggest',
+          reason: 'confirmed repair completed',
+          pending: false,
+          pendingStrategyKind: undefined,
+          pendingReason: undefined,
+          lastResult: 'completed',
+          lastAttemptTrigger: 'user',
+          lastStrategyKind: 'repair_configuration',
+          lastMessage: 'confirmed repair completed'
+        }
+        return {
+          status: 'completed' as const,
+          strategy: {
+            kind: 'repair_configuration' as const,
+            reason: 'repair locale',
+            affectedSections: ['locale'] as const,
+            requiresUserConfirmation: true,
+            automaticActionAvailable: true
+          },
+          message: 'confirmed repair completed',
+          report: {
+            ...await launcher.diagnoseFingerprintRuntime(id),
+            identitySelfHealing: selfHealingStatus
+          },
+          profile: current
         }
       }
     }
@@ -435,6 +466,27 @@ describe('Local API server', () => {
           }
         }]
       })
+
+      const confirmedAttention = await server.confirmAttentionStep(current.id)
+      expect(confirmedAttention).toMatchObject({
+        profileId: current.id,
+        status: 'completed',
+        strategyKind: 'repair_configuration',
+        message: 'confirmed repair completed',
+        review: {
+          resolvedCount: 1,
+          remainingCount: 1,
+          newCount: 0,
+          resolved: [
+            expect.objectContaining({ profileId: current.id, source: 'self_healing' })
+          ],
+          remaining: [
+            expect.objectContaining({ profileId: current.id, source: 'identity_health' })
+          ]
+        }
+      })
+
+      await expect(server.confirmAttentionStep(current.id)).rejects.toThrow('当前已不是需要人工确认')
 
       const identityHealthList = await fetch(status.url + '/api/v1/identity-health', { headers: authorization })
       expect(identityHealthList.status).toBe(200)
