@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "channel": "beta",
-  "version": "0.2.0-beta.1",
+  "version": "0.2.0-beta.4",
   "platforms": {
     "darwin-arm64": {
       "appE2ePassed": false,
@@ -32,7 +32,7 @@
   },
   "recoveryDrill": {
     "passed": false,
-    "recoveryVersion": "0.2.0-beta.2",
+    "recoveryVersion": "0.2.0-beta.5",
     "signedManifestVerified": false,
     "profileDataPreserved": false
   },
