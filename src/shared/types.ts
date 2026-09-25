@@ -651,6 +651,7 @@ export interface AutomationAttentionPlanStep {
   action: AutomationAttentionAction
   risk: AutomationAttentionRisk
   recommendedTool?: string
+  strategyKind?: import('./identity-repair-strategy').IdentityRepairStrategyKind
   requiresUserConfirmation: boolean
   reason: string
   sources: AutomationAttentionSource[]
@@ -731,6 +732,14 @@ export interface AutomationAttentionReview {
 }
 
 export interface AutomationAttentionAuditResult extends AutomationAttentionAuditHistoryRecord {
+  review: AutomationAttentionReview
+}
+
+export interface AutomationAttentionConfirmationResult {
+  profileId: string
+  status: IdentityRepairStrategyExecutionSummary['status']
+  strategyKind: import('./identity-repair-strategy').IdentityRepairStrategyKind
+  message: string
   review: AutomationAttentionReview
 }
 
@@ -839,6 +848,7 @@ export interface BrowserApi {
     checkMcp: () => Promise<McpConnectionCheckResult>
     attentionDashboard: () => Promise<AutomationAttentionDashboard>
     runAttentionAudit: () => Promise<AutomationAttentionAuditResult>
+    confirmAttentionStep: (profileId: string, approvedByUser: boolean) => Promise<AutomationAttentionConfirmationResult>
   }
   diagnostics: {
     sessionHealth: () => Promise<AppRecoveryStatus>
