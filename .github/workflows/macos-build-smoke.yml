@@ -1,0 +1,84 @@
+name: macOS Build Smoke
+
+on:
+  push:
+    branches: [dev]
+    paths:
+      - "src/**"
+      - "electron.vite.config.ts"
+      - "package.json"
+      - "package-lock.json"
+      - "build/entitlements.mac.plist"
+      - "build/entitlements.mac.inherit.plist"
+      - "tools/release/**"
+      - ".github/workflows/macos-build-smoke.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: macos-build-smoke-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-macos-arm64:
+    runs-on: macos-14
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Validate signed-release script syntax
+        run: bash -n tools/release/Build-Mac-Release.sh
+
+      - name: Build application
+        run: npm run build
+
+      - name: Build unsigned macOS arm64 smoke package
+        run: |
+          npx electron-builder --mac zip --arm64 --publish never \
+            -c.mac.identity=null \
+            -c.mac.hardenedRuntime=false \
+            -c.directories.output=release-smoke
+
+      - name: Verify ZBrowser macOS package identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          app="release-smoke/mac-arm64/ZBrowser.app"
+          [[ -d "$app" ]] || { echo "Missing packaged app: $app" >&2; find release-smoke -maxdepth 3 -print; exit 1; }
+
+          bundle_id="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$app/Contents/Info.plist")"
+          version="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$app/Contents/Info.plist")"
+          expected_version="$(node -p "require('./package.json').version")"
+
+          [[ "$bundle_id" == "com.zbrowser.desktop" ]] || { echo "Unexpected bundle id: $bundle_id" >&2; exit 1; }
+          [[ "$version" == "$expected_version" ]] || { echo "Version mismatch: $version != $expected_version" >&2; exit 1; }
+
+          zip="release-smoke/ZBrowser-$expected_version-mac-arm64.zip"
+          [[ -s "$zip" ]] || { echo "Missing versioned macOS ZIP: $zip" >&2; find release-smoke -maxdepth 2 -type f -print; exit 1; }
+
+          shasum -a 256 "$zip" > release-smoke/SHA256SUMS-macos-arm64-smoke.txt
+          echo "macOS arm64 smoke package ready: $zip"
+
+      - name: Upload macOS smoke package
+        uses: actions/upload-artifact@v4
+        with:
+          name: ZBrowser-macOS-arm64-smoke
+          path: |
+            release-smoke/*.zip
+            release-smoke/SHA256SUMS-macos-arm64-smoke.txt
+          if-no-files-found: error
