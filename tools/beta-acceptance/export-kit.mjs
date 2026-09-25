@@ -2,7 +2,7 @@
 
 import { createHash } from 'node:crypto'
 import { createReadStream } from 'node:fs'
-import { cp, mkdir, readdir, rm, stat, writeFile } from 'node:fs/promises'
+import { cp, mkdir, readFile, readdir, rm, stat, writeFile } from 'node:fs/promises'
 import { basename, dirname, join, resolve } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 
@@ -24,7 +24,27 @@ async function listFiles(root, current = root) {
   return values.sort()
 }
 
+async function validateReleaseContract() {
+  const [packageJson, betaRelease, evidenceTemplate] = await Promise.all([
+    readFile(join(projectRoot, 'package.json'), 'utf8').then(JSON.parse),
+    readFile(join(projectRoot, 'build', 'beta-release.json'), 'utf8').then(JSON.parse),
+    readFile(join(projectRoot, 'tools', 'beta-acceptance', 'evidence.template.json'), 'utf8').then(JSON.parse)
+  ])
+  if (!/^\d+\.\d+\.\d+-beta\.\d+$/.test(packageJson.version ?? '')
+    || betaRelease.schemaVersion !== 1
+    || betaRelease.channel !== 'beta'
+    || betaRelease.version !== packageJson.version
+    || betaRelease.status !== 'candidate'
+    || evidenceTemplate.schemaVersion !== 1
+    || evidenceTemplate.channel !== 'beta'
+    || evidenceTemplate.version !== packageJson.version) {
+    throw new Error('Beta release contract, package version and evidence template are not synchronized')
+  }
+  return packageJson.version
+}
+
 async function exportKit(output) {
+  await validateReleaseContract()
   const target = resolve(output)
   if (basename(target) !== 'beta-acceptance-kit' || target === projectRoot) {
     throw new Error('Output directory must be named beta-acceptance-kit')
@@ -71,4 +91,4 @@ if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1]
   })
 }
 
-export { exportKit, listFiles }
+export { exportKit, listFiles, validateReleaseContract }
