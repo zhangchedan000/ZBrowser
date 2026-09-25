@@ -234,7 +234,7 @@ jobs:
             exit 0
           }
 
-          gh release create $tag @assets --repo "${{ github.repository }}" --target $sha --title $title --prerelease --notes "Automated Windows beta build for ZBrowser $version after packaged-app Full E2E passed."
+          gh release create $tag @assets --repo "${{ github.repository }}" --target $sha --title $title --prerelease --notes-file RELEASE_NOTES.md
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Upload full E2E reports
