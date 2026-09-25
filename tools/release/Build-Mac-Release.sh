@@ -34,9 +34,9 @@ npm run build
 # consume them. Product identity and output paths below are ZBrowser-only.
 export PRISM_BUNDLED_KERNEL_PATH="$staged_kernel"
 export PRISM_REQUIRE_BUNDLED_KERNEL=1
-export PRISM_UPDATE_CONFIG_PATH="$(cd "$(dirname "$update_config")" && pwd)/$(basename "$update_config")"
+export ZBROWSER_UPDATE_CONFIG_PATH="$(cd "$(dirname "$update_config")" && pwd)/$(basename "$update_config")"
 
-npx electron-builder --mac dmg zip --arm64 \
+npx electron-builder --config tools/release/electron-builder.signed.cjs --mac dmg zip --arm64 \
   -c.mac.forceCodeSigning=true \
   -c.mac.hardenedRuntime=true \
   -c.mac.notarize=true
