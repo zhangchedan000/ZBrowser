@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto'
 import { mkdir, readFile, rename, writeFile } from 'node:fs/promises'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 import type {
   AttentionAuditResultStatus,
   AttentionAuditSummary,
@@ -165,7 +165,7 @@ export class AttentionAuditHistoryStore {
     const operation = async (): Promise<void> => {
       const existing = await this.readFile()
       const next = [...existing, record].slice(-MAX_RECORDS)
-      await mkdir(join(this.path, '..'), { recursive: true })
+      await mkdir(dirname(this.path), { recursive: true })
       const temporary = this.path + '.tmp'
       await writeFile(temporary, JSON.stringify(next, null, 2), { encoding: 'utf8', mode: 0o600 })
       await rename(temporary, this.path)
