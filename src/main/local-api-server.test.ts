@@ -208,7 +208,7 @@ describe('Local API server', () => {
       port: status.port,
       url: status.url,
       tokenPath: status.tokenPath,
-      capabilities: ['profile-control', 'cdp', 'page-control', 'proxy-test', 'diagnostics', 'self-healing', 'identity-health', 'attention-queue', 'attention-plan', 'attention-audit', 'attention-audit-history']
+      capabilities: ['profile-control', 'cdp', 'page-control', 'proxy-test', 'diagnostics', 'self-healing', 'identity-health', 'attention-queue', 'attention-plan', 'attention-audit', 'attention-audit-history', 'attention-insights']
     })
     expect(JSON.stringify(server.publicStatus())).not.toContain(token)
 
