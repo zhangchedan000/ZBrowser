@@ -11,11 +11,12 @@ import { IdentityHealthHistoryStore } from './identity-health-history'
 import { summarizeIdentityProfileHealth } from '../shared/identity-profile-health'
 import { profileAttentionQueue } from '../shared/profile-attention'
 import { profileAttentionPlan } from '../shared/profile-attention-plan'
+import { runAttentionAudit } from './attention-audit'
 
 export const DEFAULT_LOCAL_API_PORT = 17653
 const LOCAL_API_HOST = '127.0.0.1'
 const MAX_REQUEST_BODY_BYTES = 16 * 1024
-const LOCAL_API_CAPABILITIES = ['profile-control', 'cdp', 'page-control', 'proxy-test', 'diagnostics', 'self-healing', 'identity-health', 'attention-queue', 'attention-plan']
+const LOCAL_API_CAPABILITIES = ['profile-control', 'cdp', 'page-control', 'proxy-test', 'diagnostics', 'self-healing', 'identity-health', 'attention-queue', 'attention-plan', 'attention-audit']
 
 interface LocalApiProfileStore {
   list(): BrowserProfile[]
@@ -333,6 +334,34 @@ export class LocalApiServer {
       this.profile(id)
       const profile = await this.launcher.testProfileProxy(id)
       this.sendJson(response, 200, { profile: profileSummary(profile) })
+      return
+    }
+
+    if (method === 'POST' && url.pathname === '/api/v1/attention/audit') {
+      const profiles = this.profiles.list()
+      const [healthEntries, selfHealing] = await Promise.all([
+        Promise.all(profiles.map(async (profile) => [
+          profile.id,
+          summarizeIdentityProfileHealth(await this.identityHealthHistory.list(profile.id))
+        ] as const)),
+        this.options.selfHealing?.statusAll() ?? Promise.resolve({})
+      ])
+      const plan = profileAttentionPlan(
+        profiles,
+        Object.fromEntries(healthEntries),
+        selfHealing
+      )
+      const audit = await runAttentionAudit(plan, {
+        inspectProcess: (profileId) => this.launcher.localApiRuntime(profileId),
+        reviewSelfHealing: async (profileId) => {
+          if (!this.options.selfHealing) throw new Error('Self-Healing controller is unavailable')
+          return this.options.selfHealing.status(profileId)
+        },
+        runIdentityCheck: (profileId) => this.options.selfHealing
+          ? this.options.selfHealing.diagnose(profileId)
+          : this.launcher.diagnoseFingerprintRuntime(profileId)
+      })
+      this.sendJson(response, 200, audit)
       return
     }
 
