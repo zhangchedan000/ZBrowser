@@ -1,0 +1,123 @@
+name: Windows Signed Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      update_config_url:
+        description: HTTPS URL to the signed Beta update config JSON
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  signed-release:
+    runs-on: windows-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+
+      - name: Validate signing secrets
+        shell: pwsh
+        env:
+          CERTIFICATE_P12_BASE64: ${{ secrets.ZBROWSER_WINDOWS_CERTIFICATE_P12_BASE64 }}
+          CERTIFICATE_PASSWORD: ${{ secrets.ZBROWSER_WINDOWS_CERTIFICATE_PASSWORD }}
+        run: |
+          if ([string]::IsNullOrWhiteSpace($env:CERTIFICATE_P12_BASE64)) {
+            throw "Missing ZBROWSER_WINDOWS_CERTIFICATE_P12_BASE64"
+          }
+          if ([string]::IsNullOrWhiteSpace($env:CERTIFICATE_PASSWORD)) {
+            throw "Missing ZBROWSER_WINDOWS_CERTIFICATE_PASSWORD"
+          }
+
+      - name: Download and validate signed update config
+        shell: pwsh
+        env:
+          UPDATE_CONFIG_URL: ${{ inputs.update_config_url }}
+        run: |
+          if ($env:UPDATE_CONFIG_URL -notmatch '^https://') {
+            throw "Only HTTPS update config URLs are allowed."
+          }
+          $updateConfig = Join-Path $env:RUNNER_TEMP "zbrowser-update-config.json"
+          Invoke-WebRequest -Uri $env:UPDATE_CONFIG_URL -OutFile $updateConfig -MaximumRedirection 5
+          if (-not (Test-Path $updateConfig) -or (Get-Item $updateConfig).Length -le 0) {
+            throw "Downloaded update config is empty."
+          }
+          $env:ZBROWSER_UPDATE_CONFIG_PATH = $updateConfig
+          node -e "require('./tools/release/signed-update-config.cjs').validateSignedUpdateConfig(process.env.ZBROWSER_UPDATE_CONFIG_PATH)"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          "ZBROWSER_UPDATE_CONFIG_PATH=$updateConfig" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
+      - name: Import code-signing certificate
+        shell: pwsh
+        env:
+          CERTIFICATE_P12_BASE64: ${{ secrets.ZBROWSER_WINDOWS_CERTIFICATE_P12_BASE64 }}
+          CERTIFICATE_PASSWORD: ${{ secrets.ZBROWSER_WINDOWS_CERTIFICATE_PASSWORD }}
+        run: |
+          $certificatePath = Join-Path $env:RUNNER_TEMP "zbrowser-signing.p12"
+          [IO.File]::WriteAllBytes($certificatePath, [Convert]::FromBase64String($env:CERTIFICATE_P12_BASE64))
+          if (-not (Test-Path $certificatePath) -or (Get-Item $certificatePath).Length -le 0) {
+            throw "Decoded signing certificate is empty."
+          }
+          "CSC_LINK=$certificatePath" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "CSC_KEY_PASSWORD=$env:CERTIFICATE_PASSWORD" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "ZBROWSER_WINDOWS_CERTIFICATE=$certificatePath" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build signed Windows release
+        run: npm run dist:win:signed
+
+      - name: Locate packaged ZBrowser executable
+        shell: pwsh
+        run: |
+          $app = Get-ChildItem -Path release -Filter "ZBrowser.exe" -File -Recurse |
+            Where-Object { $_.FullName -match "win-unpacked" } |
+            Select-Object -First 1
+          if (-not $app) {
+            Get-ChildItem -Path release -Recurse | Select-Object FullName
+            throw "Packaged ZBrowser.exe was not found under release/win-unpacked"
+          }
+          "ZBROWSER_PACKAGED_APP=$($app.FullName)" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
+      - name: Packaged-app full E2E
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path test-results | Out-Null
+          npm run audit:app-e2e -- --app "$env:ZBROWSER_PACKAGED_APP" --packaged --install-kernel-version 144.0.7559.132 --output test-results/app-e2e-packaged-signed.json
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Verify Windows Authenticode release acceptance
+        shell: pwsh
+        run: |
+          npm run accept:windows -- --release release --unpacked release/win-unpacked --e2e test-results/app-e2e-packaged-signed.json --update-config "$env:ZBROWSER_UPDATE_CONFIG_PATH" --output release/windows-release-acceptance.json
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Upload signed Windows release
+        uses: actions/upload-artifact@v4
+        with:
+          name: ZBrowser-Windows-Signed-Release
+          path: |
+            release/*.msi
+            release/*.exe
+            release/*.zip
+            release/windows-release-acceptance.json
+            test-results/app-e2e-packaged-signed.json
+          if-no-files-found: error
+
+      - name: Cleanup signing material
+        if: always()
+        shell: pwsh
+        run: |
+          if (-not [string]::IsNullOrWhiteSpace($env:ZBROWSER_WINDOWS_CERTIFICATE)) {
+            Remove-Item -LiteralPath $env:ZBROWSER_WINDOWS_CERTIFICATE -Force -ErrorAction SilentlyContinue
+          }
