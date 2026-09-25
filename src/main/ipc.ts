@@ -594,6 +594,11 @@ export function registerIpc({
   })
   ipcMain.handle('automation-api:attention-dashboard', () => localApi.attentionDashboard())
   ipcMain.handle('automation-api:attention-audit', () => localApi.executeAttentionAudit())
+  ipcMain.handle('automation-api:attention-confirm', async (_event, profileId: unknown, approvedByUser: unknown) => {
+    if (typeof profileId !== 'string' || !profileId.trim()) throw new Error('巡检确认环境标识无效')
+    if (approvedByUser !== true) throw new Error('高风险巡检处理必须由用户明确确认后执行')
+    return localApi.confirmAttentionStep(profileId)
+  })
   ipcMain.handle('automation-api:mcp-check', async () => {
     const status = localApi.publicStatus()
     if (!status.running) {
