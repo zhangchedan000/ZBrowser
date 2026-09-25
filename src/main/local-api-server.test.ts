@@ -410,6 +410,21 @@ describe('Local API server', () => {
         }]
       })
 
+      const recurringPlan = await fetch(status.url + '/api/v1/attention/plan', { headers: authorization })
+      expect(recurringPlan.status).toBe(200)
+      expect(await recurringPlan.json()).toMatchObject({
+        recurringPriorityCount: 1,
+        steps: [{
+          profileId: current.id,
+          historyContext: {
+            level: 'warning',
+            appearances: 3,
+            confirmationRequired: 3,
+            signals: expect.arrayContaining(['repeated_confirmation', 'repeated_attention'])
+          }
+        }]
+      })
+
       const identityHealthList = await fetch(status.url + '/api/v1/identity-health', { headers: authorization })
       expect(identityHealthList.status).toBe(200)
       expect(await identityHealthList.json()).toMatchObject({
