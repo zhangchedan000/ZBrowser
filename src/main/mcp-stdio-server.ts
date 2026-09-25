@@ -47,6 +47,11 @@ const TOOLS: ToolDefinition[] = [
     inputSchema: { type: 'object', properties: {}, additionalProperties: false }
   },
   {
+    name: 'attention_audit',
+    description: 'Run the prioritized multi-profile attention audit sequentially. Read-only checks run automatically; Identity checks may execute only low-risk actions already allowed by the existing Self-Healing policy. Confirmation-gated actions are never executed and are returned as requiring user confirmation.',
+    inputSchema: { type: 'object', properties: {}, additionalProperties: false }
+  },
+  {
     name: 'profile_status',
     description: 'Get one profile status and local runtime state.',
     inputSchema: {
@@ -267,6 +272,9 @@ async function callTool(client: McpApiClient, name: string, rawArguments: unknow
     case 'attention_plan':
       if (Object.keys(args).length) throw new McpLocalApiError('INVALID_ARGUMENTS', 'attention_plan does not accept arguments')
       return client.request('/api/v1/attention/plan')
+    case 'attention_audit':
+      if (Object.keys(args).length) throw new McpLocalApiError('INVALID_ARGUMENTS', 'attention_audit does not accept arguments')
+      return client.request('/api/v1/attention/audit', { method: 'POST', timeoutMs: 300000 })
     case 'profile_status':
       return client.request(toolPathProfile(profileId(args), '/status'))
     case 'profile_start':
