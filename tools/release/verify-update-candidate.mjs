@@ -66,11 +66,16 @@ function validateAcceptance(target, value, version) {
       throw new Error('macOS release acceptance is missing its Developer ID team or signed artifacts')
     }
   } else {
-    if (!Array.isArray(value.files) || value.files.length < 4
-      || new Set(value.files.map((file) => file.file)).size < 4
-      || value.files.some((file) => typeof file.file !== 'string' || file.file.length === 0
+    const requiredRoles = new Set(['installer', 'portable', 'app'])
+    const files = Array.isArray(value.files) ? value.files : []
+    const roles = new Set(files.map((file) => file.role))
+    if (files.length < requiredRoles.size
+      || new Set(files.map((file) => file.file)).size !== files.length
+      || [...requiredRoles].some((role) => !roles.has(role))
+      || files.some((file) => typeof file.file !== 'string' || file.file.length === 0
+        || !requiredRoles.has(file.role)
         || file.status !== 'Valid' || file.timestamped !== true || !file.thumbprint)) {
-      throw new Error('Windows release acceptance contains an unsigned or untimestamped file')
+      throw new Error('Windows release acceptance contains an unsigned, untimestamped or incomplete signed file set')
     }
   }
 }
