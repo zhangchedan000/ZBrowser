@@ -2,7 +2,7 @@ import { randomBytes, timingSafeEqual } from 'node:crypto'
 import { mkdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http'
 import { join } from 'node:path'
-import type { AutomationApiStatus, BrowserProfile, FingerprintRuntimeDiagnosticReport, IdentitySelfHealingAttemptRecord, IdentitySelfHealingSummary, LaunchDiagnosticReport } from '../shared/types'
+import type { AutomationApiStatus, BrowserProfile, FingerprintRuntimeDiagnosticReport, IdentityRepairStrategyExecutionSummary, IdentitySelfHealingAttemptRecord, IdentitySelfHealingSummary, LaunchDiagnosticReport } from '../shared/types'
 import type { Logger } from './app-logger'
 import type { LocalApiProfileRuntime } from './browser-launcher'
 import type { BrowserControlSession } from './browser-control-session'
@@ -44,6 +44,7 @@ interface LocalApiSelfHealing {
   statusAll(): Promise<Record<string, IdentitySelfHealingSummary>>
   history(profileId: string): Promise<IdentitySelfHealingAttemptRecord[]>
   diagnose(profileId: string): Promise<FingerprintRuntimeDiagnosticReport>
+  executeApproved(profileId: string): Promise<IdentityRepairStrategyExecutionSummary & { profile: BrowserProfile }>
 }
 
 export interface LocalApiServerOptions {
@@ -384,6 +385,44 @@ export class LocalApiServer {
     )
     return {
       ...record,
+      review: reviewAttentionAudit(beforeQueue, afterQueue)
+    }
+  }
+
+  async confirmAttentionStep(profileId: string) {
+    this.profile(profileId)
+    if (!this.options.selfHealing) throw new Error('Self-Healing controller is unavailable')
+
+    const beforeState = await this.attentionPlanningState()
+    const beforeQueue = profileAttentionQueue(
+      beforeState.profiles,
+      beforeState.identityHealth,
+      beforeState.selfHealing
+    )
+    const currentStep = profileAttentionPlan(
+      beforeState.profiles,
+      beforeState.identityHealth,
+      beforeState.selfHealing,
+      beforeState.historyContext
+    ).find((step) => step.profileId === profileId)
+
+    if (!currentStep || !currentStep.requiresUserConfirmation || currentStep.action !== 'confirm_self_healing') {
+      throw new Error('该环境当前已不是需要人工确认的 Self-Healing 项，请刷新巡检视图')
+    }
+
+    const execution = await this.options.selfHealing.executeApproved(profileId)
+    const afterState = await this.attentionPlanningState()
+    const afterQueue = profileAttentionQueue(
+      afterState.profiles,
+      afterState.identityHealth,
+      afterState.selfHealing
+    )
+
+    return {
+      profileId,
+      status: execution.status,
+      strategyKind: execution.strategy.kind,
+      message: execution.message,
       review: reviewAttentionAudit(beforeQueue, afterQueue)
     }
   }
