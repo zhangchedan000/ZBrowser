@@ -46,10 +46,9 @@ async function fixture() {
       target: 'win32-x64',
       updateConfigVerified: true,
       files: [
-        { file: 'ZBrowser Setup 0.2.0-beta.4.msi', status: 'Valid', timestamped: true, thumbprint: 'A1' },
-        { file: 'ZBrowser 0.2.0-beta.4.exe', status: 'Valid', timestamped: true, thumbprint: 'A1' },
-        { file: 'ZBrowser-0.2.0-beta.4-win-x64.zip', status: 'Valid', timestamped: true, thumbprint: 'A1' },
-        { file: 'ZBrowser.exe', status: 'Valid', timestamped: true, thumbprint: 'A1' }
+        { file: 'ZBrowser Setup 0.2.0-beta.4.msi', role: 'installer', status: 'Valid', timestamped: true, thumbprint: 'A1' },
+        { file: 'ZBrowser 0.2.0-beta.4.exe', role: 'portable', status: 'Valid', timestamped: true, thumbprint: 'A1' },
+        { file: 'ZBrowser.exe', role: 'app', status: 'Valid', timestamped: true, thumbprint: 'A1' }
       ]
     }))
   ])
@@ -136,7 +135,7 @@ test('rejects Windows acceptance when a required file is unsigned or untimestamp
     await writeFile(value.winAcceptance, JSON.stringify(acceptance))
     await assert.rejects(
       () => verifyCandidate(verificationOptions(value)),
-      /unsigned or untimestamped/
+      /unsigned, untimestamped or incomplete/
     )
   } finally {
     await rm(value.root, { recursive: true, force: true })
