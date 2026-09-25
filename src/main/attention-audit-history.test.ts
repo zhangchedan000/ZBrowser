@@ -65,23 +65,22 @@ describe('attention audit history store', () => {
     expect(raw).not.toContain('must-not-be-persisted')
   })
 
-  it('serializes concurrent records through one atomic write queue', async () => {
+  it('serializes high-concurrency records and keeps only the newest 50', async () => {
     const vault = await mkdtemp(join(tmpdir(), 'zbrowser-attention-history-'))
     temporaryPaths.push(vault)
     const store = new AttentionAuditHistoryStore(vault)
 
-    await Promise.all([
-      store.record(summary(1)),
-      store.record(summary(2)),
-      store.record(summary(3))
-    ])
+    await Promise.all(
+      Array.from({ length: 75 }, (_, index) => store.record(summary(index + 1)))
+    )
 
     const listed = await store.list()
-    expect(listed).toHaveLength(3)
-    expect(new Set(listed.map((record) => record.results[0]?.profileId))).toEqual(new Set([
-      'profile-1',
-      'profile-2',
-      'profile-3'
-    ]))
+    expect(listed).toHaveLength(50)
+    expect(listed[0]?.results[0]?.profileId).toBe('profile-75')
+    expect(listed.at(-1)?.results[0]?.profileId).toBe('profile-26')
+    expect(new Set(listed.map((record) => record.id)).size).toBe(50)
+
+    const raw = JSON.parse(await readFile(join(vault, 'attention-audit-history.json'), 'utf8')) as unknown[]
+    expect(raw).toHaveLength(50)
   })
 })
