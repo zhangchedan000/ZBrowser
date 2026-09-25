@@ -27,12 +27,14 @@ import { IdentitySelfHealingManager } from './identity-self-healing-manager'
 import { IdentitySelfHealingStateStore } from './identity-self-healing-state'
 import { IdentityBaselineStore } from './identity-baseline-store'
 import { requestBaselineReplacementForChange } from './identity-baseline-lifecycle'
+import { AttentionPatrolScheduler } from './attention-patrol-scheduler'
 
 let mainWindow: BrowserWindow | null = null
 let launcher: BrowserLauncher | null = null
 let logger: AppLogger | null = null
 let appSession: AppSessionTracker | null = null
 let localApi: LocalApiServer | null = null
+let attentionPatrol: AttentionPatrolScheduler | null = null
 
 if (process.platform === 'win32') app.setAppUserModelId('com.zbrowser.desktop')
 
@@ -178,11 +180,19 @@ app.whenReady().then(async () => {
     token: process.env.ZBROWSER_LOCAL_API_TOKEN,
     selfHealing: identitySelfHealing
   })
+  const patrol = new AttentionPatrolScheduler(
+    settings,
+    () => automationApi.executeAttentionAudit(),
+    (status) => mainWindow?.webContents.send('automation:attention-patrol-changed', status),
+    logger
+  )
   localApi = automationApi
+  attentionPatrol = patrol
   registerIpc({
     profiles, settings, launcher, kernels, extensions, cookies, logger, backups,
     workspaceMigration, appSession, updater, environmentChecks, localApi: automationApi, proxyPool,
-    fingerprintRepair, fingerprintRepairState, identityRepairStrategy, identitySelfHealing
+    fingerprintRepair, fingerprintRepairState, identityRepairStrategy, identitySelfHealing,
+    attentionPatrol: patrol
   })
   try {
     const api = await automationApi.start()
@@ -192,6 +202,7 @@ app.whenReady().then(async () => {
     localApi = null
   }
   mainWindow = createWindow()
+  patrol.start()
   const selfHealingResumeTimer = setTimeout(() => {
     void identitySelfHealing.resumePersistedPending()
       .then((count) => {
@@ -222,8 +233,11 @@ app.on('before-quit', (event) => {
   event.preventDefault()
   const current = launcher
   const api = localApi
+  const patrol = attentionPatrol
   launcher = null
   localApi = null
+  attentionPatrol = null
+  patrol?.stop()
   void Promise.allSettled([
     current?.closeAll() ?? Promise.resolve(),
     api?.close() ?? Promise.resolve()
