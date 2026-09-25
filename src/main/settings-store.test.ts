@@ -19,11 +19,20 @@ describe('SettingsStore', () => {
     await settings.initialize()
     expect(settings.get().recycleRetentionDays).toBe(0)
     expect(settings.get().enginePreference).toBe('auto')
+    expect(settings.get().attentionPatrolEnabled).toBe(false)
+    expect(settings.get().attentionPatrolIntervalMinutes).toBe(60)
 
-    await settings.update({ recycleRetentionDays: 30, enginePreference: 'system' })
+    await settings.update({
+      recycleRetentionDays: 30,
+      enginePreference: 'system',
+      attentionPatrolEnabled: true,
+      attentionPatrolIntervalMinutes: 30
+    })
     const reopened = new SettingsStore(vault)
     await reopened.initialize()
     expect(reopened.get().recycleRetentionDays).toBe(30)
     expect(reopened.get().enginePreference).toBe('system')
+    expect(reopened.get().attentionPatrolEnabled).toBe(true)
+    expect(reopened.get().attentionPatrolIntervalMinutes).toBe(30)
   })
 })
