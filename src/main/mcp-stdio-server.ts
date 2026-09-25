@@ -52,6 +52,11 @@ const TOOLS: ToolDefinition[] = [
     inputSchema: { type: 'object', properties: {}, additionalProperties: false }
   },
   {
+    name: 'attention_audit_history',
+    description: 'Read recent compact multi-profile attention audit history. Raw runtime fingerprint payloads are not persisted.',
+    inputSchema: { type: 'object', properties: {}, additionalProperties: false }
+  },
+  {
     name: 'profile_status',
     description: 'Get one profile status and local runtime state.',
     inputSchema: {
@@ -275,6 +280,9 @@ async function callTool(client: McpApiClient, name: string, rawArguments: unknow
     case 'attention_audit':
       if (Object.keys(args).length) throw new McpLocalApiError('INVALID_ARGUMENTS', 'attention_audit does not accept arguments')
       return client.request('/api/v1/attention/audit', { method: 'POST', timeoutMs: 300000 })
+    case 'attention_audit_history':
+      if (Object.keys(args).length) throw new McpLocalApiError('INVALID_ARGUMENTS', 'attention_audit_history does not accept arguments')
+      return client.request('/api/v1/attention/audit/history')
     case 'profile_status':
       return client.request(toolPathProfile(profileId(args), '/status'))
     case 'profile_start':
