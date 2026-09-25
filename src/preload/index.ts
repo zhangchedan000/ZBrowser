@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer } from 'electron'
-import type { BrowserApi, BrowserProfileView, ProfileBatchClassification, ProfileDraft, ProfileLaunchOptions, ProxyPoolEntryInput } from '../shared/types'
+import type { AttentionPatrolIntervalMinutes, BrowserApi, BrowserProfileView, ProfileBatchClassification, ProfileDraft, ProfileLaunchOptions, ProxyPoolEntryInput } from '../shared/types'
 
 const api: BrowserApi = {
   profiles: {
@@ -115,7 +115,15 @@ const api: BrowserApi = {
     attentionDashboard: () => ipcRenderer.invoke('automation-api:attention-dashboard'),
     runAttentionAudit: () => ipcRenderer.invoke('automation-api:attention-audit'),
     confirmAttentionStep: (profileId: string, approvedByUser: boolean) =>
-      ipcRenderer.invoke('automation-api:attention-confirm', profileId, approvedByUser)
+      ipcRenderer.invoke('automation-api:attention-confirm', profileId, approvedByUser),
+    attentionPatrolStatus: () => ipcRenderer.invoke('automation-api:attention-patrol-status'),
+    configureAttentionPatrol: (enabled: boolean, intervalMinutes: AttentionPatrolIntervalMinutes) =>
+      ipcRenderer.invoke('automation-api:attention-patrol-configure', enabled, intervalMinutes),
+    onAttentionPatrolChanged: (listener) => {
+      const handler = (_event: Electron.IpcRendererEvent, status: Parameters<typeof listener>[0]) => listener(status)
+      ipcRenderer.on('automation:attention-patrol-changed', handler)
+      return () => ipcRenderer.removeListener('automation:attention-patrol-changed', handler)
+    }
   },
   diagnostics: {
     sessionHealth: () => ipcRenderer.invoke('diagnostics:session-health'),
