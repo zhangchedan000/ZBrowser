@@ -13,6 +13,21 @@ export type AttentionPlanAction =
 
 export type AttentionPlanRisk = 'read_only' | 'policy_gated' | 'confirmation_required'
 
+export type AttentionPlanHistorySignal =
+  | 'repeated_attention'
+  | 'repeated_failure'
+  | 'repeated_confirmation'
+  | 'identity_degrading'
+
+export interface AttentionPlanHistoryContext {
+  level: 'warning' | 'critical'
+  signals: AttentionPlanHistorySignal[]
+  appearances: number
+  failures: number
+  confirmationRequired: number
+  reason: string
+}
+
 export interface AttentionPlanStep {
   priority: number
   profileId: string
@@ -25,11 +40,13 @@ export interface AttentionPlanStep {
   requiresUserConfirmation: boolean
   reason: string
   sources: ProfileAttentionItem['issues'][number]['source'][]
+  historyContext?: AttentionPlanHistoryContext
 }
 
 function planStep(
   item: ProfileAttentionItem,
-  selfHealing?: IdentitySelfHealingSummary
+  selfHealing?: IdentitySelfHealingSummary,
+  historyContext?: AttentionPlanHistoryContext
 ): Omit<AttentionPlanStep, 'priority'> {
   const sources = [...new Set(item.issues.map((issue) => issue.source))]
   const processIssue = item.issues.find((issue) => issue.source === 'process')
@@ -47,7 +64,8 @@ function planStep(
       recommendedTool: 'profile_status',
       requiresUserConfirmation: false,
       reason: processIssue.reason,
-      sources
+      sources,
+      historyContext
     }
   }
 
@@ -83,7 +101,8 @@ function planStep(
       recommendedTool: 'profile_self_healing_status',
       requiresUserConfirmation: false,
       reason: healingIssue.reason,
-      sources
+      sources,
+      historyContext
     }
   }
 
@@ -97,29 +116,39 @@ function planStep(
     recommendedTool: 'profile_diagnose_fingerprint_runtime',
     requiresUserConfirmation: false,
     reason: healthIssue?.reason ?? 'Identity Health 需要复核',
-    sources
+    sources,
+    historyContext
   }
 }
 
-function planRank(item: ProfileAttentionItem): number {
+function planRank(item: ProfileAttentionItem, historyContext?: AttentionPlanHistoryContext): number {
   const sources = new Set(item.issues.map((issue) => issue.source))
   if (sources.has('process')) return 0
-  if (item.level === 'critical' && sources.has('self_healing')) return 1
-  if (item.level === 'critical' && sources.has('identity_health')) return 2
-  if (sources.has('self_healing')) return 3
-  if (sources.has('identity_health')) return 4
-  return 5
+  if (historyContext?.level === 'critical') return 1
+  if (item.level === 'critical' && sources.has('self_healing')) return 2
+  if (item.level === 'critical' && sources.has('identity_health')) return 3
+  if (historyContext?.level === 'warning') return 4
+  if (sources.has('self_healing')) return 5
+  if (sources.has('identity_health')) return 6
+  return 7
 }
 
 export function profileAttentionPlan(
   profiles: Array<Pick<BrowserProfileView, 'id' | 'serialNumber' | 'name' | 'status' | 'lastError'>>,
   identityHealth: Record<string, IdentityProfileHealthSummary>,
-  selfHealing: Record<string, IdentitySelfHealingSummary>
+  selfHealing: Record<string, IdentitySelfHealingSummary>,
+  historyContext: Record<string, AttentionPlanHistoryContext> = {}
 ): AttentionPlanStep[] {
   return profileAttentionQueue(profiles, identityHealth, selfHealing)
-    .sort((first, second) => planRank(first) - planRank(second) || first.serialNumber - second.serialNumber)
+    .sort((first, second) =>
+      planRank(first, historyContext[first.profileId]) - planRank(second, historyContext[second.profileId])
+      || (historyContext[second.profileId]?.failures ?? 0) - (historyContext[first.profileId]?.failures ?? 0)
+      || (historyContext[second.profileId]?.confirmationRequired ?? 0) - (historyContext[first.profileId]?.confirmationRequired ?? 0)
+      || (historyContext[second.profileId]?.appearances ?? 0) - (historyContext[first.profileId]?.appearances ?? 0)
+      || first.serialNumber - second.serialNumber
+    )
     .map((item, index) => ({
       priority: index + 1,
-      ...planStep(item, selfHealing[item.profileId])
+      ...planStep(item, selfHealing[item.profileId], historyContext[item.profileId])
     }))
 }
