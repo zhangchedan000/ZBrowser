@@ -72,6 +72,7 @@ describe('MCP stdio message handler', () => {
       'attention_plan',
       'attention_audit',
       'attention_audit_history',
+      'attention_insights',
       'identity_health_list',
       'profile_identity_health',
       'profile_identity_health_history',
@@ -108,12 +109,19 @@ describe('MCP stdio message handler', () => {
       method: 'tools/call',
       params: { name: 'attention_audit_history', arguments: {} }
     }, client, '1.0.0')
+    await handleMcpMessage({
+      jsonrpc: '2.0',
+      id: 24,
+      method: 'tools/call',
+      params: { name: 'attention_insights', arguments: {} }
+    }, client, '1.0.0')
 
     expect(client.calls).toEqual([
       { path: '/api/v1/attention', options: undefined },
       { path: '/api/v1/attention/plan', options: undefined },
       { path: '/api/v1/attention/audit', options: { method: 'POST', timeoutMs: 300000 } },
-      { path: '/api/v1/attention/audit/history', options: undefined }
+      { path: '/api/v1/attention/audit/history', options: undefined },
+      { path: '/api/v1/attention/insights', options: undefined }
     ])
   })
 
