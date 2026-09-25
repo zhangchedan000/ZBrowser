@@ -208,7 +208,7 @@ describe('Local API server', () => {
       port: status.port,
       url: status.url,
       tokenPath: status.tokenPath,
-      capabilities: ['profile-control', 'cdp', 'page-control', 'proxy-test', 'diagnostics', 'self-healing', 'identity-health', 'attention-queue']
+      capabilities: ['profile-control', 'cdp', 'page-control', 'proxy-test', 'diagnostics', 'self-healing', 'identity-health', 'attention-queue', 'attention-plan']
     })
     expect(JSON.stringify(server.publicStatus())).not.toContain(token)
 
@@ -329,6 +329,21 @@ describe('Local API server', () => {
             expect.objectContaining({ source: 'identity_health', level: 'warning' }),
             expect.objectContaining({ source: 'self_healing', level: 'warning' })
           ])
+        }]
+      })
+
+      const attentionPlan = await fetch(status.url + '/api/v1/attention/plan', { headers: authorization })
+      expect(attentionPlan.status).toBe(200)
+      expect(await attentionPlan.json()).toMatchObject({
+        count: 1,
+        confirmationRequiredCount: 1,
+        steps: [{
+          priority: 1,
+          profileId: current.id,
+          action: 'confirm_self_healing',
+          risk: 'confirmation_required',
+          recommendedTool: 'profile_self_healing_status',
+          requiresUserConfirmation: true
         }]
       })
 
