@@ -54,6 +54,7 @@ async function exportKit(output) {
   await mkdir(staging, { recursive: true })
   try {
     await cp(join(projectRoot, 'tools', 'beta-acceptance', 'README.md'), join(staging, 'README.md'))
+    await cp(join(projectRoot, 'RELEASE_NOTES.md'), join(staging, 'RELEASE_NOTES.md'))
     await cp(join(projectRoot, 'tools', 'beta-acceptance', 'evidence.template.json'), join(staging, 'evidence.template.json'))
     await cp(join(projectRoot, 'tools', 'beta-acceptance', 'validate-evidence.mjs'), join(staging, 'validate-evidence.mjs'))
     await cp(join(projectRoot, 'tools', 'beta-acceptance', 'verify-kit.mjs'), join(staging, 'verify-kit.mjs'))
