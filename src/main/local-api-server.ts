@@ -13,11 +13,12 @@ import { profileAttentionQueue } from '../shared/profile-attention'
 import { profileAttentionPlan } from '../shared/profile-attention-plan'
 import { runAttentionAudit } from './attention-audit'
 import { AttentionAuditHistoryStore } from './attention-audit-history'
+import { attentionInsights } from './attention-insights'
 
 export const DEFAULT_LOCAL_API_PORT = 17653
 const LOCAL_API_HOST = '127.0.0.1'
 const MAX_REQUEST_BODY_BYTES = 16 * 1024
-const LOCAL_API_CAPABILITIES = ['profile-control', 'cdp', 'page-control', 'proxy-test', 'diagnostics', 'self-healing', 'identity-health', 'attention-queue', 'attention-plan', 'attention-audit', 'attention-audit-history']
+const LOCAL_API_CAPABILITIES = ['profile-control', 'cdp', 'page-control', 'proxy-test', 'diagnostics', 'self-healing', 'identity-health', 'attention-queue', 'attention-plan', 'attention-audit', 'attention-audit-history', 'attention-insights']
 
 interface LocalApiProfileStore {
   list(): BrowserProfile[]
@@ -337,6 +338,29 @@ export class LocalApiServer {
       this.profile(id)
       const profile = await this.launcher.testProfileProxy(id)
       this.sendJson(response, 200, { profile: profileSummary(profile) })
+      return
+    }
+
+    if (method === 'GET' && url.pathname === '/api/v1/attention/insights') {
+      const profiles = this.profiles.list()
+      const [history, healthEntries] = await Promise.all([
+        this.attentionAuditHistory.list(),
+        Promise.all(profiles.map(async (profile) => [
+          profile.id,
+          summarizeIdentityProfileHealth(await this.identityHealthHistory.list(profile.id))
+        ] as const))
+      ])
+      const items = attentionInsights(
+        profiles,
+        history,
+        Object.fromEntries(healthEntries)
+      )
+      this.sendJson(response, 200, {
+        count: items.length,
+        criticalCount: items.filter((item) => item.level === 'critical').length,
+        warningCount: items.filter((item) => item.level === 'warning').length,
+        items
+      })
       return
     }
 
