@@ -208,7 +208,7 @@ describe('Local API server', () => {
       port: status.port,
       url: status.url,
       tokenPath: status.tokenPath,
-      capabilities: ['profile-control', 'cdp', 'page-control', 'proxy-test', 'diagnostics', 'self-healing', 'identity-health', 'attention-queue', 'attention-plan', 'attention-audit']
+      capabilities: ['profile-control', 'cdp', 'page-control', 'proxy-test', 'diagnostics', 'self-healing', 'identity-health', 'attention-queue', 'attention-plan', 'attention-audit', 'attention-audit-history']
     })
     expect(JSON.stringify(server.publicStatus())).not.toContain(token)
 
@@ -352,7 +352,9 @@ describe('Local API server', () => {
         headers: authorization
       })
       expect(attentionAudit.status).toBe(200)
-      expect(await attentionAudit.json()).toMatchObject({
+      const attentionAuditBody = await attentionAudit.json()
+      expect(attentionAuditBody).toMatchObject({
+        id: expect.any(String),
         total: 1,
         completed: 0,
         confirmationRequired: 1,
@@ -363,6 +365,22 @@ describe('Local API server', () => {
           action: 'confirm_self_healing',
           risk: 'confirmation_required',
           status: 'confirmation_required'
+        }]
+      })
+
+      const attentionAuditHistory = await fetch(status.url + '/api/v1/attention/audit/history', {
+        headers: authorization
+      })
+      expect(attentionAuditHistory.status).toBe(200)
+      expect(await attentionAuditHistory.json()).toMatchObject({
+        history: [{
+          id: attentionAuditBody.id,
+          total: 1,
+          confirmationRequired: 1,
+          results: [{
+            profileId: current.id,
+            status: 'confirmation_required'
+          }]
         }]
       })
 
