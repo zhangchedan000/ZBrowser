@@ -101,12 +101,23 @@ function planStep(
   }
 }
 
+function planRank(item: ProfileAttentionItem): number {
+  const sources = new Set(item.issues.map((issue) => issue.source))
+  if (sources.has('process')) return 0
+  if (item.level === 'critical' && sources.has('self_healing')) return 1
+  if (item.level === 'critical' && sources.has('identity_health')) return 2
+  if (sources.has('self_healing')) return 3
+  if (sources.has('identity_health')) return 4
+  return 5
+}
+
 export function profileAttentionPlan(
   profiles: BrowserProfileView[],
   identityHealth: Record<string, IdentityProfileHealthSummary>,
   selfHealing: Record<string, IdentitySelfHealingSummary>
 ): AttentionPlanStep[] {
   return profileAttentionQueue(profiles, identityHealth, selfHealing)
+    .sort((first, second) => planRank(first) - planRank(second) || first.serialNumber - second.serialNumber)
     .map((item, index) => ({
       priority: index + 1,
       ...planStep(item, selfHealing[item.profileId])
