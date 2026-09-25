@@ -37,6 +37,7 @@ export interface AttentionPlanStep {
   action: AttentionPlanAction
   risk: AttentionPlanRisk
   recommendedTool?: string
+  strategyKind?: import('./identity-repair-strategy').IdentityRepairStrategyKind
   requiresUserConfirmation: boolean
   reason: string
   sources: ProfileAttentionItem['issues'][number]['source'][]
@@ -85,6 +86,7 @@ function planStep(
         action: 'confirm_self_healing',
         risk: 'confirmation_required',
         recommendedTool: 'profile_self_healing_status',
+        strategyKind: selfHealing?.pendingStrategyKind,
         requiresUserConfirmation: true,
         reason: healingIssue.reason,
         sources,
@@ -100,6 +102,7 @@ function planStep(
       action: 'review_self_healing',
       risk: 'read_only',
       recommendedTool: 'profile_self_healing_status',
+      strategyKind: selfHealing?.pendingStrategyKind,
       requiresUserConfirmation: false,
       reason: healingIssue.reason,
       sources,
