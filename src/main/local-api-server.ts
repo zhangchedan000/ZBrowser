@@ -13,7 +13,7 @@ import { profileAttentionQueue } from '../shared/profile-attention'
 import { profileAttentionPlan } from '../shared/profile-attention-plan'
 import { runAttentionAudit } from './attention-audit'
 import { AttentionAuditHistoryStore } from './attention-audit-history'
-import { attentionInsights } from './attention-insights'
+import { attentionInsightContext, attentionInsights } from './attention-insights'
 
 export const DEFAULT_LOCAL_API_PORT = 17653
 const LOCAL_API_HOST = '127.0.0.1'
@@ -274,6 +274,25 @@ export class LocalApiServer {
     return token
   }
 
+  private async attentionPlanningState() {
+    const profiles = this.profiles.list()
+    const [healthEntries, selfHealing, history] = await Promise.all([
+      Promise.all(profiles.map(async (profile) => [
+        profile.id,
+        summarizeIdentityProfileHealth(await this.identityHealthHistory.list(profile.id))
+      ] as const)),
+      this.options.selfHealing?.statusAll() ?? Promise.resolve({}),
+      this.attentionAuditHistory.list()
+    ])
+    const identityHealth = Object.fromEntries(healthEntries)
+    return {
+      profiles,
+      identityHealth,
+      selfHealing,
+      historyContext: attentionInsightContext(attentionInsights(profiles, history, identityHealth))
+    }
+  }
+
   private async handle(request: IncomingMessage, response: ServerResponse): Promise<void> {
     if (!secureTokenMatch(bearerToken(request), this.token)) {
       response.setHeader('WWW-Authenticate', 'Bearer')
@@ -370,18 +389,12 @@ export class LocalApiServer {
     }
 
     if (method === 'POST' && url.pathname === '/api/v1/attention/audit') {
-      const profiles = this.profiles.list()
-      const [healthEntries, selfHealing] = await Promise.all([
-        Promise.all(profiles.map(async (profile) => [
-          profile.id,
-          summarizeIdentityProfileHealth(await this.identityHealthHistory.list(profile.id))
-        ] as const)),
-        this.options.selfHealing?.statusAll() ?? Promise.resolve({})
-      ])
+      const { profiles, identityHealth, selfHealing, historyContext } = await this.attentionPlanningState()
       const plan = profileAttentionPlan(
         profiles,
-        Object.fromEntries(healthEntries),
-        selfHealing
+        identityHealth,
+        selfHealing,
+        historyContext
       )
       const audit = await runAttentionAudit(plan, {
         inspectProcess: (profileId) => this.launcher.localApiRuntime(profileId),
@@ -398,22 +411,17 @@ export class LocalApiServer {
     }
 
     if (method === 'GET' && url.pathname === '/api/v1/attention/plan') {
-      const profiles = this.profiles.list()
-      const [healthEntries, selfHealing] = await Promise.all([
-        Promise.all(profiles.map(async (profile) => [
-          profile.id,
-          summarizeIdentityProfileHealth(await this.identityHealthHistory.list(profile.id))
-        ] as const)),
-        this.options.selfHealing?.statusAll() ?? Promise.resolve({})
-      ])
+      const { profiles, identityHealth, selfHealing, historyContext } = await this.attentionPlanningState()
       const steps = profileAttentionPlan(
         profiles,
-        Object.fromEntries(healthEntries),
-        selfHealing
+        identityHealth,
+        selfHealing,
+        historyContext
       )
       this.sendJson(response, 200, {
         count: steps.length,
         confirmationRequiredCount: steps.filter((step) => step.requiresUserConfirmation).length,
+        recurringPriorityCount: steps.filter((step) => step.historyContext).length,
         steps
       })
       return
