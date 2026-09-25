@@ -626,6 +626,120 @@ export interface AutomationApiStatus {
   mcp?: McpAutomationStatus
 }
 
+export type AutomationAttentionLevel = 'warning' | 'critical'
+export type AutomationAttentionSource = 'process' | 'identity_health' | 'self_healing'
+export type AutomationAttentionAction = 'inspect_process' | 'run_identity_check' | 'review_self_healing' | 'confirm_self_healing'
+export type AutomationAttentionRisk = 'read_only' | 'policy_gated' | 'confirmation_required'
+export type AutomationAttentionAuditStatus = 'completed' | 'confirmation_required' | 'failed'
+export type AutomationAttentionHistorySignal = 'repeated_attention' | 'repeated_failure' | 'repeated_confirmation' | 'identity_degrading'
+
+export interface AutomationAttentionHistoryContext {
+  level: AutomationAttentionLevel
+  signals: AutomationAttentionHistorySignal[]
+  appearances: number
+  failures: number
+  confirmationRequired: number
+  reason: string
+}
+
+export interface AutomationAttentionPlanStep {
+  priority: number
+  profileId: string
+  serialNumber: number
+  name: string
+  level: AutomationAttentionLevel
+  action: AutomationAttentionAction
+  risk: AutomationAttentionRisk
+  recommendedTool?: string
+  requiresUserConfirmation: boolean
+  reason: string
+  sources: AutomationAttentionSource[]
+  historyContext?: AutomationAttentionHistoryContext
+}
+
+export interface AutomationAttentionPlan {
+  count: number
+  confirmationRequiredCount: number
+  recurringPriorityCount: number
+  steps: AutomationAttentionPlanStep[]
+}
+
+export interface AutomationAttentionInsight {
+  profileId: string
+  serialNumber: number
+  name: string
+  level: AutomationAttentionLevel
+  signals: AutomationAttentionHistorySignal[]
+  appearances: number
+  failures: number
+  confirmationRequired: number
+  latestSeenAt?: string
+  identityScore?: number
+  identityDelta?: number
+  reason: string
+}
+
+export interface AutomationAttentionInsights {
+  count: number
+  criticalCount: number
+  warningCount: number
+  items: AutomationAttentionInsight[]
+}
+
+export interface AutomationAttentionAuditStep {
+  priority: number
+  profileId: string
+  action: AutomationAttentionAction
+  risk: AutomationAttentionRisk
+  status: AutomationAttentionAuditStatus
+  startedAt?: string
+  completedAt?: string
+  message: string
+}
+
+export interface AutomationAttentionAuditHistoryRecord {
+  id: string
+  startedAt: string
+  completedAt: string
+  total: number
+  completed: number
+  confirmationRequired: number
+  failed: number
+  results: AutomationAttentionAuditStep[]
+}
+
+export interface AutomationAttentionReviewIssue {
+  profileId: string
+  serialNumber: number
+  name: string
+  source: AutomationAttentionSource
+  beforeLevel?: AutomationAttentionLevel
+  afterLevel?: AutomationAttentionLevel
+  beforeReason?: string
+  afterReason?: string
+}
+
+export interface AutomationAttentionReview {
+  beforeCount: number
+  afterCount: number
+  resolvedCount: number
+  remainingCount: number
+  newCount: number
+  resolved: AutomationAttentionReviewIssue[]
+  remaining: AutomationAttentionReviewIssue[]
+  newlyDetected: AutomationAttentionReviewIssue[]
+}
+
+export interface AutomationAttentionAuditResult extends AutomationAttentionAuditHistoryRecord {
+  review: AutomationAttentionReview
+}
+
+export interface AutomationAttentionDashboard {
+  plan: AutomationAttentionPlan
+  insights: AutomationAttentionInsights
+  history: AutomationAttentionAuditHistoryRecord[]
+}
+
 export interface BrowserApi {
   profiles: {
     list: () => Promise<BrowserProfileView[]>
@@ -723,6 +837,8 @@ export interface BrowserApi {
   automation: {
     status: () => Promise<AutomationApiStatus>
     checkMcp: () => Promise<McpConnectionCheckResult>
+    attentionDashboard: () => Promise<AutomationAttentionDashboard>
+    runAttentionAudit: () => Promise<AutomationAttentionAuditResult>
   }
   diagnostics: {
     sessionHealth: () => Promise<AppRecoveryStatus>
