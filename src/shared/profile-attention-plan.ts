@@ -112,7 +112,7 @@ function planRank(item: ProfileAttentionItem): number {
 }
 
 export function profileAttentionPlan(
-  profiles: BrowserProfileView[],
+  profiles: Array<Pick<BrowserProfileView, 'id' | 'serialNumber' | 'name' | 'status' | 'lastError'>>,
   identityHealth: Record<string, IdentityProfileHealthSummary>,
   selfHealing: Record<string, IdentitySelfHealingSummary>
 ): AttentionPlanStep[] {
