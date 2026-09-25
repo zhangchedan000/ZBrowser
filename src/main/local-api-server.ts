@@ -409,6 +409,9 @@ export class LocalApiServer {
     if (!currentStep || !currentStep.requiresUserConfirmation || currentStep.action !== 'confirm_self_healing') {
       throw new Error('该环境当前已不是需要人工确认的 Self-Healing 项，请刷新巡检视图')
     }
+    if (currentStep.strategyKind === 'manual_review') {
+      throw new Error('该环境当前策略为人工复核，没有可自动执行的修复动作')
+    }
 
     const execution = await this.options.selfHealing.executeApproved(profileId)
     const afterState = await this.attentionPlanningState()
