@@ -365,7 +365,18 @@ describe('Local API server', () => {
           action: 'confirm_self_healing',
           risk: 'confirmation_required',
           status: 'confirmation_required'
-        }]
+        }],
+        review: {
+          beforeCount: 2,
+          afterCount: 2,
+          resolvedCount: 0,
+          remainingCount: 2,
+          newCount: 0,
+          remaining: expect.arrayContaining([
+            expect.objectContaining({ profileId: current.id, source: 'identity_health' }),
+            expect.objectContaining({ profileId: current.id, source: 'self_healing' })
+          ])
+        }
       })
 
       const attentionAuditHistory = await fetch(status.url + '/api/v1/attention/audit/history', {
