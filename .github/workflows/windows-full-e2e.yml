@@ -201,6 +201,14 @@ jobs:
           Write-Host "ZIP:"
           $zip | Select-Object Name,Length
 
+      - name: Export and verify Beta acceptance kit
+        shell: pwsh
+        run: |
+          npm run beta:export-kit -- release/beta-acceptance-kit
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          npm run beta:verify-kit -- release/beta-acceptance-kit
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
       - name: Publish immutable GitHub prerelease
         shell: pwsh
         env:
