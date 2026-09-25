@@ -57,6 +57,11 @@ const TOOLS: ToolDefinition[] = [
     inputSchema: { type: 'object', properties: {}, additionalProperties: false }
   },
   {
+    name: 'attention_insights',
+    description: 'Read recurring attention insights across recent audits and Identity Health trends, including repeated failures, repeated confirmation needs and degrading identity scores.',
+    inputSchema: { type: 'object', properties: {}, additionalProperties: false }
+  },
+  {
     name: 'profile_status',
     description: 'Get one profile status and local runtime state.',
     inputSchema: {
@@ -283,6 +288,9 @@ async function callTool(client: McpApiClient, name: string, rawArguments: unknow
     case 'attention_audit_history':
       if (Object.keys(args).length) throw new McpLocalApiError('INVALID_ARGUMENTS', 'attention_audit_history does not accept arguments')
       return client.request('/api/v1/attention/audit/history')
+    case 'attention_insights':
+      if (Object.keys(args).length) throw new McpLocalApiError('INVALID_ARGUMENTS', 'attention_insights does not accept arguments')
+      return client.request('/api/v1/attention/insights')
     case 'profile_status':
       return client.request(toolPathProfile(profileId(args), '/status'))
     case 'profile_start':
