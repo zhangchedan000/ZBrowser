@@ -207,6 +207,12 @@ jobs:
           Write-Host "ZIP:"
           $zip | Select-Object Name,Length
 
+      - name: Test Beta acceptance tooling
+        shell: pwsh
+        run: |
+          npm run beta:test-tools
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
       - name: Generate Windows Beta evidence preflight
         shell: pwsh
         run: |
