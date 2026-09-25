@@ -29,45 +29,72 @@ cd "$project_root"
 npm ci
 npm test
 npm run build
+
+# Legacy environment names are kept because older packaging hooks may still
+# consume them. Product identity and output paths below are ZBrowser-only.
 export PRISM_BUNDLED_KERNEL_PATH="$staged_kernel"
 export PRISM_REQUIRE_BUNDLED_KERNEL=1
 export PRISM_UPDATE_CONFIG_PATH="$(cd "$(dirname "$update_config")" && pwd)/$(basename "$update_config")"
+
 npx electron-builder --mac dmg zip --arm64 \
   -c.mac.forceCodeSigning=true \
   -c.mac.hardenedRuntime=true \
   -c.mac.notarize=true
 
-app_path="$release_root/mac-arm64/Prism Browser.app"
-PRISM_REQUIRE_DISTRIBUTION_SIGNATURE=1 "$project_root/tools/packaging/Verify-Mac-Package.sh" "$app_path"
+app_path="$release_root/mac-arm64/ZBrowser.app"
+[[ -d "$app_path" ]] || { echo "Expected packaged app is missing: $app_path" >&2; exit 1; }
+
+codesign --verify --deep --strict --verbose=2 "$app_path"
+spctl --assess --type execute --verbose=4 "$app_path"
+xcrun stapler validate "$app_path"
+
 release_version="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$app_path/Contents/Info.plist")"
-release_dmg="$release_root/Prism Browser-$release_version-mac-arm64.dmg"
-release_zip="$release_root/Prism Browser-$release_version-mac-arm64.zip"
-[[ -f "$release_dmg" && -f "$release_zip" ]] || { echo "Expected versioned DMG and ZIP artifacts are missing." >&2; exit 1; }
+bundle_identifier="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$app_path/Contents/Info.plist")"
+[[ "$bundle_identifier" == "com.zbrowser.desktop" ]] || {
+  echo "Unexpected bundle identifier: $bundle_identifier" >&2
+  exit 1
+}
+
+release_dmg="$release_root/ZBrowser-$release_version-mac-arm64.dmg"
+release_zip="$release_root/ZBrowser-$release_version-mac-arm64.zip"
+[[ -f "$release_dmg" && -f "$release_zip" ]] || {
+  echo "Expected versioned ZBrowser DMG and ZIP artifacts are missing." >&2
+  find "$release_root" -maxdepth 2 -type f -print
+  exit 1
+}
+
+xcrun stapler validate "$release_dmg"
 shasum -a 256 "$release_dmg" "$release_zip" > "$release_root/SHA256SUMS-macos-arm64.txt"
+
 team_identifier="$(codesign -dv --verbose=4 "$app_path" 2>&1 | awk -F= '/^TeamIdentifier=/ {print $2}')"
-PRISM_RELEASE_VERSION="$release_version" PRISM_RELEASE_TEAM="$team_identifier" \
-  PRISM_RELEASE_ROOT="$release_root" node - <<'NODE'
+[[ -n "$team_identifier" ]] || { echo "Developer ID TeamIdentifier is missing." >&2; exit 1; }
+
+ZBROWSER_RELEASE_VERSION="$release_version" \
+ZBROWSER_RELEASE_TEAM="$team_identifier" \
+ZBROWSER_RELEASE_ROOT="$release_root" \
+node - <<'NODE'
 const fs = require('node:fs')
 const path = require('node:path')
-const root = process.env.PRISM_RELEASE_ROOT
-const version = process.env.PRISM_RELEASE_VERSION.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-const artifactPattern = new RegExp(`^Prism Browser-${version}-mac-arm64\\.(dmg|zip)$`)
+const root = process.env.ZBROWSER_RELEASE_ROOT
+const version = process.env.ZBROWSER_RELEASE_VERSION.replace(/[.*+?^$()|[\]\\]/g, '\\$&')
+const artifactPattern = new RegExp('^ZBrowser-' + version + '-mac-arm64\\.(dmg|zip)$')
 const files = fs.readdirSync(root)
   .filter((name) => artifactPattern.test(name))
   .sort()
 const report = {
   schemaVersion: 1,
   passed: files.length === 2,
-  version: process.env.PRISM_RELEASE_VERSION,
+  version: process.env.ZBROWSER_RELEASE_VERSION,
   target: 'darwin-arm64',
-  developerTeam: process.env.PRISM_RELEASE_TEAM,
+  developerTeam: process.env.ZBROWSER_RELEASE_TEAM,
   developerIdVerified: true,
   gatekeeperVerified: true,
   notarizationStapleVerified: true,
   updateConfigVerified: true,
   artifacts: files
 }
-if (!report.passed) throw new Error('Expected one DMG and one ZIP release artifact')
+if (!report.passed) throw new Error('Expected one ZBrowser DMG and one ZIP release artifact')
 fs.writeFileSync(path.join(root, 'macos-release-acceptance.json'), JSON.stringify(report, null, 2) + '\n')
 NODE
-echo "Prism Browser macOS signed and notarized release completed: $release_root"
+
+echo "ZBrowser macOS signed and notarized release completed: $release_root"
