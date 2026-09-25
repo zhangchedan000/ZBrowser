@@ -13,6 +13,7 @@
     "build": "npm run typecheck && electron-vite build && node tools/build-mcp-stdio.mjs",
     "dist:mac": "npm run build && electron-builder --mac dmg zip",
     "dist:win": "npm run build && electron-builder --win msi portable zip --x64 --publish never",
+    "dist:win:signed": "npm run build && electron-builder --config tools/release/electron-builder.signed.cjs --win msi portable zip --x64 --publish never",
     "preview": "electron-vite preview",
     "typecheck": "tsc --noEmit",
     "test": "npm run typecheck && vitest run --fileParallelism=false && npm run kernel:verify-lock",
@@ -25,7 +26,7 @@
     "audit:profile-data": "node tools/profile-data-audit/run.mjs",
     "audit:stress": "node tools/multi-profile-stress/run.mjs",
     "audit:app-e2e": "node tools/app-e2e/run.mjs",
-    "accept:windows": "node tools/windows-acceptance/run.cjs",
+    "accept:windows": "node tools/windows-acceptance/signed-release.cjs",
     "accept:local-summary": "node tools/local-acceptance/aggregate.mjs",
     "analyze:soak": "node tools/runtime-soak/analyze.cjs",
     "kernel:verify-lock": "node tools/kernel-maintenance/run.mjs verify-lock",
@@ -37,7 +38,7 @@
     "beta:windows-preflight": "node tools/beta-acceptance/windows-preflight.mjs",
     "beta:verify-candidate": "node tools/release/verify-update-candidate.mjs",
     "beta:verify-recovery": "node tools/beta-acceptance/verify-recovery-drill.mjs",
-    "beta:test-tools": "node --test tools/beta-acceptance/*.test.mjs tools/release/*.test.mjs",
+    "beta:test-tools": "node --test tools/beta-acceptance/*.test.mjs tools/release/*.test.mjs tools/windows-acceptance/*.test.mjs",
     "beta:validate-evidence": "node tools/beta-acceptance/validate-evidence.mjs"
   },
   "dependencies": {
