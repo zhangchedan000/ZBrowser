@@ -14,6 +14,7 @@ import { profileAttentionPlan } from '../shared/profile-attention-plan'
 import { runAttentionAudit } from './attention-audit'
 import { AttentionAuditHistoryStore } from './attention-audit-history'
 import { attentionInsightContext, attentionInsights } from './attention-insights'
+import { reviewAttentionAudit } from './attention-audit-review'
 
 export const DEFAULT_LOCAL_API_PORT = 17653
 const LOCAL_API_HOST = '127.0.0.1'
@@ -389,12 +390,17 @@ export class LocalApiServer {
     }
 
     if (method === 'POST' && url.pathname === '/api/v1/attention/audit') {
-      const { profiles, identityHealth, selfHealing, historyContext } = await this.attentionPlanningState()
+      const beforeState = await this.attentionPlanningState()
+      const beforeQueue = profileAttentionQueue(
+        beforeState.profiles,
+        beforeState.identityHealth,
+        beforeState.selfHealing
+      )
       const plan = profileAttentionPlan(
-        profiles,
-        identityHealth,
-        selfHealing,
-        historyContext
+        beforeState.profiles,
+        beforeState.identityHealth,
+        beforeState.selfHealing,
+        beforeState.historyContext
       )
       const audit = await runAttentionAudit(plan, {
         inspectProcess: (profileId) => this.launcher.localApiRuntime(profileId),
@@ -406,7 +412,17 @@ export class LocalApiServer {
           ? this.options.selfHealing.diagnose(profileId)
           : this.launcher.diagnoseFingerprintRuntime(profileId)
       })
-      this.sendJson(response, 200, await this.attentionAuditHistory.record(audit))
+      const record = await this.attentionAuditHistory.record(audit)
+      const afterState = await this.attentionPlanningState()
+      const afterQueue = profileAttentionQueue(
+        afterState.profiles,
+        afterState.identityHealth,
+        afterState.selfHealing
+      )
+      this.sendJson(response, 200, {
+        ...record,
+        review: reviewAttentionAudit(beforeQueue, afterQueue)
+      })
       return
     }
 
