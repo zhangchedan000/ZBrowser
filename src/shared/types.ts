@@ -159,11 +159,15 @@ export interface BrowserExtension {
   globalEnabled: boolean
 }
 
+export type AttentionPatrolIntervalMinutes = 15 | 30 | 60 | 180
+
 export interface AppSettings {
   browserExecutable: string
   fingerprintKernel: boolean
   enginePreference: EnginePreference
   recycleRetentionDays: 0 | 7 | 30 | 90
+  attentionPatrolEnabled: boolean
+  attentionPatrolIntervalMinutes: AttentionPatrolIntervalMinutes
 }
 
 export interface EngineStatus {
@@ -743,6 +747,24 @@ export interface AutomationAttentionConfirmationResult {
   review: AutomationAttentionReview
 }
 
+export interface AutomationAttentionPatrolStatus {
+  enabled: boolean
+  intervalMinutes: AttentionPatrolIntervalMinutes
+  running: boolean
+  nextRunAt?: string
+  lastStartedAt?: string
+  lastCompletedAt?: string
+  lastError?: string
+  lastResult?: {
+    completed: number
+    confirmationRequired: number
+    failed: number
+    resolved: number
+    remaining: number
+    newlyDetected: number
+  }
+}
+
 export interface AutomationAttentionDashboard {
   plan: AutomationAttentionPlan
   insights: AutomationAttentionInsights
@@ -849,6 +871,9 @@ export interface BrowserApi {
     attentionDashboard: () => Promise<AutomationAttentionDashboard>
     runAttentionAudit: () => Promise<AutomationAttentionAuditResult>
     confirmAttentionStep: (profileId: string, approvedByUser: boolean) => Promise<AutomationAttentionConfirmationResult>
+    attentionPatrolStatus: () => Promise<AutomationAttentionPatrolStatus>
+    configureAttentionPatrol: (enabled: boolean, intervalMinutes: AttentionPatrolIntervalMinutes) => Promise<AutomationAttentionPatrolStatus>
+    onAttentionPatrolChanged: (listener: (status: AutomationAttentionPatrolStatus) => void) => () => void
   }
   diagnostics: {
     sessionHealth: () => Promise<AppRecoveryStatus>
