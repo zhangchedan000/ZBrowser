@@ -3,6 +3,7 @@ import { useCallback, useEffect, useState } from 'react'
 import type {
   AutomationApiStatus,
   AutomationAttentionAuditResult,
+  AutomationAttentionConfirmationResult,
   AutomationAttentionDashboard,
   McpConnectionCheckResult
 } from '../../shared/types'
@@ -20,9 +21,11 @@ export function AutomationApiModal({ open, onClose }: AutomationApiModalProps) {
   const [mcpCheck, setMcpCheck] = useState<McpConnectionCheckResult>()
   const [attentionLoading, setAttentionLoading] = useState(false)
   const [attentionRunning, setAttentionRunning] = useState(false)
+  const [attentionConfirmingProfileId, setAttentionConfirmingProfileId] = useState<string>()
   const [attentionError, setAttentionError] = useState('')
   const [attentionDashboard, setAttentionDashboard] = useState<AutomationAttentionDashboard>()
   const [attentionAudit, setAttentionAudit] = useState<AutomationAttentionAuditResult>()
+  const [attentionConfirmation, setAttentionConfirmation] = useState<AutomationAttentionConfirmationResult>()
 
   const refresh = useCallback(async () => {
     setLoading(true)
@@ -52,6 +55,7 @@ export function AutomationApiModal({ open, onClose }: AutomationApiModalProps) {
     if (open) {
       setMcpCheck(undefined)
       setAttentionAudit(undefined)
+      setAttentionConfirmation(undefined)
       void refresh()
       void refreshAttention()
     }
@@ -88,6 +92,60 @@ export function AutomationApiModal({ open, onClose }: AutomationApiModalProps) {
     } finally {
       setAttentionRunning(false)
     }
+  }, [])
+
+  const confirmAttentionStep = useCallback((profileId: string, profileName: string, strategyKind: string | undefined, reason: string) => {
+    const labels: Record<string, string> = {
+      switch_proxy: '切换代理',
+      regenerate_identity: '重生成 Identity',
+      repair_configuration: '修复配置',
+      replace_baseline: '换代 Baseline',
+      manual_review: '人工复核'
+    }
+    const label = strategyKind ? labels[strategyKind] ?? strategyKind : 'Self-Healing'
+
+    if (strategyKind === 'manual_review') {
+      Modal.info({
+        title: `“${profileName}”需要人工复核`,
+        content: (
+          <Space direction="vertical" size={6}>
+            <Typography.Text>策略：{label}</Typography.Text>
+            <Typography.Text type="secondary">{reason}</Typography.Text>
+            <Typography.Text type="secondary">该策略没有自动执行动作。请先根据原因检查环境配置或运行时状态，再重新运行安全巡检。</Typography.Text>
+          </Space>
+        ),
+        okText: '知道了'
+      })
+      return
+    }
+
+    Modal.confirm({
+      title: `确认处理“${profileName}”？`,
+      content: (
+        <Space direction="vertical" size={6}>
+          <Typography.Text>策略：{label}</Typography.Text>
+          <Typography.Text type="secondary">{reason}</Typography.Text>
+          <Typography.Text type="secondary">确认后会调用现有 Self-Healing 用户确认链路，执行 Runtime 验证；可回滚策略验证失败时会自动恢复原状态，然后重新计算巡检结果。</Typography.Text>
+        </Space>
+      ),
+      okText: '确认执行并复查',
+      cancelText: '取消',
+      okButtonProps: { danger: strategyKind === 'switch_proxy' || strategyKind === 'regenerate_identity' },
+      onOk: async () => {
+        setAttentionConfirmingProfileId(profileId)
+        setAttentionError('')
+        try {
+          const result = await window.browserApi.automation.confirmAttentionStep(profileId, true)
+          setAttentionConfirmation(result)
+          setAttentionDashboard(await window.browserApi.automation.attentionDashboard())
+        } catch (reason) {
+          setAttentionError(reason instanceof Error ? reason.message : String(reason))
+          throw reason
+        } finally {
+          setAttentionConfirmingProfileId(undefined)
+        }
+      }
+    })
   }, [])
 
   return (
@@ -200,6 +258,14 @@ export function AutomationApiModal({ open, onClose }: AutomationApiModalProps) {
                       description={`已解决 ${attentionAudit.review.resolvedCount} · 仍存在 ${attentionAudit.review.remainingCount} · 新出现 ${attentionAudit.review.newCount} · 待人工确认 ${attentionAudit.confirmationRequired} · 失败 ${attentionAudit.failed}`}
                     />
                   )}
+                  {attentionConfirmation && (
+                    <Alert
+                      type={attentionConfirmation.status === 'completed' && attentionConfirmation.review.remainingCount === 0 ? 'success' : 'info'}
+                      showIcon
+                      message={attentionConfirmation.status === 'completed' ? '确认处理已执行并复查' : '确认处理已结束并复查'}
+                      description={`${attentionConfirmation.message} · 已解决 ${attentionConfirmation.review.resolvedCount} · 仍存在 ${attentionConfirmation.review.remainingCount} · 新出现 ${attentionConfirmation.review.newCount}`}
+                    />
+                  )}
 
                   {attentionDashboard.plan.steps.length > 0 && (
                     <div>
@@ -226,6 +292,19 @@ export function AutomationApiModal({ open, onClose }: AutomationApiModalProps) {
                               <Typography.Text type="secondary">
                                 最近出现 {step.historyContext.appearances} 次 · 失败 {step.historyContext.failures} 次 · 需确认 {step.historyContext.confirmationRequired} 次
                               </Typography.Text>
+                            )}
+                            {step.requiresUserConfirmation && (
+                              <div style={{ marginTop: 8 }}>
+                                <Button
+                                  size="small"
+                                  danger={step.strategyKind === 'switch_proxy' || step.strategyKind === 'regenerate_identity'}
+                                  loading={attentionConfirmingProfileId === step.profileId}
+                                  disabled={Boolean(attentionConfirmingProfileId && attentionConfirmingProfileId !== step.profileId)}
+                                  onClick={() => confirmAttentionStep(step.profileId, step.name, step.strategyKind, step.reason)}
+                                >
+                                  {step.strategyKind === 'manual_review' ? '查看人工处理说明' : '确认处理'}
+                                </Button>
+                              </div>
                             )}
                           </div>
                         ))}
