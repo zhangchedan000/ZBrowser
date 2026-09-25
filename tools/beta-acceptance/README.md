@@ -64,6 +64,18 @@ evidence.template.json -> evidence.json
 
 为 Windows 和 macOS 各准备一个 evidence bundle，并把 bundle 的 SHA-256 写入 evidence 文件。
 
+Recovery drill 不能手填布尔值。需要先验证旧 signed candidate、更新后的更高版本 signed recovery candidate，以及两个平台的 Profile 数据保留报告：
+
+```bash
+npm run beta:verify-recovery -- \
+  --baseline <baseline-candidate-report.json> \
+  --recovery <recovery-candidate-report.json> \
+  --profile-preservation <profile-preservation.json> \
+  --output <recovery-drill-report.json>
+```
+
+`profile-preservation.json` 必须同时证明 Windows 和 macOS 的 Profile 数据、Identity Baseline、设置项都保留，并且 recovery build 能再次启动 Profile。把生成的 `recovery-drill-report.json` SHA-256 写入 `evidence.json.recoveryDrill.reportSha256`。
+
 验证：
 
 ```bash
@@ -71,6 +83,7 @@ npm run beta:validate-evidence -- \
   --candidate <candidate-report.json> \
   --evidence <evidence.json> \
   --policy <beta-rollout-policy.json> \
+  --recovery-report <recovery-drill-report.json> \
   --evidence-bundle darwin-arm64,<mac-evidence.zip> \
   --evidence-bundle win32-x64,<windows-evidence.zip> \
   --output <beta-gate-report.json>
@@ -85,7 +98,9 @@ npm run beta:validate-evidence -- \
 - 每个平台的 soak 时长
 - 启动次数与 crash-free rate
 - 更新尝试与更新成功率
-- newer recovery build 恢复演练
+- newer signed recovery build 恢复演练
+- recovery report SHA-256 与 evidence 引用一致
+- Windows / macOS Profile 数据、Identity Baseline、设置和恢复后启动均通过
 - 分阶段 rollout 的观察时长和 pause signals
 
 ## 4. AI / MCP 与巡检验收
