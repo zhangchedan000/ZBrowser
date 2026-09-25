@@ -384,6 +384,32 @@ describe('Local API server', () => {
         }]
       })
 
+      for (let attempt = 0; attempt < 2; attempt += 1) {
+        const repeatAudit = await fetch(status.url + '/api/v1/attention/audit', {
+          method: 'POST',
+          headers: authorization
+        })
+        expect(repeatAudit.status).toBe(200)
+      }
+
+      const recurringInsights = await fetch(status.url + '/api/v1/attention/insights', {
+        headers: authorization
+      })
+      expect(recurringInsights.status).toBe(200)
+      expect(await recurringInsights.json()).toMatchObject({
+        count: 1,
+        criticalCount: 0,
+        warningCount: 1,
+        items: [{
+          profileId: current.id,
+          level: 'warning',
+          appearances: 3,
+          confirmationRequired: 3,
+          failures: 0,
+          signals: expect.arrayContaining(['repeated_confirmation', 'repeated_attention'])
+        }]
+      })
+
       const identityHealthList = await fetch(status.url + '/api/v1/identity-health', { headers: authorization })
       expect(identityHealthList.status).toBe(200)
       expect(await identityHealthList.json()).toMatchObject({
