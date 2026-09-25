@@ -113,7 +113,9 @@ const api: BrowserApi = {
     status: () => ipcRenderer.invoke('automation-api:status'),
     checkMcp: () => ipcRenderer.invoke('automation-api:mcp-check'),
     attentionDashboard: () => ipcRenderer.invoke('automation-api:attention-dashboard'),
-    runAttentionAudit: () => ipcRenderer.invoke('automation-api:attention-audit')
+    runAttentionAudit: () => ipcRenderer.invoke('automation-api:attention-audit'),
+    confirmAttentionStep: (profileId: string, approvedByUser: boolean) =>
+      ipcRenderer.invoke('automation-api:attention-confirm', profileId, approvedByUser)
   },
   diagnostics: {
     sessionHealth: () => ipcRenderer.invoke('diagnostics:session-health'),
