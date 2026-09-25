@@ -12,11 +12,12 @@ import { summarizeIdentityProfileHealth } from '../shared/identity-profile-healt
 import { profileAttentionQueue } from '../shared/profile-attention'
 import { profileAttentionPlan } from '../shared/profile-attention-plan'
 import { runAttentionAudit } from './attention-audit'
+import { AttentionAuditHistoryStore } from './attention-audit-history'
 
 export const DEFAULT_LOCAL_API_PORT = 17653
 const LOCAL_API_HOST = '127.0.0.1'
 const MAX_REQUEST_BODY_BYTES = 16 * 1024
-const LOCAL_API_CAPABILITIES = ['profile-control', 'cdp', 'page-control', 'proxy-test', 'diagnostics', 'self-healing', 'identity-health', 'attention-queue', 'attention-plan', 'attention-audit']
+const LOCAL_API_CAPABILITIES = ['profile-control', 'cdp', 'page-control', 'proxy-test', 'diagnostics', 'self-healing', 'identity-health', 'attention-queue', 'attention-plan', 'attention-audit', 'attention-audit-history']
 
 interface LocalApiProfileStore {
   list(): BrowserProfile[]
@@ -142,6 +143,7 @@ export class LocalApiServer {
   private token = ''
   private port?: number
   private readonly identityHealthHistory: IdentityHealthHistoryStore
+  private readonly attentionAuditHistory: AttentionAuditHistoryStore
   readonly tokenPath: string
   readonly metadataPath: string
 
@@ -155,6 +157,7 @@ export class LocalApiServer {
     this.tokenPath = join(vaultPath, 'local-api.token')
     this.metadataPath = join(vaultPath, 'local-api.json')
     this.identityHealthHistory = new IdentityHealthHistoryStore(vaultPath)
+    this.attentionAuditHistory = new AttentionAuditHistoryStore(vaultPath)
   }
 
   async start(): Promise<LocalApiServerStatus> {
@@ -337,6 +340,11 @@ export class LocalApiServer {
       return
     }
 
+    if (method === 'GET' && url.pathname === '/api/v1/attention/audit/history') {
+      this.sendJson(response, 200, { history: await this.attentionAuditHistory.list() })
+      return
+    }
+
     if (method === 'POST' && url.pathname === '/api/v1/attention/audit') {
       const profiles = this.profiles.list()
       const [healthEntries, selfHealing] = await Promise.all([
@@ -361,7 +369,7 @@ export class LocalApiServer {
           ? this.options.selfHealing.diagnose(profileId)
           : this.launcher.diagnoseFingerprintRuntime(profileId)
       })
-      this.sendJson(response, 200, audit)
+      this.sendJson(response, 200, await this.attentionAuditHistory.record(audit))
       return
     }
 
