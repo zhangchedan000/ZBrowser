@@ -60,7 +60,7 @@ describe('profile attention plan', () => {
       identity: { state: 'attention', score: 70 }
     }
     const plan = profileAttentionPlan(
-      [profile('identity', 2), profile('process', 1, 'error')],
+      [profile('identity', 1), profile('process', 9, 'error')],
       health,
       {}
     )
