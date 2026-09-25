@@ -36,6 +36,8 @@
     "beta:verify-kit": "node tools/beta-acceptance/verify-kit.mjs",
     "beta:windows-preflight": "node tools/beta-acceptance/windows-preflight.mjs",
     "beta:verify-candidate": "node tools/release/verify-update-candidate.mjs",
+    "beta:verify-recovery": "node tools/beta-acceptance/verify-recovery-drill.mjs",
+    "beta:test-tools": "node --test tools/beta-acceptance/*.test.mjs",
     "beta:validate-evidence": "node tools/beta-acceptance/validate-evidence.mjs"
   },
   "dependencies": {
