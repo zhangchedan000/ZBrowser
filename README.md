@@ -238,6 +238,8 @@ npm run beta:verify-kit -- release/beta-acceptance-kit
 tools/beta-acceptance/README.md
 ```
 
+macOS 正式签名 / notarization 可通过手动 `macOS Signed Release` GitHub Actions 工作流执行，并输出供 Beta signed candidate gate 使用的平台 acceptance 报告。
+
 Beta release/tag 是不可变的。已有版本不会被后续 `dev` 构建覆盖；需要发布新候选时必须提升版本号。
 
 ## 安全与隐私原则

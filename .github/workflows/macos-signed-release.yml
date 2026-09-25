@@ -1,0 +1,165 @@
+name: macOS Signed Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      kernel_archive_url:
+        description: HTTPS URL to a macOS arm64 Chromium.app ZIP archive
+        required: true
+        type: string
+      update_config_url:
+        description: HTTPS URL to the signed Beta update config JSON
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  signed-release:
+    runs-on: macos-14
+    timeout-minutes: 60
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+
+      - name: Validate signing secrets
+        shell: bash
+        env:
+          CERTIFICATE_P12_BASE64: ${{ secrets.ZBROWSER_MACOS_CERTIFICATE_P12_BASE64 }}
+          CERTIFICATE_PASSWORD: ${{ secrets.ZBROWSER_MACOS_CERTIFICATE_PASSWORD }}
+          APPLE_API_KEY_P8_BASE64: ${{ secrets.ZBROWSER_APPLE_API_KEY_P8_BASE64 }}
+          APPLE_API_KEY_ID_VALUE: ${{ secrets.ZBROWSER_APPLE_API_KEY_ID }}
+          APPLE_API_ISSUER_VALUE: ${{ secrets.ZBROWSER_APPLE_API_ISSUER }}
+        run: |
+          set -euo pipefail
+          for name in CERTIFICATE_P12_BASE64 CERTIFICATE_PASSWORD APPLE_API_KEY_P8_BASE64 APPLE_API_KEY_ID_VALUE APPLE_API_ISSUER_VALUE; do
+            [[ -n "${!name:-}" ]] || { echo "Missing required secret backing $name" >&2; exit 2; }
+          done
+
+      - name: Download release inputs
+        shell: bash
+        env:
+          KERNEL_ARCHIVE_URL: ${{ inputs.kernel_archive_url }}
+          UPDATE_CONFIG_URL: ${{ inputs.update_config_url }}
+        run: |
+          set -euo pipefail
+          download() {
+            local url="$1"
+            local output="$2"
+            case "$url" in
+              https://*) ;;
+              *) echo "Only HTTPS release input URLs are allowed: $url" >&2; exit 2 ;;
+            esac
+            curl --fail --location --silent --show-error \
+              --proto '=https' --tlsv1.2 \
+              --retry 3 --retry-all-errors \
+              --output "$output" "$url"
+            test -s "$output"
+          }
+
+          kernel_archive="$RUNNER_TEMP/zbrowser-kernel.zip"
+          update_config="$RUNNER_TEMP/zbrowser-update-config.json"
+          kernel_root="$RUNNER_TEMP/zbrowser-kernel"
+
+          download "$KERNEL_ARCHIVE_URL" "$kernel_archive"
+          download "$UPDATE_CONFIG_URL" "$update_config"
+
+          ZBROWSER_UPDATE_CONFIG_PATH="$update_config" node -e "require('./tools/release/signed-update-config.cjs').validateSignedUpdateConfig(process.env.ZBROWSER_UPDATE_CONFIG_PATH)"
+
+          rm -rf "$kernel_root"
+          mkdir -p "$kernel_root"
+          ditto -x -k "$kernel_archive" "$kernel_root"
+          kernel_app="$(find "$kernel_root" -type d -name 'Chromium.app' -prune -print -quit)"
+          [[ -n "$kernel_app" && -d "$kernel_app" ]] || {
+            echo "Chromium.app was not found in the downloaded kernel archive." >&2
+            find "$kernel_root" -maxdepth 4 -print
+            exit 1
+          }
+
+          echo "ZBROWSER_KERNEL_APP=$kernel_app" >> "$GITHUB_ENV"
+          echo "ZBROWSER_UPDATE_CONFIG=$update_config" >> "$GITHUB_ENV"
+
+      - name: Import Developer ID certificate and notarization key
+        shell: bash
+        env:
+          CERTIFICATE_P12_BASE64: ${{ secrets.ZBROWSER_MACOS_CERTIFICATE_P12_BASE64 }}
+          CERTIFICATE_PASSWORD: ${{ secrets.ZBROWSER_MACOS_CERTIFICATE_PASSWORD }}
+          APPLE_API_KEY_P8_BASE64: ${{ secrets.ZBROWSER_APPLE_API_KEY_P8_BASE64 }}
+          APPLE_API_KEY_ID_VALUE: ${{ secrets.ZBROWSER_APPLE_API_KEY_ID }}
+          APPLE_API_ISSUER_VALUE: ${{ secrets.ZBROWSER_APPLE_API_ISSUER }}
+        run: |
+          set -euo pipefail
+          keychain_path="$RUNNER_TEMP/zbrowser-signing.keychain-db"
+          keychain_password="$(openssl rand -hex 24)"
+          certificate_path="$RUNNER_TEMP/zbrowser-signing.p12"
+          api_key_path="$RUNNER_TEMP/AuthKey_${APPLE_API_KEY_ID_VALUE}.p8"
+
+          python3 - <<'PY'
+          import base64
+          import os
+          from pathlib import Path
+
+          Path(os.environ["RUNNER_TEMP"], "zbrowser-signing.p12").write_bytes(
+              base64.b64decode(os.environ["CERTIFICATE_P12_BASE64"], validate=True)
+          )
+          Path(os.environ["RUNNER_TEMP"], f"AuthKey_{os.environ['APPLE_API_KEY_ID_VALUE']}.p8").write_bytes(
+              base64.b64decode(os.environ["APPLE_API_KEY_P8_BASE64"], validate=True)
+          )
+          PY
+
+          security create-keychain -p "$keychain_password" "$keychain_path"
+          security set-keychain-settings -lut 21600 "$keychain_path"
+          security unlock-keychain -p "$keychain_password" "$keychain_path"
+          security import "$certificate_path" -P "$CERTIFICATE_PASSWORD" -A -t cert -f pkcs12 -k "$keychain_path"
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$keychain_password" "$keychain_path"
+          security list-keychains -d user -s "$keychain_path" login.keychain-db
+
+          identity="$(security find-identity -v -p codesigning "$keychain_path" | sed -n 's/.*"\(Developer ID Application:[^"]*\)".*/\1/p' | head -n 1)"
+          [[ "$identity" == Developer\ ID\ Application:* ]] || {
+            echo "Developer ID Application identity was not found in the imported certificate." >&2
+            security find-identity -v -p codesigning "$keychain_path" || true
+            exit 1
+          }
+
+          {
+            echo "CSC_NAME=$identity"
+            echo "CSC_KEYCHAIN=$keychain_path"
+            echo "APPLE_API_KEY=$api_key_path"
+            echo "APPLE_API_KEY_ID=$APPLE_API_KEY_ID_VALUE"
+            echo "APPLE_API_ISSUER=$APPLE_API_ISSUER_VALUE"
+            echo "ZBROWSER_SIGNING_KEYCHAIN=$keychain_path"
+          } >> "$GITHUB_ENV"
+
+      - name: Build, sign and notarize macOS Beta release
+        shell: bash
+        run: |
+          set -euo pipefail
+          bash tools/release/Build-Mac-Release.sh "$ZBROWSER_KERNEL_APP" "$ZBROWSER_UPDATE_CONFIG"
+
+      - name: Upload signed macOS release
+        uses: actions/upload-artifact@v4
+        with:
+          name: ZBrowser-macOS-Signed-Release
+          path: |
+            release/ZBrowser-*-mac-arm64.dmg
+            release/ZBrowser-*-mac-arm64.zip
+            release/SHA256SUMS-macos-arm64.txt
+            release/macos-release-acceptance.json
+          if-no-files-found: error
+
+      - name: Cleanup signing material
+        if: always()
+        shell: bash
+        run: |
+          set +e
+          if [[ -n "${ZBROWSER_SIGNING_KEYCHAIN:-}" && -f "$ZBROWSER_SIGNING_KEYCHAIN" ]]; then
+            security delete-keychain "$ZBROWSER_SIGNING_KEYCHAIN"
+          fi
+          rm -f "$RUNNER_TEMP/zbrowser-signing.p12" "$RUNNER_TEMP"/AuthKey_*.p8
