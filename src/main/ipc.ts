@@ -35,6 +35,7 @@ import type { FingerprintRepairExecutor } from './fingerprint-repair-executor'
 import type { FingerprintRepairStateStore } from './fingerprint-repair-state'
 import type { IdentityRepairStrategyExecutor } from './identity-repair-strategy-executor'
 import type { IdentitySelfHealingManager } from './identity-self-healing-manager'
+import type { AttentionPatrolScheduler } from './attention-patrol-scheduler'
 import { IdentityHealthHistoryStore } from './identity-health-history'
 import { summarizeIdentityProfileHealth } from '../shared/identity-profile-health'
 
@@ -57,12 +58,14 @@ interface IpcDependencies {
   fingerprintRepairState: FingerprintRepairStateStore
   identityRepairStrategy: IdentityRepairStrategyExecutor
   identitySelfHealing: IdentitySelfHealingManager
+  attentionPatrol: AttentionPatrolScheduler
 }
 
 export function registerIpc({
   profiles, settings, launcher, kernels, extensions, cookies, logger, backups,
   workspaceMigration, appSession, updater, environmentChecks, localApi, proxyPool,
-  fingerprintRepair, fingerprintRepairState, identityRepairStrategy, identitySelfHealing
+  fingerprintRepair, fingerprintRepairState, identityRepairStrategy, identitySelfHealing,
+  attentionPatrol
 }: IpcDependencies): void {
   const identityHealthHistory = new IdentityHealthHistoryStore(profiles.vaultPath)
 
@@ -594,6 +597,18 @@ export function registerIpc({
   })
   ipcMain.handle('automation-api:attention-dashboard', () => localApi.attentionDashboard())
   ipcMain.handle('automation-api:attention-audit', () => localApi.executeAttentionAudit())
+  ipcMain.handle('automation-api:attention-patrol-status', () => attentionPatrol.status())
+  ipcMain.handle('automation-api:attention-patrol-configure', async (
+    _event,
+    enabled: unknown,
+    intervalMinutes: unknown
+  ) => {
+    if (typeof enabled !== 'boolean') throw new Error('自动巡检启用状态无效')
+    if (intervalMinutes !== 15 && intervalMinutes !== 30 && intervalMinutes !== 60 && intervalMinutes !== 180) {
+      throw new Error('自动巡检周期无效')
+    }
+    return attentionPatrol.configure(enabled, intervalMinutes)
+  })
   ipcMain.handle('automation-api:attention-confirm', async (_event, profileId: unknown, approvedByUser: unknown) => {
     if (typeof profileId !== 'string' || !profileId.trim()) throw new Error('巡检确认环境标识无效')
     if (approvedByUser !== true) throw new Error('高风险巡检处理必须由用户明确确认后执行')
