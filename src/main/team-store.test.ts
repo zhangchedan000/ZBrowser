@@ -90,6 +90,22 @@ describe('TeamStore', () => {
     expect(store.canUse(member.id, 'profile-1')).toBe(false)
   })
 
+  it('prevents another member from controlling a leased profile and can release one device at once', async () => {
+    const { store } = await createStore()
+    const owner = store.getMember(store.ownerId)
+    const alice = await store.createMember(owner.id, 'Alice')
+    const bob = await store.createMember(owner.id, 'Bob')
+    await store.setProfileAssignments(owner.id, 'profile-1', [alice.id, bob.id])
+    await store.setProfileAssignments(owner.id, 'profile-2', [alice.id])
+    await store.acquireLease(alice.id, 'device-a', 'profile-1')
+    await store.acquireLease(alice.id, 'device-a', 'profile-2')
+
+    expect(() => store.assertLeaseHolder(bob.id, 'device-b', 'profile-1')).toThrow('正在由')
+    expect(() => store.assertLeaseHolder(alice.id, 'device-a', 'profile-1')).not.toThrow()
+    await store.releaseDeviceLeases(alice.id, 'device-a')
+    expect(store.state().leases).toHaveLength(0)
+  })
+
   it('tracks synchronized profile revisions under the current lease', async () => {
     const { store } = await createStore()
     const owner = store.getMember(store.ownerId)
@@ -118,3 +134,5 @@ describe('TeamStore', () => {
     expect(reopened.audit().some((event) => event.type === 'profile_assigned')).toBe(true)
   })
 })
+
+[executed on device: which-confusion (81718d16-bbf4-400c-b41f-80541771cf98)]
