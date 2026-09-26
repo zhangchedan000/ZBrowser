@@ -281,6 +281,30 @@ export class TeamStore {
     await this.persist()
   }
 
+  assertLeaseHolder(memberId: string, deviceId: string, profileId: string): void {
+    this.assertCanUse(memberId, profileId)
+    if (!validId(deviceId)) throw new Error('设备 ID 无效')
+    const current = this.currentLease(profileId)
+    if (current && (current.memberId !== memberId || current.deviceId !== deviceId)) {
+      const holder = this.internalMember(current.memberId)
+      throw new Error(`环境正在由“${holder.name}”使用`)
+    }
+  }
+
+  async releaseDeviceLeases(memberId: string, deviceId: string): Promise<void> {
+    if (!validId(deviceId)) throw new Error('设备 ID 无效')
+    const member = this.internalMember(memberId)
+    const profileIds = [...this.leases.values()]
+      .filter((lease) => lease.memberId === member.id && lease.deviceId === deviceId)
+      .map((lease) => lease.profileId)
+    if (!profileIds.length) return
+    for (const profileId of profileIds) {
+      this.leases.delete(profileId)
+      this.record('lease_released', member.id, { profileId, deviceId })
+    }
+    await this.persist()
+  }
+
   async forceRelease(actorId: string, profileId: string): Promise<void> {
     this.assertOwner(actorId)
     if (!validId(profileId)) throw new Error('环境 ID 无效')
@@ -467,3 +491,5 @@ export class TeamStore {
     return operation
   }
 }
+
+[executed on device: which-confusion (81718d16-bbf4-400c-b41f-80541771cf98)]
