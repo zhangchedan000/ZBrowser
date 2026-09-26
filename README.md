@@ -207,7 +207,7 @@ Release Deliverable Verification
 Beta Acceptance Kit Export + Integrity Verification
 ```
 
-普通 `dev` Full E2E 不再创建 GitHub prerelease，避免未签名产物占用正式 Beta tag。正式候选由 Windows / macOS signed release 流程生成，并在完成签名候选验收后使用新的 Beta 版本号发布。
+当前项目按**个人自用 / internal-unsigned**模式收口：普通 `dev` CI 生成的 Windows MSI / Portable / ZIP 和 macOS arm64 ZIP 就是自用候选，不要求购买代码签名证书，也不创建公开 GitHub prerelease。Windows / macOS signed release 工作流继续保留，只有以后需要对外分发时才启用。
 
 当前 Windows 发布物：
 
@@ -239,9 +239,9 @@ npm run beta:verify-kit -- release/beta-acceptance-kit
 tools/beta-acceptance/README.md
 ```
 
-Windows 正式 Authenticode 候选可通过手动 `Windows Signed Release` 工作流执行；macOS 正式 Developer ID / notarization 候选可通过手动 `macOS Signed Release` 工作流执行。两个流程都会输出供 Beta signed candidate gate 使用的平台 acceptance 报告。
+当前 `0.2.0-beta.5` 的 `build/beta-release.json` 使用 `distributionMode: internal-unsigned`。个人自用阶段以 Windows Build、Windows Full E2E、Packaged App E2E、macOS Build Smoke 和 Beta Acceptance Kit 完整性为 gate；不要求 signed candidate、staged rollout 或 recovery drill。
 
-Beta release/tag 是不可变的。已有版本不会被后续 `dev` 构建覆盖；需要发布新候选时必须提升版本号。
+如果以后改为公开分发，可再切回 `distributionMode: signed`，并使用 `Windows Signed Release`、`macOS Signed Release` 和 `Beta Signed Candidate Gate`。正式公开 release/tag 仍保持不可变。
 
 ## 安全与隐私原则
 

@@ -42,13 +42,13 @@
 - 周期巡检失败恢复和重启恢复已有自动化测试。
 - Windows Development Runtime 和 Packaged App Full E2E 均为发布门槛。
 
-### Signed Beta 发布链
+### 个人自用发布链
 
-- Windows 与 macOS 正式签名构建改为独立手动工作流，不再由普通 dev Full E2E 直接发布候选。
-- Windows signed release 会验证 Authenticode、时间戳、嵌入的 signed update config 和 Packaged App E2E。
-- macOS signed release 会验证 Developer ID、Gatekeeper、notarization staple 和 signed update config。
-- 普通 Full E2E 只负责构建、测试和 Beta acceptance kit，不占用正式 Beta tag。
-- `0.2.0-beta.5` 预留给新的双平台 signed candidate，避免覆盖已发布的 `0.2.0-beta.4`。
+- `0.2.0-beta.5` 当前按 `internal-unsigned` 模式验收，不购买或要求 Windows / Apple 代码签名证书。
+- Windows Build 直接生成 MSI、Portable EXE 和 ZIP；Windows Full E2E 继续验证 Development Runtime、Packaged App 和 Beta Acceptance Kit。
+- macOS Build Smoke 生成 unsigned arm64 ZIP，并校验 Bundle ID、版本号和 SHA-256。
+- signed release / notarization / signed candidate gate 保留为以后公开分发时的可选流程，不再阻塞当前个人自用版本。
+- 普通 CI 不创建公开 GitHub prerelease，避免把内部自用构建误当正式公开发布。
 
 ## Beta 安全边界
 
@@ -70,6 +70,7 @@ Windows CI 生成：
 
 ## 已知 Beta 事项
 
-- 当前仍属于 Beta，建议先在非关键 Profile 上验证再扩大使用范围。
-- 正式 staged rollout 需要额外的平台 evidence、soak、更新成功率和 recovery drill。
-- Windows / macOS 正式 signed candidate、平台 acceptance、soak evidence 与 recovery drill 仍需在对应签名发布环境完成。
+- 当前仍属于 Beta，个人自用时建议先在非关键 Profile 上验证。
+- Windows 未签名安装包可能显示“未知发布者”或 SmartScreen 提示；macOS unsigned ZIP 首次启动可能需要用户手动允许。
+- 如果以后改为公开分发，再补 Windows Authenticode、Apple Developer ID / notarization、平台 evidence、recovery drill 和 staged rollout。
+

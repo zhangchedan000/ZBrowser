@@ -3,7 +3,7 @@
   "channel": "beta",
   "version": "0.2.0-beta.5",
   "status": "candidate",
-  "distributionMode": "signed",
+  "distributionMode": "internal-unsigned",
   "supportedTargets": [
     "win32-x64",
     "darwin-arm64"
@@ -17,11 +17,8 @@
     "windows_build",
     "windows_full_e2e",
     "packaged_app_e2e",
-    "beta_acceptance_kit_integrity",
-    "signed_candidate_verification",
-    "platform_evidence",
-    "recovery_drill",
-    "staged_rollout"
+    "macos_build_smoke",
+    "beta_acceptance_kit_integrity"
   ],
   "automaticPromotion": false,
   "immutableRelease": true

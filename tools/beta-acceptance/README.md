@@ -28,7 +28,9 @@ npm run beta:verify-kit -- release/beta-acceptance-kit
 
 当前候选版本由 `build/beta-release.json` 定义，并必须与 `package.json` 保持一致。
 
-Beta 正式 rollout evidence 要求使用**签名的更新清单**。内部本地测试可以使用 `internal-unsigned` 配置，但它不能替代正式 Beta rollout gate。
+当前项目目标是**个人自用**，`0.2.0-beta.5` 使用 `internal-unsigned`。当前阶段以 Windows Build / Full E2E / Packaged App E2E、macOS Build Smoke 和 Beta Acceptance Kit 完整性为准，不要求代码签名、notarization、signed candidate gate、recovery drill 或 staged rollout。
+
+下面的 signed candidate / rollout evidence 流程继续保留，只有以后需要公开分发时才启用；届时必须把 `build/beta-release.json` 切回 `distributionMode: signed`。
 
 macOS 正式 Developer ID 签名 / notarization 可从 GitHub Actions 手动运行 `macOS Signed Release`。需要提供 macOS arm64 `Chromium.app` ZIP 与 signed Beta update config 的 HTTPS 地址，并配置仓库 secrets：`ZBROWSER_MACOS_CERTIFICATE_P12_BASE64`、`ZBROWSER_MACOS_CERTIFICATE_PASSWORD`、`ZBROWSER_APPLE_API_KEY_P8_BASE64`、`ZBROWSER_APPLE_API_KEY_ID`、`ZBROWSER_APPLE_API_ISSUER`。成功后会上传 DMG、ZIP、SHA-256 清单和 `macos-release-acceptance.json`。
 

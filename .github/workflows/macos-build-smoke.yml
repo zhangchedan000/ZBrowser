@@ -10,6 +10,7 @@ on:
       - "package-lock.json"
       - "build/entitlements.mac.plist"
       - "build/entitlements.mac.inherit.plist"
+      - "build/beta-release.json"
       - "tools/release/**"
       - ".github/workflows/macos-build-smoke.yml"
       - ".github/workflows/macos-signed-release.yml"
