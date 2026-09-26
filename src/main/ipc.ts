@@ -935,5 +935,3 @@ export function registerIpc({
     await extensions.remove(id)
   })
 }
-
-[executed on device: which-confusion (81718d16-bbf4-400c-b41f-80541771cf98)]
