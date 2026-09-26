@@ -28,6 +28,7 @@ import { IdentitySelfHealingStateStore } from './identity-self-healing-state'
 import { IdentityBaselineStore } from './identity-baseline-store'
 import { requestBaselineReplacementForChange } from './identity-baseline-lifecycle'
 import { AttentionPatrolScheduler } from './attention-patrol-scheduler'
+import { TeamStore } from './team-store'
 
 let mainWindow: BrowserWindow | null = null
 let launcher: BrowserLauncher | null = null
@@ -113,13 +114,14 @@ app.whenReady().then(async () => {
   })
   const proxyPool = new ProxyPoolStore(vaultPath, secrets)
   const settings = new SettingsStore(vaultPath)
+  const team = new TeamStore(vaultPath)
   const extensions = new ExtensionStore(vaultPath, logger)
   const kernelRegistry = new KernelRegistry(join(vaultPath, 'kernels'))
   await logger.initialize()
   await kernelRegistry.list()
   const appSessionSnapshot = await appSession.begin(app.getVersion())
   if (appSessionSnapshot.previousUnclean) logger.error('检测到上次 ZBrowser 未正常退出', appSessionSnapshot.previousUnclean)
-  await Promise.all([profiles.initialize(), proxyPool.initialize(), settings.initialize(), extensions.initialize()])
+  await Promise.all([profiles.initialize(), proxyPool.initialize(), settings.initialize(), extensions.initialize(), team.initialize()])
   const kernelMigration = await migrateMacLegacyKernelSelection(settings, vaultPath)
   if (kernelMigration.migrated) logger.info('已迁移旧版内核选择', kernelMigration)
   const purgedTrashCount = await profiles.purgeTrashOlderThan(settings.get().recycleRetentionDays)
@@ -192,7 +194,7 @@ app.whenReady().then(async () => {
     profiles, settings, launcher, kernels, extensions, cookies, logger, backups,
     workspaceMigration, appSession, updater, environmentChecks, localApi: automationApi, proxyPool,
     fingerprintRepair, fingerprintRepairState, identityRepairStrategy, identitySelfHealing,
-    attentionPatrol: patrol
+    attentionPatrol: patrol, team
   })
   try {
     const api = await automationApi.start()

@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer } from 'electron'
-import type { AttentionPatrolIntervalMinutes, BrowserApi, BrowserProfileView, ProfileBatchClassification, ProfileDraft, ProfileLaunchOptions, ProxyPoolEntryInput } from '../shared/types'
+import type { AttentionPatrolIntervalMinutes, BrowserApi, BrowserProfileView, ProfileBatchClassification, ProfileDraft, ProfileLaunchOptions, ProxyPoolEntryInput, TeamMemberPatch } from '../shared/types'
 
 const api: BrowserApi = {
   profiles: {
@@ -62,6 +62,17 @@ const api: BrowserApi = {
       ipcRenderer.on('profiles:changed', handler)
       return () => ipcRenderer.removeListener('profiles:changed', handler)
     }
+  },
+  team: {
+    state: () => ipcRenderer.invoke('team:state'),
+    createMember: (name: string) => ipcRenderer.invoke('team:create-member', name),
+    updateMember: (id: string, patch: TeamMemberPatch) => ipcRenderer.invoke('team:update-member', id, patch),
+    setProfileAssignments: (profileId: string, memberIds: string[]) =>
+      ipcRenderer.invoke('team:set-profile-assignments', profileId, memberIds),
+    setManyProfileAssignments: (profileIds: string[], memberIds: string[]) =>
+      ipcRenderer.invoke('team:set-many-profile-assignments', profileIds, memberIds),
+    forceRelease: (profileId: string) => ipcRenderer.invoke('team:force-release', profileId),
+    audit: (limit?: number) => ipcRenderer.invoke('team:audit', limit)
   },
   engine: {
     status: () => ipcRenderer.invoke('engine:status'),

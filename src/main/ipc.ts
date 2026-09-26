@@ -38,6 +38,7 @@ import type { IdentitySelfHealingManager } from './identity-self-healing-manager
 import type { AttentionPatrolScheduler } from './attention-patrol-scheduler'
 import { IdentityHealthHistoryStore } from './identity-health-history'
 import { summarizeIdentityProfileHealth } from '../shared/identity-profile-health'
+import type { TeamStore } from './team-store'
 
 interface IpcDependencies {
   profiles: ProfileStore
@@ -59,13 +60,14 @@ interface IpcDependencies {
   identityRepairStrategy: IdentityRepairStrategyExecutor
   identitySelfHealing: IdentitySelfHealingManager
   attentionPatrol: AttentionPatrolScheduler
+  team: TeamStore
 }
 
 export function registerIpc({
   profiles, settings, launcher, kernels, extensions, cookies, logger, backups,
   workspaceMigration, appSession, updater, environmentChecks, localApi, proxyPool,
   fingerprintRepair, fingerprintRepairState, identityRepairStrategy, identitySelfHealing,
-  attentionPatrol
+  attentionPatrol, team
 }: IpcDependencies): void {
   const identityHealthHistory = new IdentityHealthHistoryStore(profiles.vaultPath)
 
@@ -290,6 +292,7 @@ export function registerIpc({
   ipcMain.handle('profiles:trash', () => profiles.listTrash())
   ipcMain.handle('profiles:restore', async (_event, trashId: string) => {
     const profile = await profiles.restore(trashId)
+    await team.onProfileRestored(team.ownerId, profile.id)
     logger.info('浏览器环境已从回收站恢复', { profileId: profile.id })
     return publicProfile(profile)
   })
@@ -345,6 +348,7 @@ export function registerIpc({
   ipcMain.handle('profiles:remove', async (_event, id: string) => {
     if (launcher.isRunning(id)) throw new Error('请先关闭运行中的环境')
     if (cookies.isBusy(id)) throw new Error('该环境正在执行 Cookie 操作')
+    await team.onProfileTrashed(team.ownerId, id)
     await profiles.remove(id)
   })
   ipcMain.handle('profiles:launch', (_event, id: string, options?: { allowGeoConflict?: unknown; startUrls?: unknown }) => {
@@ -439,8 +443,26 @@ export function registerIpc({
       if (launcher.isRunning(id)) throw new Error(`环境“${profiles.get(id).name}”正在运行，不能删除`)
       if (cookies.isBusy(id)) throw new Error(`环境“${profiles.get(id).name}”正在执行 Cookie 操作`)
     }
+    for (const id of ids) await team.onProfileTrashed(team.ownerId, id)
     await profiles.removeMany(ids)
   })
+
+  ipcMain.handle('team:state', () => team.state())
+  ipcMain.handle('team:create-member', (_event, name: string) => team.createMember(team.ownerId, name))
+  ipcMain.handle('team:update-member', (_event, id: string, patch) => team.updateMember(team.ownerId, id, patch))
+  ipcMain.handle('team:set-profile-assignments', (_event, profileId: string, memberIds: string[]) => {
+    profiles.get(profileId)
+    return team.setProfileAssignments(team.ownerId, profileId, memberIds)
+  })
+  ipcMain.handle('team:set-many-profile-assignments', (_event, profileIds: string[], memberIds: string[]) => {
+    for (const profileId of profileIds) profiles.get(profileId)
+    return team.setManyProfileAssignments(team.ownerId, profileIds, memberIds)
+  })
+  ipcMain.handle('team:force-release', (_event, profileId: string) => {
+    profiles.get(profileId)
+    return team.forceRelease(team.ownerId, profileId)
+  })
+  ipcMain.handle('team:audit', (_event, limit?: number) => team.audit(limit))
 
   ipcMain.handle('engine:status', () => locateBrowser(settings))
   ipcMain.handle('engine:bundled', () => locateBundledBrowser())

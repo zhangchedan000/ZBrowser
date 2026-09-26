@@ -147,6 +147,81 @@ export interface ProfileBatchClassification {
   addTags?: string[]
 }
 
+export type TeamRole = 'owner' | 'member'
+
+export interface TeamMember {
+  id: string
+  name: string
+  role: TeamRole
+  enabled: boolean
+  createdAt: string
+  updatedAt: string
+}
+
+export interface TeamMemberPatch {
+  name?: string
+  enabled?: boolean
+}
+
+export interface TeamProfileAssignment {
+  profileId: string
+  memberIds: string[]
+  updatedAt: string
+}
+
+export interface TeamProfileLease {
+  profileId: string
+  leaseId: string
+  memberId: string
+  deviceId: string
+  acquiredAt: string
+  expiresAt: string
+}
+
+export interface TeamProfileRevision {
+  profileId: string
+  revision: number
+  lastSyncedAt?: string
+  lastMemberId?: string
+  lastDeviceId?: string
+  checksum?: string
+}
+
+export type TeamAuditEventType =
+  | 'team_created'
+  | 'member_created'
+  | 'member_updated'
+  | 'member_disabled'
+  | 'profile_assigned'
+  | 'profile_unassigned'
+  | 'lease_acquired'
+  | 'lease_renewed'
+  | 'lease_released'
+  | 'lease_force_released'
+  | 'profile_synced'
+  | 'profile_trashed'
+  | 'profile_restored'
+
+export interface TeamAuditEvent {
+  id: string
+  type: TeamAuditEventType
+  actorMemberId: string
+  createdAt: string
+  profileId?: string
+  targetMemberId?: string
+  memberIds?: string[]
+  deviceId?: string
+  revision?: number
+}
+
+export interface TeamState {
+  ownerId: string
+  members: TeamMember[]
+  assignments: TeamProfileAssignment[]
+  leases: TeamProfileLease[]
+  revisions: TeamProfileRevision[]
+}
+
 export interface BrowserExtension {
   id: string
   name: string
@@ -826,6 +901,15 @@ export interface BrowserApi {
     classifyMany: (ids: string[], patch: ProfileBatchClassification) => Promise<BrowserProfileView[]>
     removeMany: (ids: string[]) => Promise<void>
     onChanged: (listener: (profile: BrowserProfileView) => void) => () => void
+  }
+  team: {
+    state: () => Promise<TeamState>
+    createMember: (name: string) => Promise<TeamMember>
+    updateMember: (id: string, patch: TeamMemberPatch) => Promise<TeamMember>
+    setProfileAssignments: (profileId: string, memberIds: string[]) => Promise<TeamProfileAssignment>
+    setManyProfileAssignments: (profileIds: string[], memberIds: string[]) => Promise<TeamProfileAssignment[]>
+    forceRelease: (profileId: string) => Promise<void>
+    audit: (limit?: number) => Promise<TeamAuditEvent[]>
   }
   engine: {
     status: () => Promise<EngineStatus>

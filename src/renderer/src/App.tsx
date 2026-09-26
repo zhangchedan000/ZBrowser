@@ -23,6 +23,7 @@ import {
   StarFilled,
   StarOutlined,
   TagsOutlined,
+  TeamOutlined,
   UploadOutlined,
   UndoOutlined,
   WarningFilled
@@ -60,6 +61,7 @@ import { CrashHistoryModal } from './CrashHistoryModal'
 import { BatchResultModal, type BatchOperationResult } from './BatchResultModal'
 import { UpdateModal } from './UpdateModal'
 import { WorkspaceMigrationModal } from './WorkspaceMigrationModal'
+import { TeamManagementModal } from './TeamManagementModal'
 import { EnvironmentCheckModal } from './EnvironmentCheckModal'
 import { AutomationApiModal } from './AutomationApiModal'
 import { ProxyPoolModal } from './ProxyPoolModal'
@@ -157,6 +159,7 @@ export default function App() {
   const [dataProfile, setDataProfile] = useState<BrowserProfileView | undefined>()
   const [environmentCheckProfile, setEnvironmentCheckProfile] = useState<BrowserProfileView | undefined>()
   const [recycleBinOpen, setRecycleBinOpen] = useState(false)
+  const [teamManagementOpen, setTeamManagementOpen] = useState(false)
   const [extensions, setExtensions] = useState<BrowserExtension[]>([])
   const [extensionManagerOpen, setExtensionManagerOpen] = useState(false)
   const [automationApiOpen, setAutomationApiOpen] = useState(false)
@@ -1357,6 +1360,9 @@ export default function App() {
         </div>
         <div className="sidebar-section-label">工作区</div>
         <div className="nav-item active"><AppstoreOutlined /><span>浏览器环境</span><b>{profiles.length}</b></div>
+        <button className="nav-item sidebar-action" onClick={() => setTeamManagementOpen(true)}>
+          <TeamOutlined /><span>团队与子账号</span>
+        </button>
         <button className="nav-item sidebar-action" onClick={() => setRecycleBinOpen(true)}>
           <RestOutlined /><span>环境回收站</span>
         </button>
@@ -1628,6 +1634,11 @@ export default function App() {
         appStatus={updateStatus}
         onClose={() => setUpdateModalOpen(false)}
         onStatusChanged={setUpdateStatus}
+      />
+      <TeamManagementModal
+        open={teamManagementOpen}
+        profiles={profiles}
+        onClose={() => setTeamManagementOpen(false)}
       />
       <WorkspaceMigrationModal
         mode={migrationMode}
