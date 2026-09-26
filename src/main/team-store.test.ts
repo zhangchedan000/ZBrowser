@@ -134,5 +134,3 @@ describe('TeamStore', () => {
     expect(reopened.audit().some((event) => event.type === 'profile_assigned')).toBe(true)
   })
 })
-
-[executed on device: which-confusion (81718d16-bbf4-400c-b41f-80541771cf98)]
