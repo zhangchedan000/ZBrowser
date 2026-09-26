@@ -6,6 +6,7 @@ import type { AppSettings } from '../shared/types'
 export class SettingsStore {
   private settings: AppSettings = {
     browserExecutable: '',
+    teamSyncDirectory: '',
     fingerprintKernel: false,
     enginePreference: 'auto',
     recycleRetentionDays: 0,
@@ -23,6 +24,7 @@ export class SettingsStore {
       const stored = JSON.parse(await readFile(this.path, 'utf8')) as Partial<AppSettings>
       this.settings = {
         browserExecutable: typeof stored.browserExecutable === 'string' ? stored.browserExecutable : '',
+        teamSyncDirectory: typeof stored.teamSyncDirectory === 'string' ? stored.teamSyncDirectory : '',
         fingerprintKernel: stored.fingerprintKernel === true,
         enginePreference: stored.enginePreference === 'bundled' || stored.enginePreference === 'system' ? stored.enginePreference : 'auto',
         recycleRetentionDays: stored.recycleRetentionDays === 7 || stored.recycleRetentionDays === 30 || stored.recycleRetentionDays === 90

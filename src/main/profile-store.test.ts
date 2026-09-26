@@ -478,4 +478,37 @@ describe('ProfileStore', () => {
     expect(confirmed.proxyCheck?.exitChanged).toBe(false)
     expect(confirmed.proxyCheck?.previousIp).toBeUndefined()
   })
+  it('installs synchronized profile data under the original environment id', async () => {
+    const sourceStore = await store()
+    const targetStore = await store()
+    const draft = defaultProfileDraft()
+    draft.name = '主账号环境'
+    const source = await sourceStore.create(draft)
+    await writeFile(join(sourceStore.profileDataPath(source.id), 'Cookies'), 'session-cookie')
+
+    const installed = await targetStore.installSyncedProfile(source, sourceStore.profileDataPath(source.id))
+
+    expect(installed.id).toBe(source.id)
+    expect(installed.serialNumber).toBe(source.serialNumber)
+    expect(installed.name).toBe('主账号环境')
+    expect(await readFile(join(targetStore.profileDataPath(source.id), 'Cookies'), 'utf8')).toBe('session-cookie')
+    await targetStore.assertProfileDataIdentity(source.id)
+  })
+
+  it('updates an existing synchronized profile in place instead of creating a duplicate', async () => {
+    const sourceStore = await store()
+    const targetStore = await store()
+    const source = await sourceStore.create(defaultProfileDraft())
+    await writeFile(join(sourceStore.profileDataPath(source.id), 'Local State'), 'v1')
+    await targetStore.installSyncedProfile(source, sourceStore.profileDataPath(source.id))
+
+    await writeFile(join(sourceStore.profileDataPath(source.id), 'Local State'), 'v2')
+    const updated = { ...source, note: 'updated', updatedAt: new Date(Date.now() + 1000).toISOString() }
+    await targetStore.installSyncedProfile(updated, sourceStore.profileDataPath(source.id))
+
+    expect(targetStore.list()).toHaveLength(1)
+    expect(targetStore.get(source.id).note).toBe('updated')
+    expect(await readFile(join(targetStore.profileDataPath(source.id), 'Local State'), 'utf8')).toBe('v2')
+  })
+
 })

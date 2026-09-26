@@ -1,7 +1,7 @@
-import { LockOutlined, ReloadOutlined, TeamOutlined, UserAddOutlined } from '@ant-design/icons'
+import { DownloadOutlined, KeyOutlined, LockOutlined, ReloadOutlined, TeamOutlined, UploadOutlined, UserAddOutlined } from '@ant-design/icons'
 import { Alert, Button, Empty, Input, Modal, Popconfirm, Select, Space, Spin, Table, Tabs, Tag, Typography, message, type TableColumnsType } from 'antd'
 import { useEffect, useMemo, useState } from 'react'
-import type { BrowserProfileView, TeamAuditEvent, TeamMember, TeamState } from '../../shared/types'
+import type { BrowserProfileView, TeamAuditEvent, TeamMember, TeamSessionView, TeamState, TeamSyncStatus } from '../../shared/types'
 
 interface TeamManagementModalProps {
   open: boolean
@@ -32,6 +32,8 @@ function errorText(error: unknown): string {
 
 export function TeamManagementModal({ open, profiles, onClose }: TeamManagementModalProps) {
   const [team, setTeam] = useState<TeamState | null>(null)
+  const [session, setSession] = useState<TeamSessionView | null>(null)
+  const [syncStatus, setSyncStatus] = useState<TeamSyncStatus | null>(null)
   const [audit, setAudit] = useState<TeamAuditEvent[]>([])
   const [loading, setLoading] = useState(false)
   const [busyKey, setBusyKey] = useState('')
@@ -41,12 +43,16 @@ export function TeamManagementModal({ open, profiles, onClose }: TeamManagementM
   async function refresh(): Promise<void> {
     setLoading(true)
     try {
-      const [state, events] = await Promise.all([
+      const [currentSession, state, events, currentSyncStatus] = await Promise.all([
+        window.browserApi.team.session(),
         window.browserApi.team.state(),
-        window.browserApi.team.audit(100)
+        window.browserApi.team.audit(100),
+        window.browserApi.team.syncStatus()
       ])
+      setSession(currentSession)
       setTeam(state)
       setAudit(events)
+      setSyncStatus(currentSyncStatus)
     } catch (error) {
       messageApi.error(errorText(error))
     } finally {
@@ -127,6 +133,84 @@ export function TeamManagementModal({ open, profiles, onClose }: TeamManagementM
     }
   }
 
+  async function issueCredential(member: TeamMember): Promise<void> {
+    setBusyKey(`credential:${member.id}`)
+    try {
+      const credential = await window.browserApi.team.issueCredential(member.id)
+      Modal.info({
+        title: '子账号登录凭据',
+        width: 560,
+        content: (
+          <Space direction="vertical" size={12} style={{ width: '100%' }}>
+            <Alert type="warning" showIcon title="此登录码只显示这一次，再次生成会让旧码立即失效。" />
+            <Typography.Text code copyable style={{ wordBreak: 'break-all' }}>{credential.secret}</Typography.Text>
+          </Space>
+        ),
+        okText: '我已保存'
+      })
+    } catch (error) {
+      messageApi.error(errorText(error))
+    } finally {
+      setBusyKey('')
+    }
+  }
+
+  async function exportEnrollment(member: TeamMember): Promise<void> {
+    setBusyKey(`enrollment:${member.id}`)
+    try {
+      const result = await window.browserApi.team.exportEnrollment(member.id)
+      if (result) messageApi.success(`子账号环境包已导出，包含 ${result.profileCount} 个环境`)
+      await refresh()
+    } catch (error) {
+      messageApi.error(errorText(error))
+    } finally {
+      setBusyKey('')
+    }
+  }
+
+  async function selectSyncDirectory(): Promise<void> {
+    setBusyKey('select-sync-directory')
+    try {
+      const status = await window.browserApi.team.selectSyncDirectory()
+      setSyncStatus(status)
+      if (status.configured) messageApi.success('团队自动同步目录已设置')
+    } catch (error) {
+      messageApi.error(errorText(error))
+    } finally {
+      setBusyKey('')
+    }
+  }
+
+  async function syncNow(): Promise<void> {
+    setBusyKey('sync-now')
+    try {
+      const status = await window.browserApi.team.syncNow()
+      setSyncStatus(status)
+      if (status.lastError) messageApi.error(status.lastError)
+      else messageApi.success('团队同步已完成')
+      await refresh()
+    } catch (error) {
+      messageApi.error(errorText(error))
+    } finally {
+      setBusyKey('')
+    }
+  }
+
+  async function importEnrollment(): Promise<void> {
+    setBusyKey('import-enrollment')
+    try {
+      const result = await window.browserApi.team.importEnrollment()
+      if (result) {
+        messageApi.success(`子账号环境包已导入，已安装 ${result.profileCount} 个环境`)
+        await refresh()
+      }
+    } catch (error) {
+      messageApi.error(errorText(error))
+    } finally {
+      setBusyKey('')
+    }
+  }
+
   async function forceRelease(profileId: string): Promise<void> {
     setBusyKey(`lease:${profileId}`)
     try {
@@ -165,25 +249,24 @@ export function TeamManagementModal({ open, profiles, onClose }: TeamManagementM
     },
     {
       title: '操作',
-      width: 130,
-      render: (_, member) => member.role === 'owner' ? null : (
-        <Popconfirm
-          title={member.enabled ? '禁用这个子账号？' : '重新启用这个子账号？'}
-          description={member.enabled ? '禁用后将立即失去使用权限，并释放该账号当前占用的环境。' : undefined}
-          okText={member.enabled ? '禁用' : '启用'}
-          cancelText="取消"
-          onConfirm={() => void setMemberEnabled(member, !member.enabled)}
-        >
-          <Button
-            danger={member.enabled}
-            size="small"
-            loading={busyKey === `member:${member.id}`}
+      width: 300,
+      render: (_, member) => member.role === 'owner' || session?.deviceRole !== 'owner' ? null : (
+        <Space size={6}>
+          <Button size="small" icon={<KeyOutlined />} disabled={!member.enabled || Boolean(busyKey)} loading={busyKey === `credential:${member.id}`} onClick={() => void issueCredential(member)}>登录码</Button>
+          <Button size="small" icon={<DownloadOutlined />} disabled={!member.enabled || Boolean(busyKey)} loading={busyKey === `enrollment:${member.id}`} onClick={() => void exportEnrollment(member)}>环境包</Button>
+          <Popconfirm
+            title={member.enabled ? '禁用这个子账号？' : '重新启用这个子账号？'}
+            description={member.enabled ? '禁用后将立即失去使用权限，并释放该账号当前占用的环境。' : undefined}
+            okText={member.enabled ? '禁用' : '启用'}
+            cancelText="取消"
+            onConfirm={() => void setMemberEnabled(member, !member.enabled)}
           >
-            {member.enabled ? '禁用' : '启用'}
-          </Button>
-        </Popconfirm>
+            <Button danger={member.enabled} size="small" loading={busyKey === `member:${member.id}`}>{member.enabled ? '禁用' : '启用'}</Button>
+          </Popconfirm>
+        </Space>
       )
     }
+
   ]
 
   const profileColumns: TableColumnsType<BrowserProfileView> = [
@@ -209,7 +292,7 @@ export function TeamManagementModal({ open, profiles, onClose }: TeamManagementM
           options={memberOptions}
           value={assignmentByProfile.get(profile.id)?.memberIds ?? []}
           loading={busyKey === `profile:${profile.id}`}
-          disabled={Boolean(busyKey)}
+          disabled={Boolean(busyKey) || session?.deviceRole !== 'owner'}
           onChange={(ids) => void setAssignment(profile.id, ids)}
         />
       )
@@ -297,10 +380,41 @@ export function TeamManagementModal({ open, profiles, onClose }: TeamManagementM
       <Alert
         type="info"
         showIcon
-        title="主账号统一管理，子账号只使用环境"
-        description="一个环境可以分配给多个子账号，但同一时间只允许一个账号运行。删除环境会自动收回全部权限；从回收站恢复后默认保持未分配。"
-        style={{ marginBottom: 16 }}
+        title={session?.deviceRole === 'member' ? `当前子账号：${session.member.name}` : '主账号统一管理，子账号只使用环境'}
+        description={session?.deviceRole === 'member'
+          ? '此设备已锁定为子账号模式，只能使用主账号分配的环境，不能修改团队和环境配置。'
+          : '一个环境可以分配给多个子账号，但同一时间只允许一个账号运行。子账号环境包会携带完整浏览器状态并保留原环境 ID。'}
+        style={{ marginBottom: 12 }}
       />
+      <Space wrap style={{ marginBottom: 16 }}>
+        <Button
+          icon={<UploadOutlined />}
+          loading={busyKey === 'select-sync-directory'}
+          disabled={Boolean(busyKey)}
+          onClick={() => void selectSyncDirectory()}
+        >
+          {syncStatus?.configured ? '更换自动同步目录' : '选择自动同步目录'}
+        </Button>
+        <Button
+          icon={<ReloadOutlined />}
+          loading={busyKey === 'sync-now'}
+          disabled={!syncStatus?.configured || Boolean(busyKey)}
+          onClick={() => void syncNow()}
+        >
+          立即同步
+        </Button>
+        {syncStatus?.directory && (
+          <Typography.Text type="secondary" ellipsis={{ tooltip: syncStatus.directory }} style={{ maxWidth: 480 }}>
+            {syncStatus.directory}
+          </Typography.Text>
+        )}
+        {syncStatus?.lastError && <Tag color="error">{syncStatus.lastError}</Tag>}
+      </Space>
+      {session?.deviceRole === 'owner' && (team?.members.length ?? 0) === 1 && profiles.length === 0 && (
+        <Button icon={<UploadOutlined />} loading={busyKey === 'import-enrollment'} onClick={() => void importEnrollment()} style={{ marginBottom: 16 }}>
+          导入子账号环境包
+        </Button>
+      )}
       <Spin spinning={loading}>
         <Tabs
           items={[
@@ -309,24 +423,18 @@ export function TeamManagementModal({ open, profiles, onClose }: TeamManagementM
               label: '子账号',
               children: (
                 <Space direction="vertical" size={14} style={{ width: '100%' }}>
-                  <Space.Compact style={{ width: 420 }}>
-                    <Input
-                      value={memberName}
-                      maxLength={60}
-                      placeholder="输入子账号名称"
-                      onPressEnter={() => void createMember()}
-                      onChange={(event) => setMemberName(event.target.value)}
-                    />
-                    <Button
-                      type="primary"
-                      icon={<UserAddOutlined />}
-                      loading={busyKey === 'create-member'}
-                      disabled={!memberName.trim()}
-                      onClick={() => void createMember()}
-                    >
-                      创建
-                    </Button>
-                  </Space.Compact>
+                  {session?.deviceRole === 'owner' && (
+                    <Space.Compact style={{ width: 420 }}>
+                      <Input
+                        value={memberName}
+                        maxLength={60}
+                        placeholder="输入子账号名称"
+                        onPressEnter={() => void createMember()}
+                        onChange={(event) => setMemberName(event.target.value)}
+                      />
+                      <Button type="primary" icon={<UserAddOutlined />} loading={busyKey === 'create-member'} disabled={!memberName.trim()} onClick={() => void createMember()}>创建</Button>
+                    </Space.Compact>
+                  )}
                   <Table
                     rowKey="id"
                     size="small"

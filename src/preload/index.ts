@@ -64,6 +64,15 @@ const api: BrowserApi = {
     }
   },
   team: {
+    session: () => ipcRenderer.invoke('team:session'),
+    login: (memberId: string, secret: string) => ipcRenderer.invoke('team:login', memberId, secret),
+    issueCredential: (memberId: string) => ipcRenderer.invoke('team:issue-credential', memberId),
+    revokeCredential: (memberId: string) => ipcRenderer.invoke('team:revoke-credential', memberId),
+    exportEnrollment: (memberId: string) => ipcRenderer.invoke('team:export-enrollment', memberId),
+    importEnrollment: () => ipcRenderer.invoke('team:import-enrollment'),
+    syncStatus: () => ipcRenderer.invoke('team:sync-status'),
+    selectSyncDirectory: () => ipcRenderer.invoke('team:select-sync-directory'),
+    syncNow: () => ipcRenderer.invoke('team:sync-now'),
     state: () => ipcRenderer.invoke('team:state'),
     createMember: (name: string) => ipcRenderer.invoke('team:create-member', name),
     updateMember: (id: string, patch: TeamMemberPatch) => ipcRenderer.invoke('team:update-member', id, patch),

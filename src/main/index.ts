@@ -29,6 +29,11 @@ import { IdentityBaselineStore } from './identity-baseline-store'
 import { requestBaselineReplacementForChange } from './identity-baseline-lifecycle'
 import { AttentionPatrolScheduler } from './attention-patrol-scheduler'
 import { TeamStore } from './team-store'
+import { TeamAuthStore } from './team-auth-store'
+import { TeamSessionStore } from './team-session-store'
+import { TeamSyncManager } from './team-sync-manager'
+import { TeamEnrollmentManager } from './team-enrollment-manager'
+import { TeamSyncCoordinator } from './team-sync-coordinator'
 
 let mainWindow: BrowserWindow | null = null
 let launcher: BrowserLauncher | null = null
@@ -36,6 +41,7 @@ let logger: AppLogger | null = null
 let appSession: AppSessionTracker | null = null
 let localApi: LocalApiServer | null = null
 let attentionPatrol: AttentionPatrolScheduler | null = null
+let teamSyncCoordinator: TeamSyncCoordinator | null = null
 
 if (process.platform === 'win32') app.setAppUserModelId('com.zbrowser.desktop')
 
@@ -122,6 +128,13 @@ app.whenReady().then(async () => {
   const appSessionSnapshot = await appSession.begin(app.getVersion())
   if (appSessionSnapshot.previousUnclean) logger.error('检测到上次 ZBrowser 未正常退出', appSessionSnapshot.previousUnclean)
   await Promise.all([profiles.initialize(), proxyPool.initialize(), settings.initialize(), extensions.initialize(), team.initialize()])
+  const teamAuth = new TeamAuthStore(vaultPath, team)
+  await teamAuth.initialize()
+  const teamSession = new TeamSessionStore(vaultPath, team, teamAuth, secrets)
+  await teamSession.initialize()
+  const teamSync = new TeamSyncManager(profiles, team, logger)
+  const teamEnrollment = new TeamEnrollmentManager(profiles, team, teamAuth, teamSession, teamSync)
+  teamSyncCoordinator = new TeamSyncCoordinator(profiles, team, teamAuth, teamSession, teamSync, settings, logger)
   const kernelMigration = await migrateMacLegacyKernelSelection(settings, vaultPath)
   if (kernelMigration.migrated) logger.info('已迁移旧版内核选择', kernelMigration)
   const purgedTrashCount = await profiles.purgeTrashOlderThan(settings.get().recycleRetentionDays)
@@ -168,7 +181,10 @@ app.whenReady().then(async () => {
   )
   launcher.setIdentitySelfHealingHooks({
     onRuntimeReport: (profileId, report) => identitySelfHealing.observeRuntimeReport(profileId, report),
-    onProfileClosed: (profileId) => identitySelfHealing.runPending(profileId)
+    onProfileClosed: async (profileId) => {
+      await identitySelfHealing.runPending(profileId)
+      await teamSyncCoordinator?.publishProfile(profileId).catch((error) => logger?.error('关闭环境后发布团队同步失败', error))
+    }
   })
   const recoveredRepairs = await fingerprintRepair.recoverPendingRepairs()
   if (recoveredRepairs) logger.info('已恢复未完成的 AI 指纹修复', { count: recoveredRepairs })
@@ -194,7 +210,7 @@ app.whenReady().then(async () => {
     profiles, settings, launcher, kernels, extensions, cookies, logger, backups,
     workspaceMigration, appSession, updater, environmentChecks, localApi: automationApi, proxyPool,
     fingerprintRepair, fingerprintRepairState, identityRepairStrategy, identitySelfHealing,
-    attentionPatrol: patrol, team
+    attentionPatrol: patrol, team, teamAuth, teamSession, teamSync, teamEnrollment, teamSyncCoordinator
   })
   try {
     const api = await automationApi.start()
@@ -205,6 +221,7 @@ app.whenReady().then(async () => {
   }
   mainWindow = createWindow()
   patrol.start()
+  teamSyncCoordinator.start()
   const selfHealingResumeTimer = setTimeout(() => {
     void identitySelfHealing.resumePersistedPending()
       .then((count) => {
@@ -236,10 +253,13 @@ app.on('before-quit', (event) => {
   const current = launcher
   const api = localApi
   const patrol = attentionPatrol
+  const syncCoordinator = teamSyncCoordinator
   launcher = null
   localApi = null
   attentionPatrol = null
+  teamSyncCoordinator = null
   patrol?.stop()
+  syncCoordinator?.stop()
   void Promise.allSettled([
     current?.closeAll() ?? Promise.resolve(),
     api?.close() ?? Promise.resolve()

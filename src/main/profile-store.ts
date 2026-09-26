@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto'
-import { copyFile, lstat, mkdir, readFile, readdir, rename, rm, writeFile } from 'node:fs/promises'
+import { copyFile, cp, lstat, mkdir, readFile, readdir, rename, rm, writeFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import type { BrowserProfile, DeletedProfileSummary, KernelFamily, ProfileBatchClassification, ProfileDraft, ProfileStoreHealth, ProxyCheckSummary, ProxyConfig, WebRtcPolicy } from '../shared/types'
 import { defaultProfileWindow, seedFromId } from '../shared/defaults'
@@ -829,6 +829,79 @@ export class ProfileStore {
     this.profiles.set(id, profile)
     await this.persist()
     return profile
+  }
+
+  async installSyncedProfile(source: BrowserProfile, sourceUserDataPath: string): Promise<BrowserProfile> {
+    if (!source || typeof source.id !== 'string' || !/^[a-zA-Z0-9-]{1,100}$/.test(source.id)) throw new Error('同步环境 ID 无效')
+    if (!validProfileSerial(source.serialNumber)) throw new Error('同步环境编号无效')
+    const existing = this.profiles.get(source.id)
+    if (existing && existing.status !== 'closed' && existing.status !== 'error') throw new Error('请先关闭浏览器环境再同步')
+    const serialConflict = this.list().find((profile) => profile.id !== source.id && profile.serialNumber === source.serialNumber)
+    if (serialConflict) throw new Error(`同步环境编号 #${source.serialNumber} 已被“${serialConflict.name}”占用`)
+    const dataInfo = await lstat(sourceUserDataPath)
+    if (!dataInfo.isDirectory() || dataInfo.isSymbolicLink()) throw new Error('同步环境数据目录无效')
+    const draft = validateProfileDraft({
+      name: source.name, note: source.note, group: source.group, tags: [...source.tags],
+      extensionIds: [...source.extensionIds], color: source.color, startUrls: [...source.startUrls],
+      kernelVersion: source.kernelVersion, kernelFamily: source.kernelFamily,
+      environmentType: source.environmentType ?? 'account', identityIntent: source.identityIntent,
+      identityConfigProvenance: normalizeIdentityConfigProvenance(source.identityConfigProvenance),
+      window: { ...source.window }, proxy: { ...source.proxy },
+      fingerprint: { ...source.fingerprint, disabledSpoofing: [...source.fingerprint.disabledSpoofing] }
+    })
+    if ((draft.environmentType ?? 'account') === 'account' && draft.proxy.protocol !== 'direct') {
+      this.assertAccountProxyAvailable(source.id, draft.proxy)
+    }
+    const profile: BrowserProfile = {
+      ...source,
+      ...draft,
+      id: source.id,
+      serialNumber: source.serialNumber,
+      proxy: privateProxyConfig(draft.proxy),
+      createdAt: source.createdAt,
+      updatedAt: source.updatedAt,
+      favorite: source.favorite === true,
+      status: 'closed',
+      lastError: undefined
+    }
+    const root = join(this.vaultPath, 'profiles', source.id)
+    await this.ensureProfileDirectories(source.id)
+    const target = this.profileDataPath(source.id)
+    const staging = join(root, `user-data.sync-${randomUUID()}`)
+    const previous = join(root, `user-data.previous-${randomUUID()}`)
+    await cp(sourceUserDataPath, staging, { recursive: true, force: false, errorOnExist: true, dereference: false })
+    let swapped = false
+    try {
+      await rename(target, previous)
+      try {
+        await rename(staging, target)
+        swapped = true
+      } catch (error) {
+        await rename(previous, target).catch(() => undefined)
+        throw error
+      }
+      const oldProfile = existing
+      const oldNextSerialNumber = this.nextSerialNumber
+      this.profiles.set(source.id, profile)
+      if (source.serialNumber >= this.nextSerialNumber) this.nextSerialNumber = source.serialNumber + 1
+      try {
+        await this.persist()
+        await rm(previous, { recursive: true, force: true })
+        await this.verifyProfileDataIdentity(source.id)
+        return this.get(source.id)
+      } catch (error) {
+        if (oldProfile) this.profiles.set(source.id, oldProfile)
+        else this.profiles.delete(source.id)
+        this.nextSerialNumber = oldNextSerialNumber
+        await rm(target, { recursive: true, force: true }).catch(() => undefined)
+        await rename(previous, target).catch(() => undefined)
+        swapped = false
+        throw error
+      }
+    } finally {
+      await rm(staging, { recursive: true, force: true }).catch(() => undefined)
+      if (!swapped) await rm(previous, { recursive: true, force: true }).catch(() => undefined)
+    }
   }
 
   profileDataPath(id: string): string {

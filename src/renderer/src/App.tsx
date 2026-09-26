@@ -231,7 +231,12 @@ export default function App() {
         ...profileLabels.current,
         [changed.id]: `#${changed.serialNumber} · ${changed.name}`
       }
-      setProfiles((current) => current.map((profile) => profile.id === changed.id ? changed : profile))
+      setProfiles((current) => {
+        const exists = current.some((profile) => profile.id === changed.id)
+        return exists
+          ? current.map((profile) => profile.id === changed.id ? changed : profile)
+          : [changed, ...current]
+      })
       void Promise.all([
         window.browserApi.profiles.identityHealth(changed.id),
         window.browserApi.profiles.identitySelfHealing(changed.id)

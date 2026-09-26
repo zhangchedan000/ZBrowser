@@ -222,6 +222,35 @@ export interface TeamState {
   revisions: TeamProfileRevision[]
 }
 
+export interface TeamSessionView {
+  deviceId: string
+  deviceRole: 'owner' | 'member'
+  member: TeamMember
+}
+
+export interface TeamLoginCredential {
+  memberId: string
+  secret: string
+}
+
+export interface TeamEnrollmentResult {
+  path: string
+  memberId: string
+  profileCount: number
+}
+
+export interface TeamSyncStatus {
+  configured: boolean
+  directory?: string
+  mode: 'owner' | 'member'
+  running: boolean
+  lastRunAt?: string
+  lastError?: string
+  lastPublishedProfiles?: number
+  lastAppliedProfiles?: number
+  lastRemovedProfiles?: number
+}
+
 export interface BrowserExtension {
   id: string
   name: string
@@ -238,6 +267,7 @@ export type AttentionPatrolIntervalMinutes = 15 | 30 | 60 | 180
 
 export interface AppSettings {
   browserExecutable: string
+  teamSyncDirectory: string
   fingerprintKernel: boolean
   enginePreference: EnginePreference
   recycleRetentionDays: 0 | 7 | 30 | 90
@@ -903,6 +933,15 @@ export interface BrowserApi {
     onChanged: (listener: (profile: BrowserProfileView) => void) => () => void
   }
   team: {
+    session: () => Promise<TeamSessionView>
+    login: (memberId: string, secret: string) => Promise<TeamMember>
+    issueCredential: (memberId: string) => Promise<TeamLoginCredential>
+    revokeCredential: (memberId: string) => Promise<void>
+    exportEnrollment: (memberId: string) => Promise<TeamEnrollmentResult | null>
+    importEnrollment: () => Promise<TeamEnrollmentResult | null>
+    syncStatus: () => Promise<TeamSyncStatus>
+    selectSyncDirectory: () => Promise<TeamSyncStatus>
+    syncNow: () => Promise<TeamSyncStatus>
     state: () => Promise<TeamState>
     createMember: (name: string) => Promise<TeamMember>
     updateMember: (id: string, patch: TeamMemberPatch) => Promise<TeamMember>

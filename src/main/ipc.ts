@@ -39,6 +39,11 @@ import type { AttentionPatrolScheduler } from './attention-patrol-scheduler'
 import { IdentityHealthHistoryStore } from './identity-health-history'
 import { summarizeIdentityProfileHealth } from '../shared/identity-profile-health'
 import type { TeamStore } from './team-store'
+import type { TeamAuthStore } from './team-auth-store'
+import type { TeamSessionStore } from './team-session-store'
+import type { TeamSyncManager } from './team-sync-manager'
+import type { TeamEnrollmentManager } from './team-enrollment-manager'
+import type { TeamSyncCoordinator } from './team-sync-coordinator'
 
 interface IpcDependencies {
   profiles: ProfileStore
@@ -61,56 +66,71 @@ interface IpcDependencies {
   identitySelfHealing: IdentitySelfHealingManager
   attentionPatrol: AttentionPatrolScheduler
   team: TeamStore
+  teamAuth: TeamAuthStore
+  teamSession: TeamSessionStore
+  teamSync: TeamSyncManager
+  teamEnrollment: TeamEnrollmentManager
+  teamSyncCoordinator: TeamSyncCoordinator
 }
 
 export function registerIpc({
   profiles, settings, launcher, kernels, extensions, cookies, logger, backups,
   workspaceMigration, appSession, updater, environmentChecks, localApi, proxyPool,
   fingerprintRepair, fingerprintRepairState, identityRepairStrategy, identitySelfHealing,
-  attentionPatrol, team
+  attentionPatrol, team, teamAuth, teamSession, teamSync, teamEnrollment, teamSyncCoordinator
 }: IpcDependencies): void {
   const identityHealthHistory = new IdentityHealthHistoryStore(profiles.vaultPath)
-  const runtimeMemberId = process.env.ZBROWSER_TEAM_MEMBER_ID?.trim() || team.ownerId
-  const runtimeDeviceId = process.env.ZBROWSER_TEAM_DEVICE_ID?.trim() || `local-${team.ownerId.slice(0, 8)}`
-  const runtimeMember = team.getMember(runtimeMemberId)
-  const leaseHeartbeats = new Map<string, NodeJS.Timeout>()
+  const runtimeDeviceId = teamSession.deviceId
+  const leaseHeartbeats = new Map<string, { timer: NodeJS.Timeout; memberId: string }>()
+
+  function runtimeMember() {
+    return teamSession.currentMember()
+  }
+
+  function runtimeMemberId(): string {
+    return runtimeMember().id
+  }
 
   function assertRuntimeOwner(): void {
-    if (!runtimeMember.enabled || runtimeMember.role !== 'owner' || runtimeMember.id !== team.ownerId) {
+    const member = runtimeMember()
+    if (member.role !== 'owner' || member.id !== team.ownerId) {
       throw new Error('子账号只能使用已分配环境，不能修改环境或团队配置')
     }
   }
 
   function assertRuntimeCanUse(profileId: string): void {
     profiles.get(profileId)
-    team.assertCanUse(runtimeMemberId, profileId)
+    team.assertCanUse(runtimeMemberId(), profileId)
   }
 
   function runtimeProfiles() {
+    const member = teamSession.sessionMember()
     const items = profiles.list()
-    return runtimeMember.role === 'owner'
+    if (!member.enabled) return []
+    return member.role === 'owner'
       ? items
-      : items.filter((profile) => team.canUse(runtimeMemberId, profile.id))
+      : items.filter((profile) => team.canUse(member.id, profile.id))
   }
 
-  function stopLeaseHeartbeat(profileId: string): void {
-    const timer = leaseHeartbeats.get(profileId)
-    if (timer) clearInterval(timer)
+  function stopLeaseHeartbeat(profileId: string): { memberId: string } | undefined {
+    const entry = leaseHeartbeats.get(profileId)
+    if (entry) clearInterval(entry.timer)
     leaseHeartbeats.delete(profileId)
+    return entry ? { memberId: entry.memberId } : undefined
   }
 
-  function startLeaseHeartbeat(profileId: string): void {
+  function startLeaseHeartbeat(profileId: string, memberId: string): void {
     stopLeaseHeartbeat(profileId)
     const timer = setInterval(() => {
       if (!launcher.isRunning(profileId)) {
         stopLeaseHeartbeat(profileId)
-        void team.releaseLease(runtimeMemberId, runtimeDeviceId, profileId).catch(() => undefined)
+        void team.releaseLease(memberId, runtimeDeviceId, profileId).catch(() => undefined)
         return
       }
-      void team.renewLease(runtimeMemberId, runtimeDeviceId, profileId, 10 * 60_000).catch(async (error) => {
+      void team.renewLease(memberId, runtimeDeviceId, profileId, 10 * 60_000).catch(async (error) => {
         logger.error('团队环境占用续期失败，正在关闭环境', {
           profileId,
-          memberId: runtimeMemberId,
+          memberId,
           deviceId: runtimeDeviceId,
           error: error instanceof Error ? error.message : String(error)
         })
@@ -119,7 +139,7 @@ export function registerIpc({
       })
     }, 2 * 60_000)
     timer.unref()
-    leaseHeartbeats.set(profileId, timer)
+    leaseHeartbeats.set(profileId, { timer, memberId })
   }
 
   async function identityHealthSummary(profileId: string) {
@@ -359,7 +379,7 @@ export function registerIpc({
   ipcMain.handle('profiles:restore', async (_event, trashId: string) => {
     assertRuntimeOwner()
     const profile = await profiles.restore(trashId)
-    await team.onProfileRestored(runtimeMemberId, profile.id)
+    await team.onProfileRestored(runtimeMemberId(), profile.id)
     logger.info('浏览器环境已从回收站恢复', { profileId: profile.id })
     return publicProfile(profile)
   })
@@ -420,12 +440,14 @@ export function registerIpc({
     assertRuntimeOwner()
     if (launcher.isRunning(id)) throw new Error('请先关闭运行中的环境')
     if (cookies.isBusy(id)) throw new Error('该环境正在执行 Cookie 操作')
-    await team.onProfileTrashed(runtimeMemberId, id)
+    await team.onProfileTrashed(runtimeMemberId(), id)
     await profiles.remove(id)
+    await teamSyncCoordinator.runOnce().catch((error) => logger.error('删除环境后发布团队收回状态失败', error))
   })
   ipcMain.handle('profiles:launch', async (_event, id: string, options?: { allowGeoConflict?: unknown; startUrls?: unknown }) => {
     if (cookies.isBusy(id)) throw new Error('该环境正在执行 Cookie 操作')
-    await team.acquireLease(runtimeMemberId, runtimeDeviceId, id, 10 * 60_000)
+    const memberId = runtimeMemberId()
+    await team.acquireLease(memberId, runtimeDeviceId, id, 10 * 60_000)
     let startUrls: string[] | undefined
     if (options?.startUrls !== undefined) {
       if (!Array.isArray(options.startUrls) || options.startUrls.length > 12) throw new Error('临时启动网址参数无效')
@@ -446,7 +468,7 @@ export function registerIpc({
         allowGeoConflict: options?.allowGeoConflict === true,
         startUrls
       })
-      startLeaseHeartbeat(id)
+      startLeaseHeartbeat(id, memberId)
       await backups.noteKernelUpgradeHealthyLaunch(id).catch((error) => {
         logger?.error('更新内核升级备份保留状态失败', {
           profileId: id,
@@ -455,21 +477,24 @@ export function registerIpc({
       })
       return publicProfile(profile)
     } catch (error) {
-      await team.releaseLease(runtimeMemberId, runtimeDeviceId, id).catch(() => undefined)
+      await team.releaseLease(memberId, runtimeDeviceId, id).catch(() => undefined)
       throw error
     }
   })
   ipcMain.handle('profiles:close', async (_event, id: string) => {
-    team.assertLeaseHolder(runtimeMemberId, runtimeDeviceId, id)
+    const memberId = leaseHeartbeats.get(id)?.memberId ?? runtimeMemberId()
+    team.assertLeaseHolder(memberId, runtimeDeviceId, id)
     const profile = await launcher.close(id)
     stopLeaseHeartbeat(id)
-    await team.releaseLease(runtimeMemberId, runtimeDeviceId, id)
+    await team.releaseLease(memberId, runtimeDeviceId, id)
     return publicProfile(profile)
   })
   ipcMain.handle('profiles:close-all', async () => {
     const result = await launcher.closeAll()
+    const memberIds = new Set([...leaseHeartbeats.values()].map((entry) => entry.memberId))
     for (const profileId of [...leaseHeartbeats.keys()]) stopLeaseHeartbeat(profileId)
-    await team.releaseDeviceLeases(runtimeMemberId, runtimeDeviceId)
+    memberIds.add(runtimeMemberId())
+    for (const memberId of memberIds) await team.releaseDeviceLeases(memberId, runtimeDeviceId)
     return result
   })
   ipcMain.handle('profiles:test-proxy', (_event, id: string) => {
@@ -551,24 +576,96 @@ export function registerIpc({
       if (launcher.isRunning(id)) throw new Error(`环境“${profiles.get(id).name}”正在运行，不能删除`)
       if (cookies.isBusy(id)) throw new Error(`环境“${profiles.get(id).name}”正在执行 Cookie 操作`)
     }
-    for (const id of ids) await team.onProfileTrashed(runtimeMemberId, id)
+    for (const id of ids) await team.onProfileTrashed(runtimeMemberId(), id)
     await profiles.removeMany(ids)
+    await teamSyncCoordinator.runOnce().catch((error) => logger.error('批量删除环境后发布团队收回状态失败', error))
   })
 
-  ipcMain.handle('team:state', () => team.state())
-  ipcMain.handle('team:create-member', (_event, name: string) => team.createMember(runtimeMemberId, name))
-  ipcMain.handle('team:update-member', (_event, id: string, patch) => team.updateMember(runtimeMemberId, id, patch))
-  ipcMain.handle('team:set-profile-assignments', (_event, profileId: string, memberIds: string[]) => {
-    profiles.get(profileId)
-    return team.setProfileAssignments(runtimeMemberId, profileId, memberIds)
+  ipcMain.handle('team:session', () => ({
+    deviceId: teamSession.deviceId,
+    deviceRole: teamSession.deviceRole,
+    member: teamSession.sessionMember()
+  }))
+  ipcMain.handle('team:issue-credential', (_event, memberId: string) => teamAuth.issue(runtimeMemberId(), memberId))
+  ipcMain.handle('team:revoke-credential', (_event, memberId: string) => teamAuth.revoke(runtimeMemberId(), memberId))
+  ipcMain.handle('team:login', async (_event, memberId: string, secret: string) => {
+    if (launcher.hasRunning()) throw new Error('请先关闭全部浏览器环境再切换子账号登录')
+    const member = await teamSession.login(memberId, secret)
+    await teamSync.removeRevokedLocalProfiles(member.id)
+    return member
   })
-  ipcMain.handle('team:set-many-profile-assignments', (_event, profileIds: string[], memberIds: string[]) => {
+  ipcMain.handle('team:export-enrollment', async (_event, memberId: string) => {
+    assertRuntimeOwner()
+    if (launcher.hasRunning()) throw new Error('请先关闭全部浏览器环境再导出子账号环境包')
+    const member = team.getMember(memberId)
+    const owner = BrowserWindow.getFocusedWindow()
+    const result = owner ? await dialog.showSaveDialog(owner, {
+      title: '导出子账号环境包',
+      defaultPath: `${member.name}.zbrowser-team`,
+      filters: [{ name: 'ZBrowser 子账号环境包', extensions: ['zbrowser-team'] }]
+    }) : await dialog.showSaveDialog({
+      title: '导出子账号环境包',
+      defaultPath: `${member.name}.zbrowser-team`,
+      filters: [{ name: 'ZBrowser 子账号环境包', extensions: ['zbrowser-team'] }]
+    })
+    if (result.canceled || !result.filePath) return null
+    return teamEnrollment.exportBundle(runtimeMemberId(), memberId, result.filePath)
+  })
+  ipcMain.handle('team:import-enrollment', async () => {
+    if (launcher.hasRunning()) throw new Error('请先关闭全部浏览器环境再导入子账号环境包')
+    const owner = BrowserWindow.getFocusedWindow()
+    const result = owner ? await dialog.showOpenDialog(owner, {
+      title: '导入子账号环境包',
+      properties: ['openDirectory']
+    }) : await dialog.showOpenDialog({
+      title: '导入子账号环境包',
+      properties: ['openDirectory']
+    })
+    if (result.canceled || !result.filePaths[0]) return null
+    const imported = await teamEnrollment.importBundle(result.filePaths[0])
+    for (const profile of profiles.list()) {
+      for (const window of BrowserWindow.getAllWindows()) window.webContents.send('profiles:changed', publicProfile(profile))
+    }
+    return imported
+  })
+  ipcMain.handle('team:sync-status', () => teamSyncCoordinator.status())
+  ipcMain.handle('team:select-sync-directory', async () => {
+    const owner = BrowserWindow.getFocusedWindow()
+    const result = owner ? await dialog.showOpenDialog(owner, {
+      title: '选择团队自动同步目录',
+      properties: ['openDirectory', 'createDirectory']
+    }) : await dialog.showOpenDialog({
+      title: '选择团队自动同步目录',
+      properties: ['openDirectory', 'createDirectory']
+    })
+    if (result.canceled || !result.filePaths[0]) return teamSyncCoordinator.status()
+    await settings.update({ teamSyncDirectory: result.filePaths[0] })
+    await teamSyncCoordinator.runOnce()
+    return teamSyncCoordinator.status()
+  })
+  ipcMain.handle('team:sync-now', () => teamSyncCoordinator.runOnce())
+  ipcMain.handle('team:state', () => team.state())
+  ipcMain.handle('team:create-member', (_event, name: string) => team.createMember(runtimeMemberId(), name))
+  ipcMain.handle('team:update-member', async (_event, id: string, patch) => {
+    const member = await team.updateMember(runtimeMemberId(), id, patch)
+    await teamSyncCoordinator.runOnce().catch((error) => logger.error('更新子账号后发布团队同步状态失败', error))
+    return member
+  })
+  ipcMain.handle('team:set-profile-assignments', async (_event, profileId: string, memberIds: string[]) => {
+    profiles.get(profileId)
+    const assignment = await team.setProfileAssignments(runtimeMemberId(), profileId, memberIds)
+    await teamSyncCoordinator.runOnce().catch((error) => logger.error('分配环境后发布团队同步状态失败', error))
+    return assignment
+  })
+  ipcMain.handle('team:set-many-profile-assignments', async (_event, profileIds: string[], memberIds: string[]) => {
     for (const profileId of profileIds) profiles.get(profileId)
-    return team.setManyProfileAssignments(runtimeMemberId, profileIds, memberIds)
+    const assignments = await team.setManyProfileAssignments(runtimeMemberId(), profileIds, memberIds)
+    await teamSyncCoordinator.runOnce().catch((error) => logger.error('批量分配环境后发布团队同步状态失败', error))
+    return assignments
   })
   ipcMain.handle('team:force-release', (_event, profileId: string) => {
     profiles.get(profileId)
-    return team.forceRelease(runtimeMemberId, profileId)
+    return team.forceRelease(runtimeMemberId(), profileId)
   })
   ipcMain.handle('team:audit', (_event, limit?: number) => team.audit(limit))
 

@@ -116,6 +116,30 @@ export class TeamStore {
     return this.ownerMemberId
   }
 
+  isPristineOwnerDevice(): boolean {
+    return this.members.size === 1 && this.assignments.size === 0 && this.leases.size === 0 && this.revisions.size === 0
+  }
+
+  async installMemberReplica(owner: TeamMember, member: TeamMember, profileIdsInput: string[]): Promise<void> {
+    if (!this.isPristineOwnerDevice()) throw new Error('当前设备已有团队数据，不能直接导入子账号邀请')
+    if (!validId(owner.id) || owner.role !== 'owner' || !owner.enabled) throw new Error('邀请中的主账号数据无效')
+    if (!validId(member.id) || member.role !== 'member' || !member.enabled || member.id === owner.id) throw new Error('邀请中的子账号数据无效')
+    const profileIds = uniqIds(profileIdsInput, '邀请环境列表')
+    this.ownerMemberId = owner.id
+    this.members = new Map([[owner.id, { ...owner }], [member.id, { ...member }]])
+    this.assignments = new Map(profileIds.map((profileId) => [profileId, {
+      profileId,
+      memberIds: [member.id],
+      updatedAt: new Date().toISOString()
+    }]))
+    this.leases.clear()
+    this.revisions.clear()
+    this.auditEvents = []
+    this.record('team_created', owner.id, {})
+    for (const profileId of profileIds) this.record('profile_assigned', owner.id, { profileId, memberIds: [member.id] })
+    await this.persist()
+  }
+
   state(): TeamState {
     return {
       ownerId: this.ownerMemberId,
@@ -320,6 +344,44 @@ export class TeamStore {
     return { ...(this.revisions.get(profileId) ?? { profileId, revision: 0 }) }
   }
 
+  async recordOwnerSyncedRevision(actorId: string, profileId: string, checksum?: string): Promise<TeamProfileRevision> {
+    this.assertOwner(actorId)
+    if (!validId(profileId)) throw new Error('环境 ID 无效')
+    const current = this.revision(profileId)
+    const normalizedChecksum = typeof checksum === 'string' && /^[a-f0-9]{64}$/i.test(checksum) ? checksum.toLowerCase() : undefined
+    if (current.revision > 0 && normalizedChecksum && current.checksum === normalizedChecksum) return current
+    const next: TeamProfileRevision = {
+      profileId,
+      revision: current.revision + 1,
+      lastSyncedAt: new Date().toISOString(),
+      lastMemberId: actorId,
+      lastDeviceId: 'owner',
+      checksum: normalizedChecksum
+    }
+    this.revisions.set(profileId, next)
+    this.record('profile_synced', actorId, { profileId, revision: next.revision })
+    await this.persist()
+    return { ...next }
+  }
+
+  async acceptSyncedRevision(memberId: string, profileId: string, revision: number, checksum?: string): Promise<TeamProfileRevision> {
+    this.assertCanUse(memberId, profileId)
+    if (!Number.isInteger(revision) || revision < 1) throw new Error('同步版本无效')
+    const current = this.revision(profileId)
+    if (revision < current.revision) throw new Error('同步版本低于本地版本')
+    const next: TeamProfileRevision = {
+      profileId,
+      revision,
+      lastSyncedAt: new Date().toISOString(),
+      lastMemberId: memberId,
+      checksum: typeof checksum === 'string' && /^[a-f0-9]{64}$/i.test(checksum) ? checksum.toLowerCase() : undefined
+    }
+    this.revisions.set(profileId, next)
+    this.record('profile_synced', memberId, { profileId, revision })
+    await this.persist()
+    return { ...next }
+  }
+
   async recordSyncedRevision(memberId: string, deviceId: string, profileId: string, checksum?: string): Promise<TeamProfileRevision> {
     this.assertCanUse(memberId, profileId)
     const lease = this.currentLease(profileId)
@@ -337,6 +399,20 @@ export class TeamStore {
     this.record('profile_synced', memberId, { profileId, deviceId, revision: next.revision })
     await this.persist()
     return { ...next }
+  }
+
+  async applyReplicaState(memberId: string, enabled: boolean, profileIdsInput: string[]): Promise<void> {
+    const member = this.internalMember(memberId)
+    if (member.role !== 'member') throw new Error('副本账号类型无效')
+    const profileIds = uniqIds(profileIdsInput, '副本环境列表')
+    this.members.set(memberId, { ...member, enabled, updatedAt: new Date().toISOString() })
+    this.assignments = new Map(profileIds.map((profileId) => [profileId, {
+      profileId,
+      memberIds: [memberId],
+      updatedAt: new Date().toISOString()
+    }]))
+    if (!enabled) this.leases.clear()
+    await this.persist()
   }
 
   async onProfileTrashed(actorId: string, profileId: string): Promise<void> {
