@@ -70,6 +70,57 @@ export function registerIpc({
   attentionPatrol, team
 }: IpcDependencies): void {
   const identityHealthHistory = new IdentityHealthHistoryStore(profiles.vaultPath)
+  const runtimeMemberId = process.env.ZBROWSER_TEAM_MEMBER_ID?.trim() || team.ownerId
+  const runtimeDeviceId = process.env.ZBROWSER_TEAM_DEVICE_ID?.trim() || `local-${team.ownerId.slice(0, 8)}`
+  const runtimeMember = team.getMember(runtimeMemberId)
+  const leaseHeartbeats = new Map<string, NodeJS.Timeout>()
+
+  function assertRuntimeOwner(): void {
+    if (!runtimeMember.enabled || runtimeMember.role !== 'owner' || runtimeMember.id !== team.ownerId) {
+      throw new Error('子账号只能使用已分配环境，不能修改环境或团队配置')
+    }
+  }
+
+  function assertRuntimeCanUse(profileId: string): void {
+    profiles.get(profileId)
+    team.assertCanUse(runtimeMemberId, profileId)
+  }
+
+  function runtimeProfiles() {
+    const items = profiles.list()
+    return runtimeMember.role === 'owner'
+      ? items
+      : items.filter((profile) => team.canUse(runtimeMemberId, profile.id))
+  }
+
+  function stopLeaseHeartbeat(profileId: string): void {
+    const timer = leaseHeartbeats.get(profileId)
+    if (timer) clearInterval(timer)
+    leaseHeartbeats.delete(profileId)
+  }
+
+  function startLeaseHeartbeat(profileId: string): void {
+    stopLeaseHeartbeat(profileId)
+    const timer = setInterval(() => {
+      if (!launcher.isRunning(profileId)) {
+        stopLeaseHeartbeat(profileId)
+        void team.releaseLease(runtimeMemberId, runtimeDeviceId, profileId).catch(() => undefined)
+        return
+      }
+      void team.renewLease(runtimeMemberId, runtimeDeviceId, profileId, 10 * 60_000).catch(async (error) => {
+        logger.error('团队环境占用续期失败，正在关闭环境', {
+          profileId,
+          memberId: runtimeMemberId,
+          deviceId: runtimeDeviceId,
+          error: error instanceof Error ? error.message : String(error)
+        })
+        stopLeaseHeartbeat(profileId)
+        await launcher.close(profileId).catch(() => undefined)
+      })
+    }, 2 * 60_000)
+    timer.unref()
+    leaseHeartbeats.set(profileId, timer)
+  }
 
   async function identityHealthSummary(profileId: string) {
     profiles.get(profileId)
@@ -103,19 +154,24 @@ export function registerIpc({
     return draft
   }
 
-  ipcMain.handle('profiles:list', () => profiles.list().map(publicProfile))
+  ipcMain.handle('profiles:list', () => runtimeProfiles().map(publicProfile))
   ipcMain.handle('profiles:storage-health', () => profiles.storageHealth())
   ipcMain.handle('profiles:identity-health', (_event, id: string) => identityHealthSummary(id))
   ipcMain.handle('profiles:identity-health-all', () => identityHealthSummaries())
   ipcMain.handle('profiles:identity-self-healing', (_event, id: string) => identitySelfHealing.status(id))
   ipcMain.handle('profiles:identity-self-healing-all', () => identitySelfHealing.statusAll())
   ipcMain.handle('profiles:identity-self-healing-history', (_event, id: string) => identitySelfHealing.history(id))
-  ipcMain.handle('profiles:create', async (_event, draft: ProfileDraft) => publicProfile(await profiles.create(await pinKernelFamily(draft))))
+  ipcMain.handle('profiles:create', async (_event, draft: ProfileDraft) => {
+    assertRuntimeOwner()
+    return publicProfile(await profiles.create(await pinKernelFamily(draft)))
+  })
   ipcMain.handle('profiles:update', async (_event, id: string, draft: ProfileDraft) => {
+    assertRuntimeOwner()
     const pinned = await pinKernelFamily(draft)
     return publicProfile(await profiles.update(id, pinned))
   })
   ipcMain.handle('profiles:upgrade-kernel', async (_event, id: string, version: string, family: unknown) => {
+    assertRuntimeOwner()
     if (typeof version !== 'string' || !/^\d+(?:\.\d+){3}$/.test(version.trim())) throw new Error('目标内核版本号无效')
     if (family !== 'fingerprint-chromium' && family !== 'custom') throw new Error('目标内核系列无效')
     const targetVersion = version.trim()
@@ -158,9 +214,13 @@ export function registerIpc({
   })
   ipcMain.handle('profiles:kernel-upgrade-checkpoint', (_event, id: string) => backups.kernelUpgradeCheckpoint(id))
   ipcMain.handle('profiles:rollback-kernel-upgrade', async (_event, id: string) => {
+    assertRuntimeOwner()
     return publicProfile(await backups.rollbackKernelUpgrade(id))
   })
-  ipcMain.handle('profiles:duplicate', async (_event, id: string) => publicProfile(await profiles.duplicate(id)))
+  ipcMain.handle('profiles:duplicate', async (_event, id: string) => {
+    assertRuntimeOwner()
+    return publicProfile(await profiles.duplicate(id))
+  })
   ipcMain.handle('profiles:export-config', async (_event, id: string) => {
     const profile = profiles.get(id)
     if (profile.status !== 'closed' && profile.status !== 'error') throw new Error('请先关闭环境再导出配置')
@@ -177,6 +237,7 @@ export function registerIpc({
     return result.filePath
   })
   ipcMain.handle('profiles:import-config', async () => {
+    assertRuntimeOwner()
     const owner = BrowserWindow.getFocusedWindow()
     const options: Electron.OpenDialogOptions = {
       title: '导入环境配置',
@@ -192,6 +253,7 @@ export function registerIpc({
     return publicProfile(profile)
   })
   ipcMain.handle('profiles:import-batch-csv', async () => {
+    assertRuntimeOwner()
     const owner = BrowserWindow.getFocusedWindow()
     const options: Electron.OpenDialogOptions = {
       title: '批量导入浏览器环境',
@@ -220,18 +282,20 @@ export function registerIpc({
     return result.filePath
   })
   ipcMain.handle('profiles:storage-info', async (_event, id: string) => {
-    profiles.get(id)
+    assertRuntimeCanUse(id)
     await profiles.assertProfileDataIdentity(id)
     return profileStorageInfo(profiles.profileDataPath(id))
   })
   ipcMain.handle('profiles:storage-overview', () => storageOverview(profiles.vaultPath))
   ipcMain.handle('profiles:open-data-folder', async (_event, id: string) => {
+    assertRuntimeOwner()
     profiles.get(id)
     await profiles.assertProfileDataIdentity(id)
     const error = await shell.openPath(profiles.profileDataPath(id))
     if (error) throw new Error(`无法打开环境数据目录：${error}`)
   })
   ipcMain.handle('profiles:clear-cache', async (_event, id: string) => {
+    assertRuntimeOwner()
     const profile = profiles.get(id)
     if (launcher.isRunning(id) || (profile.status !== 'closed' && profile.status !== 'error')) {
       throw new Error('请先关闭浏览器环境再清理缓存')
@@ -255,6 +319,7 @@ export function registerIpc({
     return backups.export(id, result.filePaths[0])
   })
   ipcMain.handle('profiles:import-backup', async () => {
+    assertRuntimeOwner()
     const owner = BrowserWindow.getFocusedWindow()
     const options: Electron.OpenDialogOptions = { title: '选择 ZBrowser 环境数据备份目录', properties: ['openDirectory'] }
     const result = owner ? await dialog.showOpenDialog(owner, options) : await dialog.showOpenDialog(options)
@@ -277,6 +342,7 @@ export function registerIpc({
     return workspaceMigration.exportAll(result.filePath, password)
   })
   ipcMain.handle('profiles:import-workspace', async (_event, password: string, conflictPolicy: 'rename' | 'skip') => {
+    assertRuntimeOwner()
     if (launcher.hasRunning()) throw new Error('请先关闭全部浏览器环境再导入迁移包')
     if (profiles.list().some((profile) => cookies.isBusy(profile.id))) throw new Error('Cookie 操作尚未结束，请稍后再试')
     const owner = BrowserWindow.getFocusedWindow()
@@ -291,22 +357,26 @@ export function registerIpc({
   })
   ipcMain.handle('profiles:trash', () => profiles.listTrash())
   ipcMain.handle('profiles:restore', async (_event, trashId: string) => {
+    assertRuntimeOwner()
     const profile = await profiles.restore(trashId)
-    await team.onProfileRestored(team.ownerId, profile.id)
+    await team.onProfileRestored(runtimeMemberId, profile.id)
     logger.info('浏览器环境已从回收站恢复', { profileId: profile.id })
     return publicProfile(profile)
   })
   ipcMain.handle('profiles:purge-trash', async (_event, trashId: string) => {
+    assertRuntimeOwner()
     await profiles.purgeTrash(trashId)
     logger.info('回收站环境已永久删除', { trashId })
   })
   ipcMain.handle('profiles:empty-trash', async () => {
+    assertRuntimeOwner()
     const count = await profiles.emptyTrash()
     logger.info('环境回收站已清空', { count })
     return count
   })
   ipcMain.handle('profiles:recycle-retention', () => settings.get().recycleRetentionDays)
   ipcMain.handle('profiles:set-recycle-retention', async (_event, days: number) => {
+    assertRuntimeOwner()
     if (days !== 0 && days !== 7 && days !== 30 && days !== 90) throw new Error('回收站保留天数无效')
     await settings.update({ recycleRetentionDays: days })
     logger.info('环境回收站自动清理策略已更新', { days })
@@ -329,6 +399,7 @@ export function registerIpc({
     return { count: exported.length, filePath: result.filePath }
   })
   ipcMain.handle('profiles:import-cookies', async (_event, id: string) => {
+    assertRuntimeOwner()
     profiles.get(id)
     if (launcher.isRunning(id)) throw new Error('请先关闭浏览器环境再导入 Cookie')
     const owner = BrowserWindow.getFocusedWindow()
@@ -346,13 +417,15 @@ export function registerIpc({
     return { count, filePath: path }
   })
   ipcMain.handle('profiles:remove', async (_event, id: string) => {
+    assertRuntimeOwner()
     if (launcher.isRunning(id)) throw new Error('请先关闭运行中的环境')
     if (cookies.isBusy(id)) throw new Error('该环境正在执行 Cookie 操作')
-    await team.onProfileTrashed(team.ownerId, id)
+    await team.onProfileTrashed(runtimeMemberId, id)
     await profiles.remove(id)
   })
-  ipcMain.handle('profiles:launch', (_event, id: string, options?: { allowGeoConflict?: unknown; startUrls?: unknown }) => {
+  ipcMain.handle('profiles:launch', async (_event, id: string, options?: { allowGeoConflict?: unknown; startUrls?: unknown }) => {
     if (cookies.isBusy(id)) throw new Error('该环境正在执行 Cookie 操作')
+    await team.acquireLease(runtimeMemberId, runtimeDeviceId, id, 10 * 60_000)
     let startUrls: string[] | undefined
     if (options?.startUrls !== undefined) {
       if (!Array.isArray(options.startUrls) || options.startUrls.length > 12) throw new Error('临时启动网址参数无效')
@@ -368,10 +441,12 @@ export function registerIpc({
         return parsed.toString()
       })
     }
-    return launcher.launch(id, {
-      allowGeoConflict: options?.allowGeoConflict === true,
-      startUrls
-    }).then(async (profile) => {
+    try {
+      const profile = await launcher.launch(id, {
+        allowGeoConflict: options?.allowGeoConflict === true,
+        startUrls
+      })
+      startLeaseHeartbeat(id)
       await backups.noteKernelUpgradeHealthyLaunch(id).catch((error) => {
         logger?.error('更新内核升级备份保留状态失败', {
           profileId: id,
@@ -379,13 +454,36 @@ export function registerIpc({
         })
       })
       return publicProfile(profile)
-    })
+    } catch (error) {
+      await team.releaseLease(runtimeMemberId, runtimeDeviceId, id).catch(() => undefined)
+      throw error
+    }
   })
-  ipcMain.handle('profiles:close', (_event, id: string) => launcher.close(id).then(publicProfile))
-  ipcMain.handle('profiles:close-all', () => launcher.closeAll())
-  ipcMain.handle('profiles:test-proxy', (_event, id: string) => launcher.testProfileProxy(id).then(publicProfile))
-  ipcMain.handle('profiles:diagnose', (_event, id: string) => launcher.diagnose(id))
-  ipcMain.handle('profiles:diagnose-kernel-runtime', (_event, id: string) => launcher.diagnoseKernelRuntime(id))
+  ipcMain.handle('profiles:close', async (_event, id: string) => {
+    team.assertLeaseHolder(runtimeMemberId, runtimeDeviceId, id)
+    const profile = await launcher.close(id)
+    stopLeaseHeartbeat(id)
+    await team.releaseLease(runtimeMemberId, runtimeDeviceId, id)
+    return publicProfile(profile)
+  })
+  ipcMain.handle('profiles:close-all', async () => {
+    const result = await launcher.closeAll()
+    for (const profileId of [...leaseHeartbeats.keys()]) stopLeaseHeartbeat(profileId)
+    await team.releaseDeviceLeases(runtimeMemberId, runtimeDeviceId)
+    return result
+  })
+  ipcMain.handle('profiles:test-proxy', (_event, id: string) => {
+    assertRuntimeCanUse(id)
+    return launcher.testProfileProxy(id).then(publicProfile)
+  })
+  ipcMain.handle('profiles:diagnose', (_event, id: string) => {
+    assertRuntimeCanUse(id)
+    return launcher.diagnose(id)
+  })
+  ipcMain.handle('profiles:diagnose-kernel-runtime', (_event, id: string) => {
+    assertRuntimeCanUse(id)
+    return launcher.diagnoseKernelRuntime(id)
+  })
   ipcMain.handle('profiles:diagnose-fingerprint-runtime', (_event, id: string) => identitySelfHealing.diagnose(id))
   ipcMain.handle('profiles:plan-fingerprint-repair', (_event, id: string) => fingerprintRepair.plan(id))
   ipcMain.handle('profiles:repair-fingerprint-identity', async (
@@ -420,47 +518,57 @@ export function registerIpc({
     return { ...result, profile: publicProfile(result.profile) }
   })
   ipcMain.handle('profiles:fingerprint-repair-history', (_event, id: string) => fingerprintRepairState.history(id))
-  ipcMain.handle('profiles:crash-history', (_event, id: string) => launcher.crashHistory(id))
+  ipcMain.handle('profiles:crash-history', (_event, id: string) => {
+    assertRuntimeCanUse(id)
+    return launcher.crashHistory(id)
+  })
   ipcMain.handle('profiles:environment-check-history', (_event, id: string) => {
     profiles.get(id)
     return environmentChecks.list(id)
   })
   ipcMain.handle('profiles:record-environment-check', async (_event, id: string, urls: string[]) => {
+    assertRuntimeOwner()
     const profile = profiles.get(id)
     const engine = await locateBrowserForProfile(settings, profiles.vaultPath, profile.kernelVersion, profile.kernelFamily)
     return environmentChecks.record(publicProfile(profile), engine, urls)
   })
   ipcMain.handle('profiles:clear-environment-check-history', async (_event, id: string) => {
+    assertRuntimeOwner()
     profiles.get(id)
     await environmentChecks.clear(id)
   })
-  ipcMain.handle('profiles:set-favorite', async (_event, id: string, favorite: boolean) => publicProfile(await profiles.setFavorite(id, favorite)))
+  ipcMain.handle('profiles:set-favorite', async (_event, id: string, favorite: boolean) => {
+    assertRuntimeOwner()
+    return publicProfile(await profiles.setFavorite(id, favorite))
+  })
   ipcMain.handle('profiles:classify-many', async (_event, ids: string[], patch) => {
+    assertRuntimeOwner()
     return (await profiles.classifyMany(ids, patch)).map(publicProfile)
   })
   ipcMain.handle('profiles:remove-many', async (_event, ids: string[]) => {
+    assertRuntimeOwner()
     for (const id of ids) {
       if (launcher.isRunning(id)) throw new Error(`环境“${profiles.get(id).name}”正在运行，不能删除`)
       if (cookies.isBusy(id)) throw new Error(`环境“${profiles.get(id).name}”正在执行 Cookie 操作`)
     }
-    for (const id of ids) await team.onProfileTrashed(team.ownerId, id)
+    for (const id of ids) await team.onProfileTrashed(runtimeMemberId, id)
     await profiles.removeMany(ids)
   })
 
   ipcMain.handle('team:state', () => team.state())
-  ipcMain.handle('team:create-member', (_event, name: string) => team.createMember(team.ownerId, name))
-  ipcMain.handle('team:update-member', (_event, id: string, patch) => team.updateMember(team.ownerId, id, patch))
+  ipcMain.handle('team:create-member', (_event, name: string) => team.createMember(runtimeMemberId, name))
+  ipcMain.handle('team:update-member', (_event, id: string, patch) => team.updateMember(runtimeMemberId, id, patch))
   ipcMain.handle('team:set-profile-assignments', (_event, profileId: string, memberIds: string[]) => {
     profiles.get(profileId)
-    return team.setProfileAssignments(team.ownerId, profileId, memberIds)
+    return team.setProfileAssignments(runtimeMemberId, profileId, memberIds)
   })
   ipcMain.handle('team:set-many-profile-assignments', (_event, profileIds: string[], memberIds: string[]) => {
     for (const profileId of profileIds) profiles.get(profileId)
-    return team.setManyProfileAssignments(team.ownerId, profileIds, memberIds)
+    return team.setManyProfileAssignments(runtimeMemberId, profileIds, memberIds)
   })
   ipcMain.handle('team:force-release', (_event, profileId: string) => {
     profiles.get(profileId)
-    return team.forceRelease(team.ownerId, profileId)
+    return team.forceRelease(runtimeMemberId, profileId)
   })
   ipcMain.handle('team:audit', (_event, limit?: number) => team.audit(limit))
 
@@ -827,3 +935,5 @@ export function registerIpc({
     await extensions.remove(id)
   })
 }
+
+[executed on device: which-confusion (81718d16-bbf4-400c-b41f-80541771cf98)]
