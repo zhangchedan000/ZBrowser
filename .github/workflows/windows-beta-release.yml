@@ -5,14 +5,15 @@ on:
     branches: [dev]
     paths:
       - ".github/workflows/windows-beta-release.yml"
+      - ".github/workflows/windows-full-e2e.yml"
 
 permissions:
   contents: write
   actions: read
 
 concurrency:
-  group: windows-beta-release-${{ github.sha }}
-  cancel-in-progress: false
+  group: windows-beta-release-dev
+  cancel-in-progress: true
 
 jobs:
   wait-for-validation:
