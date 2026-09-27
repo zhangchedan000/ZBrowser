@@ -1,3 +1,5 @@
+[Reading 194 lines from start (total: 194 lines, 0 remaining)]
+
 import { spawn, type ChildProcess } from 'node:child_process'
 import { readFile, rm } from 'node:fs/promises'
 import { join } from 'node:path'
@@ -91,14 +93,20 @@ async function waitForPage(userDataPath: string): Promise<{ port: number; websoc
   throw new Error('启动 Cookie 维护会话超时')
 }
 
-async function stopChild(child: ChildProcess): Promise<void> {
-  if (child.exitCode !== null || child.signalCode !== null) return
-  child.kill('SIGTERM')
-  await Promise.race([
-    new Promise<void>((resolve) => child.once('exit', () => resolve())),
-    new Promise<void>((resolve) => setTimeout(resolve, 3000))
+async function waitForChildExit(child: ChildProcess, timeoutMs: number): Promise<boolean> {
+  if (child.exitCode !== null || child.signalCode !== null) return true
+  return await Promise.race([
+    new Promise<boolean>((resolve) => child.once('exit', () => resolve(true))),
+    new Promise<boolean>((resolve) => setTimeout(() => resolve(false), timeoutMs))
   ])
-  if (child.exitCode === null && child.signalCode === null) child.kill('SIGKILL')
+}
+
+async function stopChild(child: ChildProcess): Promise<void> {
+  if (await waitForChildExit(child, 3000)) return
+  child.kill('SIGTERM')
+  if (await waitForChildExit(child, 3000)) return
+  child.kill('SIGKILL')
+  await waitForChildExit(child, 1000)
 }
 
 export class CookieManager {
@@ -186,3 +194,5 @@ export class CookieManager {
     }
   }
 }
+
+[executed on device: which-confusion (81718d16-bbf4-400c-b41f-80541771cf98)]
