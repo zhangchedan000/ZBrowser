@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { classifyProxyFailure, mergeGeoLookups, parseGeoLookup, parseSecondaryGeoLookup } from './proxy-tester'
+import { classifyProxyFailure, mergeGeoLookups, parseGeoLookup, parseSecondaryGeoLookup, summarizeWebReachability } from './proxy-tester'
 
 describe('proxy geolocation result', () => {
   it('maps location, network and security fields', () => {
@@ -29,12 +29,34 @@ describe('proxy geolocation result', () => {
     expect(result).toMatchObject({ latitude: 34.0522, longitude: -118.2437, accuracyMeters: 25000, ipVersion: 4 })
   })
 
+  it('requires ordinary web reachability in addition to GeoIP checks', () => {
+    expect(summarizeWebReachability([undefined, undefined, undefined])).toEqual({
+      passed: 0,
+      total: 3,
+      degraded: false,
+      warning: undefined
+    })
+    expect(summarizeWebReachability([200, undefined, 502])).toEqual({
+      passed: 1,
+      total: 3,
+      degraded: true,
+      warning: expect.stringContaining('1/3')
+    })
+    expect(summarizeWebReachability([200, 403, undefined])).toEqual({
+      passed: 2,
+      total: 3,
+      degraded: false,
+      warning: undefined
+    })
+  })
+
   it('classifies authentication, timeout and connection failures', () => {
     expect(classifyProxyFailure(new Error('Proxy responded with 407 authentication required'))).toBe('authentication')
     expect(classifyProxyFailure(new Error('headers timeout'))).toBe('timeout')
     expect(classifyProxyFailure(Object.assign(new Error('connect failed'), { code: 'ECONNREFUSED' }))).toBe('connection')
     expect(classifyProxyFailure(new Error('upstream returned 590 Non Successful'))).toBe('connection')
     expect(classifyProxyFailure(new Error('TLS certificate verify failed'))).toBe('connection')
+    expect(classifyProxyFailure(new Error('代理普通网页不可达（0/3）：HTTP 502'))).toBe('connection')
   })
 
   it('rejects failed and incomplete responses', () => {

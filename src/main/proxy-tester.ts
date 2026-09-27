@@ -7,6 +7,11 @@ import { safeErrorText } from './redaction'
 const IP_CHECK_URL = 'https://api.ipify.org?format=json'
 const GEO_CHECK_URL = 'https://ipwho.is/'
 const SECONDARY_GEO_CHECK_URL = 'https://ipapi.co/json/'
+const WEB_REACHABILITY_URLS = [
+  'http://example.com/',
+  'https://example.com/',
+  'https://www.cloudflare.com/cdn-cgi/trace'
+] as const
 
 interface GeoLookupResponse {
   success?: boolean
@@ -36,6 +41,26 @@ interface SecondaryGeoLookupResponse {
   timezone?: string
   asn?: string
   org?: string
+}
+
+interface WebReachabilityProbe {
+  passed: number
+  total: number
+  degraded: boolean
+  warning?: string
+}
+
+export function summarizeWebReachability(statusCodes: Array<number | undefined>): WebReachabilityProbe {
+  const passed = statusCodes.filter((status) => typeof status === 'number' && status >= 200 && status < 500).length
+  const total = statusCodes.length
+  return {
+    passed,
+    total,
+    degraded: passed > 0 && passed < Math.min(2, total),
+    warning: passed > 0 && passed < Math.min(2, total)
+      ? `普通网页可达性仅通过 ${passed}/${total} 个目标，代理可能存在站点限制`
+      : undefined
+  }
 }
 
 function networkRisk(security: GeoLookupResponse['security']): ProxyTestResult['networkRisk'] {
@@ -144,8 +169,42 @@ export function classifyProxyFailure(error: unknown): NonNullable<ProxyTestResul
   const text = error instanceof Error ? `${error.name} ${error.message} ${(error as NodeJS.ErrnoException).code ?? ''}` : String(error)
   if (/407|proxy authentication|authentication failed|auth required|credentials/i.test(text)) return 'authentication'
   if (/timeout|timed out|UND_ERR_HEADERS_TIMEOUT|UND_ERR_BODY_TIMEOUT|ETIMEDOUT/i.test(text)) return 'timeout'
-  if (/\b59\d\b|ECONN|ENETUNREACH|EHOSTUNREACH|EAI_AGAIN|ENOTFOUND|socket|connect|TLS|certificate/i.test(text)) return 'connection'
+  if (/\b59\d\b|HTTP 5\d\d|普通网页不可达|普通网页可达性|ECONN|ENETUNREACH|EHOSTUNREACH|EAI_AGAIN|ENOTFOUND|socket|connect|TLS|certificate/i.test(text)) return 'connection'
   return 'unknown'
+}
+
+async function probeWebReachability(dispatcher?: ProxyAgent): Promise<WebReachabilityProbe> {
+  const results = await Promise.allSettled(WEB_REACHABILITY_URLS.map(async (url) => {
+    const response = await request(url, {
+      dispatcher,
+      method: 'GET',
+      headers: { 'user-agent': 'ZBrowser-Proxy-Check/1.0' },
+      headersTimeout: 8_000,
+      bodyTimeout: 8_000
+    })
+    const status = response.statusCode
+    await response.body.dump()
+    return status
+  }))
+  const summary = summarizeWebReachability(results.map((result) => result.status === 'fulfilled' ? result.value : undefined))
+  if (summary.passed === 0) {
+    const errors = results
+      .filter((result): result is PromiseRejectedResult => result.status === 'rejected')
+      .map((result) => safeErrorText(result.reason))
+      .filter(Boolean)
+      .slice(0, 2)
+    throw new Error(`代理普通网页不可达（0/${summary.total}）${errors.length ? `：${errors.join('；')}` : ''}`)
+  }
+  return summary
+}
+
+function applyWebReachability(result: ProxyTestResult, web: WebReachabilityProbe): ProxyTestResult {
+  if (!web.warning) return result
+  return {
+    ...result,
+    degraded: true,
+    warning: [result.warning, web.warning].filter(Boolean).join('；')
+  }
 }
 
 async function lookupJson<T>(url: string, dispatcher?: ProxyAgent): Promise<T> {
@@ -170,9 +229,12 @@ async function testProxyOnce(config: ProxyConfig): Promise<ProxyTestResult> {
   try {
     localProxy = await openProxyBridge(config)
     dispatcher = localProxy ? new ProxyAgent(localProxy) : undefined
-    const lookups = await Promise.allSettled([
-      lookupJson<GeoLookupResponse>(GEO_CHECK_URL, dispatcher),
-      lookupJson<SecondaryGeoLookupResponse>(SECONDARY_GEO_CHECK_URL, dispatcher)
+    const [web, lookups] = await Promise.all([
+      probeWebReachability(dispatcher),
+      Promise.allSettled([
+        lookupJson<GeoLookupResponse>(GEO_CHECK_URL, dispatcher),
+        lookupJson<SecondaryGeoLookupResponse>(SECONDARY_GEO_CHECK_URL, dispatcher)
+      ])
     ])
     const latencyMs = Date.now() - startedAt
     let primary: ProxyTestResult | undefined
@@ -191,24 +253,24 @@ async function testProxyOnce(config: ProxyConfig): Promise<ProxyTestResult> {
     } catch (error) {
       secondaryError = error
     }
-    if (primary && secondary) return mergeGeoLookups(primary, secondary)
+    if (primary && secondary) return applyWebReachability(mergeGeoLookups(primary, secondary), web)
     if (primary || secondary) {
       const result = primary ?? secondary!
       const source = primary ? 'ipwho.is' : 'ipapi.co'
       const failed = primary ? secondaryError : primaryError
-      return {
+      return applyWebReachability({
         ...result,
         degraded: true,
         warning: `仅 ${source} 返回有效地理信息，无法交叉确认：${failed instanceof Error ? failed.message : String(failed ?? '未知错误')}`,
         geoConfidence: 'single-source',
         geoSources: [source]
-      }
+      }, web)
     }
     try {
       const data = await lookupJson<{ ip?: string }>(IP_CHECK_URL, dispatcher)
       const ipVersion = isIP(data.ip ?? '')
       if (!data.ip || (ipVersion !== 4 && ipVersion !== 6)) throw new Error('IP 检测结果无效')
-      return {
+      return applyWebReachability({
         ok: true,
         ip: data.ip,
         ipVersion,
@@ -217,7 +279,7 @@ async function testProxyOnce(config: ProxyConfig): Promise<ProxyTestResult> {
         warning: `地理信息暂不可用：${[primaryError, secondaryError].map((error) => error instanceof Error ? error.message : String(error ?? '')).filter(Boolean).join('；')}`,
         geoConfidence: 'single-source',
         geoSources: []
-      }
+      }, web)
     } catch (ipError) {
       throw new AggregateError([primaryError, secondaryError, ipError], '代理出口检测失败')
     }
