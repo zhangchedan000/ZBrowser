@@ -816,6 +816,36 @@ export function ProfileEditor({ open, profile, suggestedIndex, saving, extension
           description="同一环境的硬件信息保持稳定；重新生成后会获得新的身份。"
         />
       )}
+      {hardwareProfileId !== 'legacy-custom' && (
+        <Alert
+          type="info"
+          showIcon
+          message="需要手动修改硬件参数？"
+          description="可以保留当前模板的现有值作为起点，转为手动自定义后再修改系统、CPU、屏幕等字段。不会自动改变 Seed。"
+          action={(
+            <Button
+              size="small"
+              onClick={() => {
+                const current = form.getFieldValue('fingerprint')
+                form.setFieldValue('fingerprint', {
+                  ...current,
+                  hardwareProfileId: 'legacy-custom',
+                  hardwarePersonaId: undefined,
+                  gpuBucket: undefined,
+                  renderIdentityVersion: undefined
+                })
+                setIdentityConfigProvenance((currentProvenance) => markFingerprintConfigSources(
+                  currentProvenance,
+                  HARDWARE_IDENTITY_FIELDS,
+                  'user'
+                ))
+              }}
+            >
+              转为手动自定义
+            </Button>
+          )}
+        />
+      )}
       {selectedHardware?.renderIdentityMode === 'seeded-curated' && !selectedGpuIdentity && (
         <Alert
           type="warning"

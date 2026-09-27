@@ -64,14 +64,16 @@ export function KernelManagerModal({ open, engine, onClose, onEngineChanged }: K
   async function refresh(): Promise<void> {
     setLoading(true)
     try {
-      const [items, bundledEngine, canRollback] = await Promise.all([
+      const [items, bundledEngine, canRollback, currentEngine] = await Promise.all([
         window.browserApi.engine.releases(),
         window.browserApi.engine.bundled(),
-        window.browserApi.engine.rollbackAvailable()
+        window.browserApi.engine.rollbackAvailable(),
+        window.browserApi.engine.status()
       ])
       setReleases(items)
       setBundled(bundledEngine)
       setRollbackAvailable(canRollback)
+      onEngineChanged(currentEngine)
     } catch (error) {
       messageApi.error(errorText(error))
     } finally {
@@ -107,6 +109,12 @@ export function KernelManagerModal({ open, engine, onClose, onEngineChanged }: K
         })
       })
       if (!confirmed) return
+    }
+    const currentEngine = await window.browserApi.engine.status()
+    if (currentEngine && open) {
+      // The main process remains authoritative. If a browser profile is still
+      // running, engine:install will return a clear error which is surfaced below.
+      onEngineChanged(currentEngine)
     }
     setInstalling(version)
     setInstallProgress({
@@ -204,7 +212,6 @@ export function KernelManagerModal({ open, engine, onClose, onEngineChanged }: K
     try {
       await window.browserApi.engine.remove(version)
       await refresh()
-      onEngineChanged(await window.browserApi.engine.status())
       messageApi.success(`内核 ${version} 已移入回收目录`)
     } catch (error) {
       messageApi.error(errorText(error))

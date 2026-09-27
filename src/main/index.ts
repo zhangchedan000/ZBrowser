@@ -145,7 +145,9 @@ app.whenReady().then(async () => {
     profiles,
     settings,
     (profile) => {
-      mainWindow?.webContents.send('profiles:changed', publicProfile(profile))
+      if (mainWindow && !mainWindow.isDestroyed() && !mainWindow.webContents.isDestroyed()) {
+        mainWindow.webContents.send('profiles:changed', publicProfile(profile))
+      }
     },
     extensions,
     logger,
@@ -160,7 +162,11 @@ app.whenReady().then(async () => {
   const kernels = new ManagedKernelManager(
     vaultPath,
     settings,
-    (progress) => mainWindow?.webContents.send('engine:install-progress', progress),
+    (progress) => {
+      if (mainWindow && !mainWindow.isDestroyed() && !mainWindow.webContents.isDestroyed()) {
+        mainWindow.webContents.send('engine:install-progress', progress)
+      }
+    },
     logger,
     (version, family) => profiles.kernelUsers(version, family),
     kernelRegistry
@@ -190,7 +196,9 @@ app.whenReady().then(async () => {
   if (recoveredRepairs) logger.info('已恢复未完成的 AI 指纹修复', { count: recoveredRepairs })
   const workspaceMigration = new WorkspaceMigrationManager(profiles, extensions, app.getVersion(), logger)
   const updater = new UpdateManager(vaultPath, app.getVersion(), process.resourcesPath, (status) => {
-    mainWindow?.webContents.send('updates:changed', status)
+    if (mainWindow && !mainWindow.isDestroyed() && !mainWindow.webContents.isDestroyed()) {
+      mainWindow.webContents.send('updates:changed', status)
+    }
   }, logger)
   const environmentChecks = new EnvironmentCheckHistoryStore(vaultPath)
   const automationApi = new LocalApiServer(vaultPath, profiles, launcher, logger, {
@@ -201,7 +209,11 @@ app.whenReady().then(async () => {
   const patrol = new AttentionPatrolScheduler(
     settings,
     () => automationApi.executeAttentionAudit(),
-    (status) => mainWindow?.webContents.send('automation:attention-patrol-changed', status),
+    (status) => {
+      if (mainWindow && !mainWindow.isDestroyed() && !mainWindow.webContents.isDestroyed()) {
+        mainWindow.webContents.send('automation:attention-patrol-changed', status)
+      }
+    },
     logger
   )
   localApi = automationApi
