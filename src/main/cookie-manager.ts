@@ -1,5 +1,3 @@
-[Reading 194 lines from start (total: 194 lines, 0 remaining)]
-
 import { spawn, type ChildProcess } from 'node:child_process'
 import { readFile, rm } from 'node:fs/promises'
 import { join } from 'node:path'
