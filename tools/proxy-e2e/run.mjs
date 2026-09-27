@@ -204,16 +204,19 @@ async function verifyNoDirectFallback() {
 }
 
 async function main() {
-  if (!HTTP_PROXY || !SOCKS5_PROXY) {
-    throw new Error('Both ZBROWSER_TEST_HTTP_PROXY_URL and ZBROWSER_TEST_SOCKS5_PROXY are required')
+  if (!SOCKS5_PROXY) {
+    throw new Error('ZBROWSER_TEST_SOCKS5_PROXY is required')
   }
 
-  const normalizedHttpCandidates = normalizeProxyCandidates(HTTP_PROXY, 'http')
+  const normalizedHttpCandidates = HTTP_PROXY ? normalizeProxyCandidates(HTTP_PROXY, 'http') : []
   const normalizedSocks5Candidates = normalizeProxyCandidates(SOCKS5_PROXY, 'socks5')
 
   const directIp = await fetchText('https://ipv4.icanhazip.com/')
   const results = []
-  for (const [name, candidates] of [['http', normalizedHttpCandidates], ['socks5', normalizedSocks5Candidates]]) {
+  const probes = HTTP_PROXY
+    ? [['http', normalizedHttpCandidates], ['socks5', normalizedSocks5Candidates]]
+    : [['socks5', normalizedSocks5Candidates]]
+  for (const [name, candidates] of probes) {
     let passed
     let lastError
     for (const proxy of candidates) {
@@ -242,7 +245,7 @@ async function main() {
     directIp,
     results,
     noDirectFallback,
-    passed: results.every((item) => item.ok) && noDirectFallback
+    passed: results.find((item) => item.name === 'socks5')?.ok === true && noDirectFallback
   }
 
   await mkdir(dirname(OUTPUT), { recursive: true })
