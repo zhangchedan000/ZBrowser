@@ -52,20 +52,6 @@ jobs:
       - name: Audit dependencies
         run: npm audit --audit-level=moderate
 
-      - name: Resolve Chromium integration browser
-        shell: pwsh
-        run: |
-          $candidates = @(
-            (Join-Path $env:ProgramFiles "Google\Chrome\Application\chrome.exe"),
-            (Join-Path $env:ProgramFiles "Microsoft\Edge\Application\msedge.exe")
-          )
-          $browser = $candidates | Where-Object { Test-Path $_ } | Select-Object -First 1
-          if (-not $browser) {
-            throw "No Chromium browser found for CookieManager integration tests"
-          }
-          "ZBROWSER_CHROMIUM_TEST_BROWSER=$browser" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
-          Write-Host "Cookie integration browser: $browser"
-
       - name: Resolve resume stage
         shell: pwsh
         run: |
