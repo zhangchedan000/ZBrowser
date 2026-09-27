@@ -239,7 +239,7 @@ npm run beta:verify-kit -- release/beta-acceptance-kit
 tools/beta-acceptance/README.md
 ```
 
-当前 `0.2.0-beta.5` 的 `build/beta-release.json` 使用 `distributionMode: internal-unsigned`。个人自用阶段以 Windows Build、Windows Full E2E、Packaged App E2E、macOS Build Smoke 和 Beta Acceptance Kit 完整性为 gate；不要求 signed candidate、staged rollout 或 recovery drill。
+当前 `0.2.0-beta.6` 的 `build/beta-release.json` 使用 `distributionMode: internal-unsigned`。个人自用阶段以 Windows Build、Windows Full E2E、Packaged App E2E、macOS Build Smoke 和 Beta Acceptance Kit 完整性为 gate；不要求 signed candidate、staged rollout 或 recovery drill。
 
 如果以后改为公开分发，可再切回 `distributionMode: signed`，并使用 `Windows Signed Release`、`macOS Signed Release` 和 `Beta Signed Candidate Gate`。正式公开 release/tag 仍保持不可变。
 

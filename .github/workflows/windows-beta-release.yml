@@ -82,8 +82,8 @@ jobs:
         shell: pwsh
         run: |
           $version = node -p "require('./package.json').version"
-          if ($version -ne "0.2.0-beta.5") {
-            throw "Expected package version 0.2.0-beta.5, got $version"
+          if ($version -ne "0.2.0-beta.6") {
+            throw "Expected package version 0.2.0-beta.6, got $version"
           }
           if ("$env:GITHUB_SHA" -eq "") {
             throw "Missing GITHUB_SHA"
@@ -117,7 +117,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          $tag = "v0.2.0-beta.5"
+          $tag = "v0.2.0-beta.6"
           $existingJson = gh release view $tag --repo "$env:GITHUB_REPOSITORY" --json tagName,isDraft,isPrerelease,assets 2>$null
           if ($LASTEXITCODE -eq 0) {
             $existing = $existingJson | ConvertFrom-Json
@@ -126,9 +126,9 @@ jobs:
             }
             $assetNames = @($existing.assets | ForEach-Object { $_.name })
             foreach ($required in @(
-              "ZBrowser.0.2.0-beta.5.exe",
-              "ZBrowser.Setup.0.2.0-beta.5.msi",
-              "ZBrowser.Setup.0.2.0-beta.5.zip"
+              "ZBrowser.0.2.0-beta.6.exe",
+              "ZBrowser.Setup.0.2.0-beta.6.msi",
+              "ZBrowser.Setup.0.2.0-beta.6.zip"
             )) {
               if ($assetNames -notcontains $required) {
                 throw "Existing $tag is missing required asset $required"
@@ -143,6 +143,6 @@ jobs:
           gh release create $tag @assets `
             --repo "$env:GITHUB_REPOSITORY" `
             --target "$env:GITHUB_SHA" `
-            --title "ZBrowser 0.2.0-beta.5" `
+            --title "ZBrowser 0.2.0-beta.6" `
             --generate-notes `
             --prerelease

@@ -1,3 +1,21 @@
+# ZBrowser 0.2.0-beta.6
+
+## 重点修复
+
+- 修复代理“检测通过但实际网页打不开”的误判：代理检测现在必须通过普通 HTTP / HTTPS 网页可达性检查，不再只依赖 GeoIP / 出口 IP 接口。
+- 浏览器运行期间第一次真实代理上游失败就会在环境列表显示“运行中 · 异常”，恢复真实流量后自动清除；仍保持 fail-closed，不会偷偷直连。
+- 指纹硬件 Persona 可转为“手动自定义”，保留当前值后可修改系统、CPU、分辨率等字段。
+- 修复删除内核后重新安装时状态不同步 / 无明显反馈的问题；有环境运行时会明确提示需先关闭环境。
+- 修复应用关闭阶段 Attention Patrol 回调触发 Object has been destroyed 的主进程异常。
+- 修复 Windows CI 对 .patch 文件 CRLF 转换导致 Kernel Lock SHA 校验失败的问题。
+
+## 验证
+
+- Typecheck、Unit / Integration Tests、Kernel Lock、Windows Build、Windows Full E2E、Packaged App E2E 均作为发布门槛。
+- 该版本仍为 internal-unsigned Beta，用于个人自用验证。
+
+---
+
 # ZBrowser 0.2.0-beta.5
 
 ## 重点变化
