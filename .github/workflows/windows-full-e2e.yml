@@ -1,4 +1,4 @@
-[Reading 275 lines from start (total: 275 lines, 0 remaining)]
+[Reading 273 lines from start (total: 273 lines, 0 remaining)]
 
 name: Windows Full E2E
 
@@ -58,12 +58,10 @@ jobs:
         shell: pwsh
         run: |
           $candidates = @(
-            "$env:ProgramFiles\Google\Chrome\Application\chrome.exe",
-            "${env:ProgramFiles(x86)}\Google\Chrome\Application\chrome.exe",
-            "$env:ProgramFiles\Microsoft\Edge\Application\msedge.exe",
-            "${env:ProgramFiles(x86)}\Microsoft\Edge\Application\msedge.exe"
+            (Join-Path $env:ProgramFiles "Google\Chrome\Application\chrome.exe"),
+            (Join-Path $env:ProgramFiles "Microsoft\Edge\Application\msedge.exe")
           )
-          $browser = $candidates | Where-Object { $_ -and (Test-Path $_) } | Select-Object -First 1
+          $browser = $candidates | Where-Object { Test-Path $_ } | Select-Object -First 1
           if (-not $browser) {
             throw "No Chromium browser found for CookieManager integration tests"
           }
