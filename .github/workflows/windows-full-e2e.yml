@@ -1,3 +1,5 @@
+[Reading 275 lines from start (total: 275 lines, 0 remaining)]
+
 name: Windows Full E2E
 
 on:
@@ -49,6 +51,25 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Audit dependencies
+        run: npm audit --audit-level=moderate
+
+      - name: Resolve Chromium integration browser
+        shell: pwsh
+        run: |
+          $candidates = @(
+            "$env:ProgramFiles\Google\Chrome\Application\chrome.exe",
+            "${env:ProgramFiles(x86)}\Google\Chrome\Application\chrome.exe",
+            "$env:ProgramFiles\Microsoft\Edge\Application\msedge.exe",
+            "${env:ProgramFiles(x86)}\Microsoft\Edge\Application\msedge.exe"
+          )
+          $browser = $candidates | Where-Object { $_ -and (Test-Path $_) } | Select-Object -First 1
+          if (-not $browser) {
+            throw "No Chromium browser found for CookieManager integration tests"
+          }
+          "ZBROWSER_CHROMIUM_TEST_BROWSER=$browser" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          Write-Host "Cookie integration browser: $browser"
+
       - name: Resolve resume stage
         shell: pwsh
         run: |
@@ -97,8 +118,8 @@ jobs:
           if (-not $socks -or -not $socks.ok) {
             throw "SOCKS5 real-proxy smoke failed after retries"
           }
-          if ($http -and -not $http.ok) {
-            Write-Warning "HTTP provider smoke failed after retries; continuing because SOCKS5 and fail-closed behavior passed."
+          if (-not $http -or -not $http.ok) {
+            throw "HTTP real-proxy smoke failed after retries"
           }
           exit 0
 
@@ -118,6 +139,14 @@ jobs:
           npm run typecheck
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           npx vitest run --fileParallelism=false
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: CookieManager real Chromium integration
+        if: env.ZBROWSER_RESUME_STAGE == 'full'
+        shell: pwsh
+        run: |
+          $env:PRISM_TEST_BROWSER = $env:ZBROWSER_CHROMIUM_TEST_BROWSER
+          npx vitest run --fileParallelism=false src/main/cookie-manager.integration.test.ts
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Verify kernel lock
@@ -246,3 +275,5 @@ jobs:
           path: |
             test-results/*.json
           if-no-files-found: warn
+
+[executed on device: which-confusion (81718d16-bbf4-400c-b41f-80541771cf98)]
