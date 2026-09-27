@@ -49,6 +49,23 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Audit dependencies
+        run: npm audit --audit-level=moderate
+
+      - name: Resolve Chromium integration browser
+        shell: pwsh
+        run: |
+          $candidates = @(
+            (Join-Path $env:ProgramFiles "Google\Chrome\Application\chrome.exe"),
+            (Join-Path $env:ProgramFiles "Microsoft\Edge\Application\msedge.exe")
+          )
+          $browser = $candidates | Where-Object { Test-Path $_ } | Select-Object -First 1
+          if (-not $browser) {
+            throw "No Chromium browser found for CookieManager integration tests"
+          }
+          "ZBROWSER_CHROMIUM_TEST_BROWSER=$browser" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          Write-Host "Cookie integration browser: $browser"
+
       - name: Resolve resume stage
         shell: pwsh
         run: |
@@ -118,6 +135,14 @@ jobs:
           npm run typecheck
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           npx vitest run --fileParallelism=false
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: CookieManager real Chromium integration
+        if: env.ZBROWSER_RESUME_STAGE == 'full'
+        shell: pwsh
+        run: |
+          $env:PRISM_TEST_BROWSER = $env:ZBROWSER_CHROMIUM_TEST_BROWSER
+          npx vitest run --fileParallelism=false src/main/cookie-manager.integration.test.ts
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Verify kernel lock
@@ -246,5 +271,3 @@ jobs:
           path: |
             test-results/*.json
           if-no-files-found: warn
-
-[executed on device: which-confusion (81718d16-bbf4-400c-b41f-80541771cf98)]
