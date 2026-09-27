@@ -19,6 +19,7 @@ on:
       - "RELEASE_NOTES.md"
       - "package.json"
       - "package-lock.json"
+      - ".gitattributes"
       - ".github/workflows/windows-full-e2e.yml"
       - ".github/workflows/windows-beta-release.yml"
       - ".github/workflows/windows-signed-release.yml"
