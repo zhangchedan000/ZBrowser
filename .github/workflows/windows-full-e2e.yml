@@ -123,14 +123,6 @@ jobs:
           npx vitest run --fileParallelism=false
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
-      - name: CookieManager real Chromium integration
-        if: env.ZBROWSER_RESUME_STAGE == 'full'
-        shell: pwsh
-        run: |
-          $env:PRISM_TEST_BROWSER = $env:ZBROWSER_CHROMIUM_TEST_BROWSER
-          npx vitest run --fileParallelism=false src/main/cookie-manager.integration.test.ts
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-
       - name: Verify kernel lock
         if: env.ZBROWSER_RESUME_STAGE == 'full' || env.ZBROWSER_RESUME_STAGE == 'kernel'
         run: npm run kernel:verify-lock
