@@ -118,6 +118,10 @@ export class AttentionPatrolScheduler {
   }
 
   private emit(): void {
-    this.onChanged?.(this.status())
+    try {
+      this.onChanged?.(this.status())
+    } catch (error) {
+      this.logger?.error('通知周期 AI 巡检状态失败', error)
+    }
   }
 }

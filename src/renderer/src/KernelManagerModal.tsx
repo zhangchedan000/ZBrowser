@@ -9,6 +9,7 @@ interface KernelManagerModalProps {
   engine: EngineStatus | null
   onClose: () => void
   onEngineChanged: (engine: EngineStatus) => void
+  hasRunningProfiles: boolean
 }
 
 function sizeLabel(size: number): string {
@@ -33,7 +34,7 @@ function compatibilityLabel(version: string): { color: string; text: string; det
   return { color: 'default', text: '兼容待验证' }
 }
 
-export function KernelManagerModal({ open, engine, onClose, onEngineChanged }: KernelManagerModalProps) {
+export function KernelManagerModal({ open, engine, onClose, onEngineChanged, hasRunningProfiles }: KernelManagerModalProps) {
   const [releases, setReleases] = useState<KernelRelease[]>([])
   const [loading, setLoading] = useState(false)
   const [installing, setInstalling] = useState<string | null>(null)
@@ -43,6 +44,7 @@ export function KernelManagerModal({ open, engine, onClose, onEngineChanged }: K
   const [health, setHealth] = useState<Record<string, KernelHealth>>({})
   const [bundled, setBundled] = useState<EngineStatus | null>(null)
   const [rollbackAvailable, setRollbackAvailable] = useState(false)
+  const [operationError, setOperationError] = useState<string | null>(null)
   const [messageApi, contextHolder] = message.useMessage()
 
   const currentVersion = useMemo(
@@ -96,6 +98,13 @@ export function KernelManagerModal({ open, engine, onClose, onEngineChanged }: K
   }, [open])
 
   async function install(version: string): Promise<void> {
+    if (hasRunningProfiles) {
+      const error = '当前仍有浏览器环境运行。请先关闭全部环境，再安装并切换内核。'
+      setOperationError(error)
+      messageApi.warning(error)
+      return
+    }
+    setOperationError(null)
     const compatibility = compatibilityLabel(version)
     if (compatibility.text === '新版实验') {
       const confirmed = await new Promise<boolean>((resolve) => {
@@ -110,12 +119,6 @@ export function KernelManagerModal({ open, engine, onClose, onEngineChanged }: K
       })
       if (!confirmed) return
     }
-    const currentEngine = await window.browserApi.engine.status()
-    if (currentEngine && open) {
-      // The main process remains authoritative. If a browser profile is still
-      // running, engine:install will return a clear error which is surfaced below.
-      onEngineChanged(currentEngine)
-    }
     setInstalling(version)
     setInstallProgress({
       version,
@@ -129,9 +132,12 @@ export function KernelManagerModal({ open, engine, onClose, onEngineChanged }: K
       const status = await window.browserApi.engine.install(version)
       onEngineChanged(status)
       await refresh()
+      setOperationError(null)
       messageApi.success(`Fingerprint Chromium ${version} 已安装并启用`)
     } catch (error) {
-      messageApi.error(errorText(error))
+      const text = errorText(error)
+      setOperationError(text)
+      messageApi.error(text)
     } finally {
       setInstalling(null)
       setInstallProgress((current) => current?.version === version && current.stage !== 'error' ? null : current)
@@ -244,6 +250,26 @@ export function KernelManagerModal({ open, engine, onClose, onEngineChanged }: K
         title="可直接安装开源 Fingerprint Chromium"
         description="发行包直接来自 adryfish/fingerprint-chromium 的 GitHub Releases。ZBrowser 会校验 GitHub 提供的 SHA-256 后再安装；无需额外付费组件。"
       />
+      {hasRunningProfiles && (
+        <Alert
+          className="kernel-notice"
+          type="warning"
+          showIcon
+          title="请先关闭全部浏览器环境"
+          description="安装完成后会立即切换全局内核。当前仍有环境运行，因此安装按钮暂不可用；关闭全部环境后无需重启应用，直接回来安装即可。"
+        />
+      )}
+      {operationError && (
+        <Alert
+          className="kernel-notice"
+          type="error"
+          showIcon
+          closable
+          onClose={() => setOperationError(null)}
+          title="内核操作未完成"
+          description={operationError}
+        />
+      )}
       {upgradeVersion && upgradeRelease && (
         <Alert
           className="kernel-notice"
@@ -254,7 +280,7 @@ export function KernelManagerModal({ open, engine, onClose, onEngineChanged }: K
           action={
             upgradeRelease.installed
               ? <Button onClick={() => void activate(upgradeVersion)}>切换到新版</Button>
-              : <Button type="primary" loading={installing === upgradeVersion} disabled={Boolean(installing)} onClick={() => void install(upgradeVersion)}>安装新版</Button>
+              : <Button type="primary" loading={installing === upgradeVersion} disabled={Boolean(installing) || hasRunningProfiles} onClick={() => void install(upgradeVersion)}>安装新版</Button>
           }
         />
       )}
@@ -308,7 +334,7 @@ export function KernelManagerModal({ open, engine, onClose, onEngineChanged }: K
                     key="install"
                     type="primary"
                     icon={<CloudDownloadOutlined />}
-                    disabled={Boolean(installing)}
+                    disabled={Boolean(installing) || hasRunningProfiles}
                     onClick={() => void install(release.version)}
                   >
                     下载并安装

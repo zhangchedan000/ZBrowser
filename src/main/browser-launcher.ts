@@ -56,6 +56,7 @@ interface RunningBrowser {
   exited: Promise<void>
   proxyFailureTimes: number[]
   proxyWarningIssued: boolean
+  proxyRuntimeWarning?: string
   finalize: (status: 'closed' | 'error', lastError?: string) => Promise<void>
 }
 
@@ -1123,11 +1124,24 @@ export class BrowserLauncher {
     const now = Date.now()
     running.proxyFailureTimes = running.proxyFailureTimes.filter((time) => now - time <= 60_000)
     running.proxyFailureTimes.push(now)
-    if (failureKind !== 'authentication' && running.proxyFailureTimes.length < 3) return
+    const failureCount = running.proxyFailureTimes.length
+    if (failureKind !== 'authentication' && failureCount < 3) {
+      const message = `代理上游连接刚刚失败（${failureCount}/3），浏览器会继续尝试重连：${safeErrorText(error)}`
+      running.proxyRuntimeWarning = message
+      this.logger?.error('浏览器代理桥单次运行异常', {
+        profileId: id,
+        failureKind,
+        failureCount,
+        error: safeErrorText(error)
+      })
+      this.onChanged(await this.profiles.setRuntime(id, { status: 'running', lastError: message }))
+      return
+    }
     running.proxyWarningIssued = true
     const message = failureKind === 'authentication'
       ? '代理认证在运行期间失败，请检查账号或代理授权；浏览器会继续尝试重连'
       : '代理连接在 60 秒内连续失败，出口网络可能已断开；浏览器会继续尝试重连'
+    running.proxyRuntimeWarning = message
     this.logger?.error('浏览器代理桥运行异常', {
       profileId: id,
       failureKind,
@@ -1143,11 +1157,17 @@ export class BrowserLauncher {
   private async noteProxyBridgeTraffic(id: string): Promise<void> {
     const running = this.processes.get(id)
     if (!running || running.proxyQuarantined || running.proxyIdentityMismatch) return
+    const hadProxyWarning = Boolean(running.proxyFailureTimes.length || running.proxyWarningIssued || running.proxyRuntimeWarning)
     running.proxyFailureTimes = []
-    if (!running.proxyWarningIssued) return
+    if (!hadProxyWarning) return
     running.proxyWarningIssued = false
+    const warning = running.proxyRuntimeWarning
+    running.proxyRuntimeWarning = undefined
     this.logger?.info('浏览器代理桥已恢复传输', { profileId: id })
-    this.onChanged(await this.profiles.setRuntime(id, { status: 'running', lastError: undefined }))
+    const current = this.profiles.get(id)
+    if (!warning || current.lastError === warning) {
+      this.onChanged(await this.profiles.setRuntime(id, { status: 'running', lastError: undefined }))
+    }
   }
 
   private async evaluateRuntimeFingerprintSnapshot(

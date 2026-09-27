@@ -25,7 +25,7 @@ async function writeKernel(
   const browserRoot = join(root, 'browser')
   const executable = join(browserRoot, 'chrome.exe')
   await mkdir(browserRoot, { recursive: true })
-  await writeFile(executable, 'test-browser-binary')
+  await writeFile(executable, 'test-browser-binary', { mode: 0o755 })
   await writeFile(join(root, 'manifest.json'), JSON.stringify({
     schemaVersion: 1,
     version,

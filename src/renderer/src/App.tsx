@@ -93,7 +93,9 @@ function statusTag(profile: BrowserProfileView) {
     orphaned: { color: 'volcano', text: '进程遗留' },
     error: { color: 'error', text: '异常' }
   } as const
-  const item = map[profile.status]
+  const item = profile.status === 'running' && profile.lastError
+    ? { color: 'warning', text: '运行中 · 异常' }
+    : map[profile.status]
   return <Tooltip title={profile.lastError}><Tag color={item.color}>{item.text}</Tag></Tooltip>
 }
 
@@ -1667,6 +1669,7 @@ export default function App() {
       <KernelManagerModal
         open={kernelManagerOpen}
         engine={engine}
+        hasRunningProfiles={profiles.some((profile) => ['starting', 'running', 'stopping', 'orphaned'].includes(profile.status))}
         onClose={() => setKernelManagerOpen(false)}
         onEngineChanged={(nextEngine) => {
           setEngine(nextEngine)

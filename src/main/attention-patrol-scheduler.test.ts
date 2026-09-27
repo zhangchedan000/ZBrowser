@@ -135,6 +135,24 @@ describe('AttentionPatrolScheduler', () => {
     expect(runAudit).toHaveBeenCalledTimes(1)
   })
 
+  it('does not crash when the status observer disappears during shutdown', async () => {
+    const vault = await mkdtemp(join(tmpdir(), 'zbrowser-patrol-'))
+    temporaryPaths.push(vault)
+    const settings = new SettingsStore(vault)
+    await settings.initialize()
+    const onChanged = vi.fn(() => {
+      throw new Error('Object has been destroyed')
+    })
+    const logger = { info: vi.fn(), error: vi.fn() }
+
+    const scheduler = new AttentionPatrolScheduler(settings, async () => auditResult(), onChanged, logger as never)
+
+    expect(() => scheduler.start()).not.toThrow()
+    expect(() => scheduler.stop()).not.toThrow()
+    expect(onChanged).toHaveBeenCalled()
+    expect(logger.error).toHaveBeenCalled()
+  })
+
   it('persists configuration and can be disabled without running a pending timer', async () => {
     const vault = await mkdtemp(join(tmpdir(), 'zbrowser-patrol-'))
     temporaryPaths.push(vault)
