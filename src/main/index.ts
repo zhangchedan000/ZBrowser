@@ -224,15 +224,19 @@ app.whenReady().then(async () => {
     fingerprintRepair, fingerprintRepairState, identityRepairStrategy, identitySelfHealing,
     attentionPatrol: patrol, team, teamAuth, teamSession, teamSync, teamEnrollment, teamSyncCoordinator
   })
-  try {
-    const api = await automationApi.start()
-    logger.info('Local API 已启动', { url: api.url, tokenPath: api.tokenPath, metadataPath: api.metadataPath })
-  } catch (error) {
-    logger.error('Local API 启动失败；桌面功能继续可用', error)
-    localApi = null
+  if (teamSession.deviceRole === 'owner') {
+    try {
+      const api = await automationApi.start()
+      logger.info('Local API 已启动', { url: api.url, tokenPath: api.tokenPath, metadataPath: api.metadataPath })
+    } catch (error) {
+      logger.error('Local API 启动失败；桌面功能继续可用', error)
+      localApi = null
+    }
+    patrol.start()
+  } else {
+    logger.info('子账号设备已禁用 Local API 与自动巡检')
   }
   mainWindow = createWindow()
-  patrol.start()
   teamSyncCoordinator.start()
   const selfHealingResumeTimer = setTimeout(() => {
     void identitySelfHealing.resumePersistedPending()
