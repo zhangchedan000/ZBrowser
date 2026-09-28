@@ -127,7 +127,8 @@ export class BrowserLauncher {
       recordResult(id: string, result: ProxyTestResult): Promise<unknown>
       list?(): ProxyPoolEntry[]
     },
-    private readonly identityMonitorIntervalMs = 5 * 60_000
+    private readonly identityMonitorIntervalMs = 5 * 60_000,
+    private readonly chromiumWebReachabilityVerifier?: (profileId: string) => Promise<unknown>
   ) {
     if (!Number.isInteger(maxConcurrentLaunches) || maxConcurrentLaunches < 1 || maxConcurrentLaunches > 20) {
       throw new Error('浏览器并发启动数必须在 1 到 20 之间')
@@ -405,6 +406,21 @@ export class BrowserLauncher {
               userDataDir: this.profiles.profileDataPath(id),
               startedAt: new Date().toISOString()
             }, null, 2), { mode: 0o600 })
+            if (localProxyUrl && !options.runtimeVersionProbe && !options.runtimeFingerprintProbe) {
+              try {
+                if (this.chromiumWebReachabilityVerifier) {
+                  await this.chromiumWebReachabilityVerifier(id)
+                } else {
+                  const session = await this.controlSession(id)
+                  await session.probeWebReachability([
+                    'https://example.com/',
+                    'https://www.cloudflare.com/cdn-cgi/trace'
+                  ])
+                }
+              } catch (error) {
+                throw new Error('Chromium 实际代理链路无法访问外部网页：' + safeErrorText(error))
+              }
+            }
             let next = await this.profiles.setRuntime(id, {
               status: 'running',
               lastOpenedAt: new Date().toISOString(),

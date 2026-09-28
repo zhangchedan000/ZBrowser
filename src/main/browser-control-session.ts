@@ -266,6 +266,55 @@ export class BrowserControlSession {
     return this.pageState()
   }
 
+  async probeWebReachability(urlValues: readonly string[]): Promise<{ url: string }> {
+    if (!Array.isArray(urlValues) || urlValues.length < 1) throw new Error('浏览器联网探测至少需要一个网址')
+    const urls = urlValues.map((value) => validateWebUrl(value))
+    const created = await this.cdp.send<{ targetId: string }>('Target.createTarget', {
+      url: 'about:blank',
+      background: true
+    })
+    const failures: string[] = []
+    try {
+      const attached = await this.cdp.send<{ sessionId: string }>('Target.attachToTarget', {
+        targetId: created.targetId,
+        flatten: true
+      })
+      await this.cdp.send('Page.enable', {}, attached.sessionId)
+      for (const url of urls) {
+        try {
+          const navigation = await this.cdp.send<{ errorText?: string }>('Page.navigate', { url }, attached.sessionId)
+          if (navigation.errorText) throw new Error(navigation.errorText)
+          let reached = false
+          for (let attempt = 0; attempt < 80; attempt += 1) {
+            const result = await this.cdp.send<{
+              result?: { value?: { url?: string; readyState?: string } }
+              exceptionDetails?: unknown
+            }>('Runtime.evaluate', {
+              expression: '({url: location.href, readyState: document.readyState})',
+              returnByValue: true
+            }, attached.sessionId)
+            const state = result.result?.value
+            if (!result.exceptionDetails
+              && typeof state?.url === 'string'
+              && /^https?:/i.test(state.url)
+              && ['interactive', 'complete'].includes(state.readyState ?? '')) {
+              reached = true
+              break
+            }
+            await delay(100)
+          }
+          if (!reached) throw new Error('等待网页加载完成超时')
+          return { url }
+        } catch (error) {
+          failures.push(url + ': ' + (error instanceof Error ? error.message : String(error)))
+        }
+      }
+      throw new Error('Chromium 外网页面全部不可达：' + failures.slice(0, 2).join('；'))
+    } finally {
+      await this.cdp.send('Target.closeTarget', { targetId: created.targetId }).catch(() => undefined)
+    }
+  }
+
   async runtimeFingerprintSnapshot(): Promise<RuntimeFingerprintSnapshot> {
     await this.ensurePage()
     const result = await this.cdp.send<{

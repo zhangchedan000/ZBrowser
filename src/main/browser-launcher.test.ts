@@ -559,7 +559,10 @@ describe('BrowserLauncher concurrent lifecycle', () => {
       }),
       3,
       controller.spawn,
-      20
+      20,
+      undefined,
+      5 * 60_000,
+      async () => undefined
     )
 
     const launch = launcher.launch(profile.id)
@@ -579,6 +582,52 @@ describe('BrowserLauncher concurrent lifecycle', () => {
     expect(controller.children[0].signals).toEqual([])
     await launcher.close(profile.id)
     expect(profiles.get(profile.id).status).toBe('closed')
+  })
+
+  it('fails launch when Chromium itself cannot reach an external page through the configured proxy', async () => {
+    const vault = await mkdtemp(join(tmpdir(), 'prism-launcher-'))
+    temporaryPaths.push(vault)
+    const profiles = new ProfileStore(vault)
+    const settings = new SettingsStore(vault)
+    const extensions = new ExtensionStore(vault)
+    await Promise.all([profiles.initialize(), settings.initialize(), extensions.initialize()])
+    await settings.update({ browserExecutable: process.execPath, fingerprintKernel: false, enginePreference: 'auto' })
+    const draft = defaultProfileDraft()
+    draft.proxy = { protocol: 'http', host: '127.0.0.1', port: 9, username: '', password: '' }
+    draft.fingerprint.networkIdentityMode = 'proxy'
+    const profile = await profiles.create(draft)
+    const controller = new FakeSpawnController()
+    const launcher = new BrowserLauncher(
+      profiles,
+      settings,
+      () => undefined,
+      extensions,
+      undefined,
+      new FakeProcessInspector([]),
+      async () => ({
+        ok: true,
+        latencyMs: 1,
+        ip: '203.0.113.10',
+        countryCode: 'US',
+        timezone: 'America/Los_Angeles',
+        latitude: 34.0522,
+        longitude: -118.2437
+      }),
+      3,
+      controller.spawn,
+      5 * 60_000,
+      undefined,
+      5 * 60_000,
+      async () => { throw new Error('net::ERR_PROXY_CONNECTION_FAILED') }
+    )
+
+    const launch = launcher.launch(profile.id)
+    await waitUntil(() => controller.children.length === 1)
+    controller.startPending()
+    await expect(launch).rejects.toThrow('Chromium 实际代理链路无法访问外部网页')
+    await waitUntil(() => profiles.get(profile.id).status === 'error')
+    expect(profiles.get(profile.id).lastError).toContain('ERR_PROXY_CONNECTION_FAILED')
+    expect(controller.children[0].signals).toContain('SIGTERM')
   })
 
   it('requires confirmation for conflicting GeoIP data and launches after explicit approval', async () => {
@@ -613,7 +662,11 @@ describe('BrowserLauncher concurrent lifecycle', () => {
         geoConflict: 'GeoIP 数据源冲突（国家：JP / US；时区：Asia/Tokyo / America/New_York）'
       }),
       3,
-      controller.spawn
+      controller.spawn,
+      5 * 60_000,
+      undefined,
+      5 * 60_000,
+      async () => undefined
     )
 
     await expect(launcher.launch(profile.id)).rejects.toThrow('ZBROWSER_GEOIP_CONFLICT_CONFIRMATION_REQUIRED')

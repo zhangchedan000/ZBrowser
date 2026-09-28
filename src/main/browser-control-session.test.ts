@@ -50,3 +50,46 @@ describe('BrowserControlSession page readiness', () => {
     })
   })
 })
+
+describe('BrowserControlSession Chromium web reachability', () => {
+  it('uses a temporary Chromium page and closes it after a successful external navigation', async () => {
+    const calls: Array<{ method: string; params?: Record<string, unknown>; sessionId?: string }> = []
+    const transport: CdpTransport = {
+      async send<T>(method: string, params?: Record<string, unknown>, sessionId?: string): Promise<T> {
+        calls.push({ method, params, sessionId })
+        if (method === 'Target.createTarget') return { targetId: 'probe-page' } as T
+        if (method === 'Target.attachToTarget') return { sessionId: 'probe-session' } as T
+        if (method === 'Page.navigate') return {} as T
+        if (method === 'Runtime.evaluate') {
+          return { result: { value: { url: 'https://example.com/', readyState: 'complete' } } } as T
+        }
+        if (method === 'Target.closeTarget') return { success: true } as T
+        return {} as T
+      },
+      close() {}
+    }
+
+    const session = new BrowserControlSession(transport)
+    await expect(session.probeWebReachability(['https://example.com/']))
+      .resolves.toEqual({ url: 'https://example.com/' })
+    expect(calls.some((call) => call.method === 'Target.createTarget' && call.params?.background === true)).toBe(true)
+    expect(calls.some((call) => call.method === 'Target.closeTarget')).toBe(true)
+  })
+
+  it('fails when Chromium reports navigation errors for every external target', async () => {
+    const transport: CdpTransport = {
+      async send<T>(method: string): Promise<T> {
+        if (method === 'Target.createTarget') return { targetId: 'probe-page' } as T
+        if (method === 'Target.attachToTarget') return { sessionId: 'probe-session' } as T
+        if (method === 'Page.navigate') return { errorText: 'net::ERR_PROXY_CONNECTION_FAILED' } as T
+        if (method === 'Target.closeTarget') return { success: true } as T
+        return {} as T
+      },
+      close() {}
+    }
+
+    const session = new BrowserControlSession(transport)
+    await expect(session.probeWebReachability(['https://example.com/', 'https://www.cloudflare.com/']))
+      .rejects.toThrow('ERR_PROXY_CONNECTION_FAILED')
+  })
+})
