@@ -148,7 +148,7 @@ export function registerIpc({
   }
 
   async function identityHealthSummaries() {
-    const entries = await Promise.all(profiles.list().map(async (profile) => [
+    const entries = await Promise.all(runtimeProfiles().map(async (profile) => [
       profile.id,
       await identityHealthSummary(profile.id)
     ] as const))
@@ -176,11 +176,11 @@ export function registerIpc({
 
   ipcMain.handle('profiles:list', () => runtimeProfiles().map(publicProfile))
   ipcMain.handle('profiles:storage-health', () => profiles.storageHealth())
-  ipcMain.handle('profiles:identity-health', (_event, id: string) => identityHealthSummary(id))
+  ipcMain.handle('profiles:identity-health', (_event, id: string) => { assertRuntimeCanUse(id); return identityHealthSummary(id) })
   ipcMain.handle('profiles:identity-health-all', () => identityHealthSummaries())
-  ipcMain.handle('profiles:identity-self-healing', (_event, id: string) => identitySelfHealing.status(id))
-  ipcMain.handle('profiles:identity-self-healing-all', () => identitySelfHealing.statusAll())
-  ipcMain.handle('profiles:identity-self-healing-history', (_event, id: string) => identitySelfHealing.history(id))
+  ipcMain.handle('profiles:identity-self-healing', (_event, id: string) => { assertRuntimeCanUse(id); return identitySelfHealing.status(id) })
+  ipcMain.handle('profiles:identity-self-healing-all', () => { assertRuntimeOwner(); return identitySelfHealing.statusAll() })
+  ipcMain.handle('profiles:identity-self-healing-history', (_event, id: string) => { assertRuntimeCanUse(id); return identitySelfHealing.history(id) })
   ipcMain.handle('profiles:create', async (_event, draft: ProfileDraft) => {
     assertRuntimeOwner()
     return publicProfile(await profiles.create(await pinKernelFamily(draft)))
@@ -242,6 +242,7 @@ export function registerIpc({
     return publicProfile(await profiles.duplicate(id))
   })
   ipcMain.handle('profiles:export-config', async (_event, id: string) => {
+    assertRuntimeOwner()
     const profile = profiles.get(id)
     if (profile.status !== 'closed' && profile.status !== 'error') throw new Error('请先关闭环境再导出配置')
     const owner = BrowserWindow.getFocusedWindow()
@@ -306,7 +307,7 @@ export function registerIpc({
     await profiles.assertProfileDataIdentity(id)
     return profileStorageInfo(profiles.profileDataPath(id))
   })
-  ipcMain.handle('profiles:storage-overview', () => storageOverview(profiles.vaultPath))
+  ipcMain.handle('profiles:storage-overview', () => { assertRuntimeOwner(); return storageOverview(profiles.vaultPath) })
   ipcMain.handle('profiles:open-data-folder', async (_event, id: string) => {
     assertRuntimeOwner()
     profiles.get(id)
@@ -327,6 +328,7 @@ export function registerIpc({
     return result
   })
   ipcMain.handle('profiles:export-backup', async (_event, id: string) => {
+    assertRuntimeOwner()
     const profile = profiles.get(id)
     if (launcher.isRunning(id) || (profile.status !== 'closed' && profile.status !== 'error')) throw new Error('请先关闭环境再备份完整数据')
     if (cookies.isBusy(id)) throw new Error('该环境正在执行 Cookie 操作')
@@ -348,6 +350,7 @@ export function registerIpc({
     return { profile: publicProfile(imported.profile), result: imported.result }
   })
   ipcMain.handle('profiles:export-workspace', async (_event, password: string) => {
+    assertRuntimeOwner()
     if (launcher.hasRunning()) throw new Error('请先关闭全部浏览器环境再导出迁移包')
     if (profiles.list().some((profile) => cookies.isBusy(profile.id))) throw new Error('Cookie 操作尚未结束，请稍后再试')
     const owner = BrowserWindow.getFocusedWindow()
@@ -375,7 +378,7 @@ export function registerIpc({
     if (result.canceled || !result.filePaths[0]) return null
     return workspaceMigration.importAll(result.filePaths[0], password, conflictPolicy)
   })
-  ipcMain.handle('profiles:trash', () => profiles.listTrash())
+  ipcMain.handle('profiles:trash', () => { assertRuntimeOwner(); return profiles.listTrash() })
   ipcMain.handle('profiles:restore', async (_event, trashId: string) => {
     assertRuntimeOwner()
     const profile = await profiles.restore(trashId)
@@ -403,6 +406,7 @@ export function registerIpc({
     return days
   })
   ipcMain.handle('profiles:export-cookies', async (_event, id: string) => {
+    assertRuntimeOwner()
     const profile = profiles.get(id)
     if (launcher.isRunning(id)) throw new Error('请先关闭浏览器环境再导出 Cookie')
     const owner = BrowserWindow.getFocusedWindow()
@@ -509,8 +513,8 @@ export function registerIpc({
     assertRuntimeCanUse(id)
     return launcher.diagnoseKernelRuntime(id)
   })
-  ipcMain.handle('profiles:diagnose-fingerprint-runtime', (_event, id: string) => identitySelfHealing.diagnose(id))
-  ipcMain.handle('profiles:plan-fingerprint-repair', (_event, id: string) => fingerprintRepair.plan(id))
+  ipcMain.handle('profiles:diagnose-fingerprint-runtime', (_event, id: string) => { assertRuntimeCanUse(id); return identitySelfHealing.diagnose(id) })
+  ipcMain.handle('profiles:plan-fingerprint-repair', (_event, id: string) => { assertRuntimeCanUse(id); return fingerprintRepair.plan(id) })
   ipcMain.handle('profiles:repair-fingerprint-identity', async (
     _event,
     id: string,
@@ -518,6 +522,7 @@ export function registerIpc({
     planId: unknown,
     sections: unknown
   ) => {
+    assertRuntimeOwner()
     if (approvedByUser !== true) throw new Error('AI 修复必须由用户明确确认后才能执行')
     if (typeof planId !== 'string' || !planId.trim()) throw new Error('AI 修复计划标识无效')
     const validSections: IdentityConfigSection[] = ['fingerprint', 'network', 'locale', 'browser']
@@ -533,6 +538,7 @@ export function registerIpc({
     id: string,
     approvedByUser: unknown
   ) => {
+    assertRuntimeOwner()
     if (typeof approvedByUser !== 'boolean') throw new Error('Identity Repair Strategy 确认参数无效')
     if (approvedByUser) {
       const result = await identitySelfHealing.executeApproved(id)
@@ -542,13 +548,13 @@ export function registerIpc({
     await identitySelfHealing.observeRuntimeReport(id, result.report)
     return { ...result, profile: publicProfile(result.profile) }
   })
-  ipcMain.handle('profiles:fingerprint-repair-history', (_event, id: string) => fingerprintRepairState.history(id))
+  ipcMain.handle('profiles:fingerprint-repair-history', (_event, id: string) => { assertRuntimeCanUse(id); return fingerprintRepairState.history(id) })
   ipcMain.handle('profiles:crash-history', (_event, id: string) => {
     assertRuntimeCanUse(id)
     return launcher.crashHistory(id)
   })
   ipcMain.handle('profiles:environment-check-history', (_event, id: string) => {
-    profiles.get(id)
+    assertRuntimeCanUse(id)
     return environmentChecks.list(id)
   })
   ipcMain.handle('profiles:record-environment-check', async (_event, id: string, urls: string[]) => {
@@ -623,6 +629,8 @@ export function registerIpc({
     })
     if (result.canceled || !result.filePaths[0]) return null
     const imported = await teamEnrollment.importBundle(result.filePaths[0])
+    attentionPatrol.stop()
+    await localApi.close().catch((error) => logger.error('切换为子账号设备时关闭 Local API 失败', error))
     for (const profile of profiles.list()) {
       for (const window of BrowserWindow.getAllWindows()) window.webContents.send('profiles:changed', publicProfile(profile))
     }
@@ -759,22 +767,25 @@ export function registerIpc({
     ...entry,
     assignedProfileIds: profiles.list().filter((profile) => profile.proxyPoolEntryId === entry.id).map((profile) => profile.id)
   })
-  ipcMain.handle('proxy-pool:list', () => proxyPool.list().map(proxyPoolView))
-  ipcMain.handle('proxy-pool:create', async (_event, input: ProxyPoolEntryInput) => proxyPoolView(await proxyPool.create(input)))
+  ipcMain.handle('proxy-pool:list', () => { assertRuntimeOwner(); return proxyPool.list().map(proxyPoolView) })
+  ipcMain.handle('proxy-pool:create', async (_event, input: ProxyPoolEntryInput) => { assertRuntimeOwner(); return proxyPoolView(await proxyPool.create(input)) })
   ipcMain.handle('proxy-pool:update', async (_event, id: string, input: ProxyPoolEntryInput) => {
+    assertRuntimeOwner()
     if (profiles.list().some((profile) => profile.proxyPoolEntryId === id)) {
       throw new Error('该代理已绑定环境，请先更换这些环境的代理后再修改代理地址或凭据')
     }
     return proxyPoolView(await proxyPool.update(id, input))
   })
   ipcMain.handle('proxy-pool:remove', async (_event, id: string) => {
+    assertRuntimeOwner()
     const bound = profiles.list().filter((profile) => profile.proxyPoolEntryId === id)
     if (bound.length) throw new Error(`该代理仍绑定 ${bound.length} 个环境，不能删除`)
     await proxyPool.remove(id)
   })
-  ipcMain.handle('proxy-pool:test', async (_event, id: string) => proxyPoolView(await proxyPool.test(id)))
-  ipcMain.handle('proxy-pool:test-many', async (_event, ids?: string[]) => (await proxyPool.testMany(ids)).map(proxyPoolView))
+  ipcMain.handle('proxy-pool:test', async (_event, id: string) => { assertRuntimeOwner(); return proxyPoolView(await proxyPool.test(id)) })
+  ipcMain.handle('proxy-pool:test-many', async (_event, ids?: string[]) => { assertRuntimeOwner(); return (await proxyPool.testMany(ids)).map(proxyPoolView) })
   ipcMain.handle('proxy-pool:assign', async (_event, proxyId: string, profileId: string) => {
+    assertRuntimeOwner()
     const entry = proxyPool.get(proxyId)
     if (entry.health === 'unchecked' || entry.health === 'failed' || entry.health === 'quarantined') {
       throw new Error('该代理当前不可分配，请先检测并确认健康状态')
@@ -784,6 +795,7 @@ export function registerIpc({
     return publicProfile(await profiles.assignProxy(profileId, proxyPool.proxyConfig(proxyId), check, proxyId))
   })
   ipcMain.handle('proxy-pool:assign-best', async (_event, profileId: string) => {
+    assertRuntimeOwner()
     const profile = profiles.get(profileId)
     if ((profile.environmentType ?? 'account') !== 'temporary') {
       throw new Error('账号环境禁止自动选择或切换代理；请手动指定代理')
@@ -822,14 +834,15 @@ export function registerIpc({
       }
     }
   })
-  ipcMain.handle('automation-api:attention-dashboard', () => localApi.attentionDashboard())
-  ipcMain.handle('automation-api:attention-audit', () => localApi.executeAttentionAudit())
-  ipcMain.handle('automation-api:attention-patrol-status', () => attentionPatrol.status())
+  ipcMain.handle('automation-api:attention-dashboard', () => { assertRuntimeOwner(); return localApi.attentionDashboard() })
+  ipcMain.handle('automation-api:attention-audit', () => { assertRuntimeOwner(); return localApi.executeAttentionAudit() })
+  ipcMain.handle('automation-api:attention-patrol-status', () => { assertRuntimeOwner(); return attentionPatrol.status() })
   ipcMain.handle('automation-api:attention-patrol-configure', async (
     _event,
     enabled: unknown,
     intervalMinutes: unknown
   ) => {
+    assertRuntimeOwner()
     if (typeof enabled !== 'boolean') throw new Error('自动巡检启用状态无效')
     if (intervalMinutes !== 15 && intervalMinutes !== 30 && intervalMinutes !== 60 && intervalMinutes !== 180) {
       throw new Error('自动巡检周期无效')
@@ -837,6 +850,7 @@ export function registerIpc({
     return attentionPatrol.configure(enabled, intervalMinutes)
   })
   ipcMain.handle('automation-api:attention-confirm', async (_event, profileId: unknown, approvedByUser: unknown) => {
+    assertRuntimeOwner()
     if (typeof profileId !== 'string' || !profileId.trim()) throw new Error('巡检确认环境标识无效')
     if (approvedByUser !== true) throw new Error('高风险巡检处理必须由用户明确确认后执行')
     return localApi.confirmAttentionStep(profileId)
@@ -864,6 +878,7 @@ export function registerIpc({
   })
   ipcMain.handle('diagnostics:session-health', () => appSession.recoveryStatus())
   ipcMain.handle('diagnostics:export-bundle', async () => {
+    assertRuntimeOwner()
     const owner = BrowserWindow.getFocusedWindow()
     const stamp = new Date().toISOString().slice(0, 10)
     const options: Electron.SaveDialogOptions = {
@@ -1007,6 +1022,7 @@ export function registerIpc({
   }
   ipcMain.handle('extensions:list', () => extensions.list())
   ipcMain.handle('extensions:import-directory', async () => {
+    assertRuntimeOwner()
     const owner = BrowserWindow.getFocusedWindow()
     const options: Electron.OpenDialogOptions = { title: '选择未打包的浏览器扩展目录', properties: ['openDirectory'] }
     const result = owner ? await dialog.showOpenDialog(owner, options) : await dialog.showOpenDialog(options)
@@ -1014,6 +1030,7 @@ export function registerIpc({
     return extensions.importDirectory(result.filePaths[0])
   })
   ipcMain.handle('extensions:open-source-folder', async (_event, id: string) => {
+    assertRuntimeOwner()
     const path = extensions.sourcePath(id)
     const info = await lstat(path)
     if (!info.isDirectory() || info.isSymbolicLink()) throw new Error('扩展源码目录不存在或不安全')
@@ -1025,9 +1042,11 @@ export function registerIpc({
     return path
   })
   ipcMain.handle('extensions:set-global-enabled', (_event, id: string, enabled: boolean) => {
+    assertRuntimeOwner()
     return extensions.setGlobalEnabled(id, enabled)
   })
   ipcMain.handle('extensions:remove', async (_event, id: string) => {
+    assertRuntimeOwner()
     if (await profiles.usesExtension(id)) throw new Error('该扩展仍被浏览器环境使用，请先从环境配置中移除')
     await extensions.remove(id)
   })
