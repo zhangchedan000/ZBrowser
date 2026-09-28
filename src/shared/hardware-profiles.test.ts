@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { defaultFingerprint } from './defaults'
 import {
   applyHardwareProfile,
+  convertHardwareProfileToManual,
   CURATED_WINDOWS_DESKTOP_GPUS,
   effectiveDisabledSpoofing,
   effectiveFingerprintSeed,
@@ -26,6 +27,28 @@ describe('coherent hardware profiles', () => {
       expect(profile.screenWidth).toBeGreaterThanOrEqual(800)
       expect(profile.screenHeight).toBeGreaterThanOrEqual(600)
     }
+  })
+
+  it('keeps edited template values when switching to manual hardware mode', () => {
+    const preset = applyHardwareProfile(defaultFingerprint(123), 'windows-11-rtx4060')
+    const edited = convertHardwareProfileToManual({
+      ...preset,
+      hardwareConcurrency: 12,
+      screenWidth: 2560,
+      screenHeight: 1440,
+      platformVersion: '10.0.26100'
+    })
+
+    expect(edited).toMatchObject({
+      hardwareProfileId: 'legacy-custom',
+      hardwareConcurrency: 12,
+      screenWidth: 2560,
+      screenHeight: 1440,
+      platformVersion: '10.0.26100'
+    })
+    expect(edited.gpuBucket).toBeUndefined()
+    expect(edited.renderIdentityVersion).toBeUndefined()
+    expect(edited.hardwarePersonaId).toBeUndefined()
   })
 
   it('applies a preset atomically instead of mixing unrelated values', () => {
