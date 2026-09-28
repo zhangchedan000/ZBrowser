@@ -2,12 +2,15 @@
 
 import proxyChain from 'proxy-chain'
 import { ProxyAgent, request } from 'undici'
-import { mkdir, writeFile } from 'node:fs/promises'
-import { dirname, resolve } from 'node:path'
+import { spawn } from 'node:child_process'
+import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { dirname, join, resolve } from 'node:path'
 
 const HTTP_PROXY = process.env.ZBROWSER_TEST_HTTP_PROXY_URL?.trim()
 const SOCKS5_PROXY = process.env.ZBROWSER_TEST_SOCKS5_PROXY?.trim()
 const OUTPUT = resolve(process.env.ZBROWSER_PROXY_E2E_OUTPUT || 'test-results/proxy-e2e.json')
+const CHROMIUM_BROWSER = process.env.ZBROWSER_CHROMIUM_TEST_BROWSER?.trim()
 
 function proxyProtocol(defaultProtocol) {
   return defaultProtocol === 'socks5' ? 'socks' : defaultProtocol
@@ -131,6 +134,63 @@ async function fetchJson(url, dispatcher) {
   return response.body.json()
 }
 
+async function runChromiumThroughProxy(localProxyUrl) {
+  if (!CHROMIUM_BROWSER) throw new Error('ZBROWSER_CHROMIUM_TEST_BROWSER is required for Chromium proxy validation')
+  const userDataDir = await mkdtemp(join(tmpdir(), 'zbrowser-proxy-chromium-'))
+  try {
+    const args = [
+      '--headless=new',
+      '--disable-gpu',
+      '--no-first-run',
+      '--no-default-browser-check',
+      '--disable-background-networking',
+      '--disable-component-update',
+      '--disable-sync',
+      '--metrics-recording-only',
+      '--mute-audio',
+      '--proxy-bypass-list=<-loopback>',
+      '--proxy-server=' + localProxyUrl,
+      '--user-data-dir=' + userDataDir,
+      '--dump-dom',
+      'https://example.com/'
+    ]
+    const child = spawn(CHROMIUM_BROWSER, args, {
+      stdio: ['ignore', 'pipe', 'pipe'],
+      windowsHide: true
+    })
+    let stdout = ''
+    let stderr = ''
+    child.stdout.setEncoding('utf8')
+    child.stderr.setEncoding('utf8')
+    child.stdout.on('data', (chunk) => { stdout += chunk })
+    child.stderr.on('data', (chunk) => { stderr += chunk })
+    const exitCode = await new Promise((resolveExit, rejectExit) => {
+      const timer = setTimeout(() => {
+        child.kill()
+        rejectExit(new Error('Chromium external page probe timed out'))
+      }, 30_000)
+      child.once('error', (error) => {
+        clearTimeout(timer)
+        rejectExit(error)
+      })
+      child.once('exit', (code, signal) => {
+        clearTimeout(timer)
+        if (signal) rejectExit(new Error('Chromium external page probe exited by signal ' + signal))
+        else resolveExit(code ?? 1)
+      })
+    })
+    if (exitCode !== 0) {
+      throw new Error('Chromium external page probe exited with code ' + exitCode + ': ' + redact(stderr).slice(-600))
+    }
+    if (!/Example Domain/i.test(stdout)) {
+      throw new Error('Chromium external page probe did not load expected content: ' + redact((stderr + '\n' + stdout)).slice(-600))
+    }
+    return true
+  } finally {
+    await rm(userDataDir, { recursive: true, force: true }).catch(() => undefined)
+  }
+}
+
 async function withBridge(upstream, fn) {
   let bridgeFailure = ''
   const server = new proxyChain.Server({
@@ -146,7 +206,7 @@ async function withBridge(upstream, fn) {
   const dispatcher = new ProxyAgent(local)
   try {
     try {
-      return await fn(dispatcher)
+      return await fn(dispatcher, local)
     } catch (error) {
       const base = error instanceof Error ? error.message : String(error)
       throw new Error(bridgeFailure ? `${base}; upstream=${bridgeFailure}` : base)
@@ -189,6 +249,24 @@ async function probe(name, upstream, directIp) {
       latencyMs: Date.now() - startedAt
     }
   })
+}
+
+async function verifyChromiumWebReachability(candidates) {
+  let lastError
+  for (const upstream of candidates) {
+    try {
+      await withBridge(upstream, async (_dispatcher, localProxyUrl) => {
+        await runChromiumThroughProxy(localProxyUrl)
+      })
+      return { ok: true }
+    } catch (error) {
+      lastError = error
+    }
+  }
+  return {
+    ok: false,
+    error: redact(lastError instanceof Error ? lastError.message : lastError)
+  }
 }
 
 async function verifyNoDirectFallback() {
@@ -239,13 +317,21 @@ async function main() {
   const noDirectFallback = await verifyNoDirectFallback()
   console.log(`${noDirectFallback ? 'PASS' : 'FAIL'} no-direct-fallback`)
 
+  const chromiumWebReachability = CHROMIUM_BROWSER
+    ? await verifyChromiumWebReachability(normalizedSocks5Candidates)
+    : { ok: false, error: 'ZBROWSER_CHROMIUM_TEST_BROWSER is not configured' }
+  console.log(`${chromiumWebReachability.ok ? 'PASS' : 'FAIL'} chromium-web-reachability`)
+
   const report = {
     schemaVersion: 1,
     checkedAt: new Date().toISOString(),
     directIp,
     results,
     noDirectFallback,
-    passed: results.find((item) => item.name === 'socks5')?.ok === true && noDirectFallback
+    chromiumWebReachability,
+    passed: results.find((item) => item.name === 'socks5')?.ok === true
+      && noDirectFallback
+      && chromiumWebReachability.ok === true
   }
 
   await mkdir(dirname(OUTPUT), { recursive: true })

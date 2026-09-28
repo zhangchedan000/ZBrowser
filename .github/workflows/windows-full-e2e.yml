@@ -112,6 +112,9 @@ jobs:
           if (-not $socks -or -not $socks.ok) {
             throw "SOCKS5 real-proxy smoke failed after retries"
           }
+          if (-not $report.chromiumWebReachability -or -not $report.chromiumWebReachability.ok) {
+            throw "Chromium real-page proxy validation failed after retries"
+          }
           if ($http -and -not $http.ok) {
             Write-Warning "HTTP real-proxy smoke failed after retries; continuing because SOCKS5 and fail-closed behavior passed."
           }
