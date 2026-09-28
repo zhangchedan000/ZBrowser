@@ -332,6 +332,16 @@ export interface ApplyHardwareProfileOptions {
   refreshSeededGpu?: boolean
 }
 
+export function convertHardwareProfileToManual(config: FingerprintConfig): FingerprintConfig {
+  return {
+    ...config,
+    hardwareProfileId: 'legacy-custom',
+    gpuBucket: undefined,
+    renderIdentityVersion: undefined,
+    hardwarePersonaId: undefined
+  }
+}
+
 export function applyHardwareProfile(
   config: FingerprintConfig,
   id: HardwareProfileId,
