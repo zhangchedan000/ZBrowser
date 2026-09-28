@@ -128,6 +128,7 @@ export function KernelManagerModal({ open, engine, onClose, onEngineChanged, has
       percent: 0,
       message: '正在准备下载…'
     })
+    messageApi.info(`开始下载 Fingerprint Chromium ${version}；安装在当前窗口完成，不会另外打开网页。`)
     try {
       const status = await window.browserApi.engine.install(version)
       onEngineChanged(status)
@@ -256,7 +257,7 @@ export function KernelManagerModal({ open, engine, onClose, onEngineChanged, has
           type="warning"
           showIcon
           title="请先关闭全部浏览器环境"
-          description="安装完成后会立即切换全局内核。当前仍有环境运行，因此安装按钮暂不可用；关闭全部环境后无需重启应用，直接回来安装即可。"
+          description="安装完成后会立即切换全局内核。当前仍有环境运行；点击安装会明确提示先关闭环境，关闭后无需重启应用即可继续。"
         />
       )}
       {operationError && (
@@ -280,7 +281,7 @@ export function KernelManagerModal({ open, engine, onClose, onEngineChanged, has
           action={
             upgradeRelease.installed
               ? <Button onClick={() => void activate(upgradeVersion)}>切换到新版</Button>
-              : <Button type="primary" loading={installing === upgradeVersion} disabled={Boolean(installing) || hasRunningProfiles} onClick={() => void install(upgradeVersion)}>安装新版</Button>
+              : <Button type="primary" loading={installing === upgradeVersion} disabled={Boolean(installing)} onClick={() => void install(upgradeVersion)}>安装新版</Button>
           }
         />
       )}
@@ -334,7 +335,7 @@ export function KernelManagerModal({ open, engine, onClose, onEngineChanged, has
                     key="install"
                     type="primary"
                     icon={<CloudDownloadOutlined />}
-                    disabled={Boolean(installing) || hasRunningProfiles}
+                    disabled={Boolean(installing)}
                     onClick={() => void install(release.version)}
                   >
                     下载并安装
