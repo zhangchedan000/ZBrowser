@@ -1,0 +1,23 @@
+{
+  "schemaVersion": 1,
+  "windows": [
+    {
+      "id": "windows-11-24h2",
+      "label": "Windows 11 24H2",
+      "build": "26100",
+      "platformVersion": "10.0.26100"
+    },
+    {
+      "id": "windows-11-23h2",
+      "label": "Windows 11 23H2",
+      "build": "22631",
+      "platformVersion": "10.0.22631"
+    },
+    {
+      "id": "windows-10-22h2",
+      "label": "Windows 10 22H2",
+      "build": "19045",
+      "platformVersion": "10.0.19045"
+    }
+  ]
+}
