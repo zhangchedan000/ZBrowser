@@ -33,6 +33,7 @@ import {
 } from '../../shared/fingerprint-persona-engine'
 import {
   applyHardwareProfile,
+  convertHardwareProfileToManual,
   effectiveGpuIdentity,
   HARDWARE_PROFILES,
   hardwareProfile,
@@ -87,6 +88,8 @@ function editorValues(profile: BrowserProfileView | undefined, index: number): E
     }
   }
 }
+
+const MANUAL_HARDWARE_FIELDS = new Set(['platform', 'platformVersion', 'hardwareConcurrency', 'screenWidth', 'screenHeight'])
 
 const riskLabels: Record<NonNullable<ProxyTestResult['networkRisk']>, string> = {
   tor: 'Tor 出口',
@@ -770,7 +773,7 @@ export function ProfileEditor({ open, profile, suggestedIndex, saving, extension
       <Form.Item
         name={['fingerprint', 'hardwareProfileId']}
         label="硬件模板"
-        extra="AI 可推荐完整硬件 Persona；也可切换“手动自定义”后修改系统、CPU 和屏幕参数。"
+        extra="AI 可推荐完整硬件 Persona；系统、CPU 和屏幕参数也可直接修改，修改任意一项会自动切换为手动自定义并保留当前值。"
       >
         <Select
           options={[
@@ -937,13 +940,12 @@ export function ProfileEditor({ open, profile, suggestedIndex, saving, extension
       <Row gutter={12}>
         <Col span={12}>
           <Form.Item name={['fingerprint', 'platform']} label="模拟系统">
-            <Select disabled={hardwareProfileId !== 'legacy-custom'} options={[{ value: 'windows', label: 'Windows' }, { value: 'macos', label: 'macOS' }]} />
+            <Select options={[{ value: 'windows', label: 'Windows' }, { value: 'macos', label: 'macOS' }]} />
           </Form.Item>
         </Col>
         <Col span={12}>
           <Form.Item name={['fingerprint', 'platformVersion']} label="系统版本">
             <Input
-              disabled={hardwareProfileId !== 'legacy-custom'}
               placeholder="10.0.0"
               addonAfter={selectedHardware?.hostMatched ? '启动时读取本机' : undefined}
             />
@@ -1003,18 +1005,18 @@ export function ProfileEditor({ open, profile, suggestedIndex, saving, extension
       <Row gutter={12}>
         <Col span={12}>
           <Form.Item name={['fingerprint', 'hardwareConcurrency']} label="CPU 核心数">
-            <Select disabled={hardwareProfileId !== 'legacy-custom'} options={[2, 4, 6, 8, 10, 12, 14, 16, 20, 24].map((value) => ({ value, label: `${value} 核` }))} />
+            <Select options={[2, 4, 6, 8, 10, 12, 14, 16, 20, 24].map((value) => ({ value, label: `${value} 核` }))} />
           </Form.Item>
         </Col>
         <Col span={12}>
           <Form.Item label="屏幕分辨率">
             <Space.Compact block>
               <Form.Item name={['fingerprint', 'screenWidth']} noStyle>
-                <InputNumber disabled={hardwareProfileId !== 'legacy-custom'} min={800} max={7680} precision={0} className="resolution-input" />
+                <InputNumber min={800} max={7680} precision={0} className="resolution-input" />
               </Form.Item>
               <Input className="resolution-times" value="×" disabled />
               <Form.Item name={['fingerprint', 'screenHeight']} noStyle>
-                <InputNumber disabled={hardwareProfileId !== 'legacy-custom'} min={600} max={4320} precision={0} className="resolution-input" />
+                <InputNumber min={600} max={4320} precision={0} className="resolution-input" />
               </Form.Item>
             </Space.Compact>
           </Form.Item>
@@ -1072,9 +1074,17 @@ export function ProfileEditor({ open, profile, suggestedIndex, saving, extension
           if ('proxy' in changed) setProxyResult(null)
           const changedFingerprint = changed.fingerprint
           if (changedFingerprint && typeof changedFingerprint === 'object') {
+            const changedFields = Object.keys(changedFingerprint)
+            const manualHardwareEdit = changedFields.some((field) => MANUAL_HARDWARE_FIELDS.has(field))
+            if (manualHardwareEdit) {
+              const currentFingerprint = form.getFieldValue('fingerprint')
+              if (currentFingerprint && currentFingerprint.hardwareProfileId !== 'legacy-custom') {
+                form.setFieldValue('fingerprint', convertHardwareProfileToManual(currentFingerprint))
+              }
+            }
             setIdentityConfigProvenance((currentProvenance) => markFingerprintConfigSources(
               currentProvenance,
-              Object.keys(changedFingerprint),
+              manualHardwareEdit ? HARDWARE_IDENTITY_FIELDS : changedFields,
               'user'
             ))
           }
