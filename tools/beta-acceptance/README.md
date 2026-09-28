@@ -28,7 +28,7 @@ npm run beta:verify-kit -- release/beta-acceptance-kit
 
 当前候选版本由 `build/beta-release.json` 定义，并必须与 `package.json` 保持一致。
 
-当前项目目标是**个人自用**，`0.2.0-beta.6` 使用 `internal-unsigned`。当前阶段以 Windows Build / Full E2E / Packaged App E2E、macOS Build Smoke 和 Beta Acceptance Kit 完整性为准，不要求代码签名、notarization、signed candidate gate、recovery drill 或 staged rollout。
+当前项目目标是**个人自用**，`0.2.0-beta.7` 使用 `internal-unsigned`。当前阶段以 Windows Build / Full E2E / Packaged App E2E、macOS Build Smoke 和 Beta Acceptance Kit 完整性为准，不要求代码签名、notarization、signed candidate gate、recovery drill 或 staged rollout。
 
 下面的 signed candidate / rollout evidence 流程继续保留，只有以后需要公开分发时才启用；届时必须把 `build/beta-release.json` 切回 `distributionMode: signed`。
 

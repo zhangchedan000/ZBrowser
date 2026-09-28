@@ -1,3 +1,19 @@
+# ZBrowser 0.2.0-beta.7
+
+## 重点修复
+
+- 代理环境启动后，Chromium 自己会通过真实页面导航验证外网连通性；Node 代理检测通过但 Chromium 实际没网时，不再进入“运行中”。
+- Chromium 真实导航出现 ERR_PROXY_CONNECTION_FAILED、超时或外部页面不可达时，环境会直接标记启动失败并停止浏览器。
+- Chromium 联网探测使用后台临时页面，探测结束立即关闭，不污染用户环境标签页。
+
+## 验证
+
+- Typecheck 通过。
+- BrowserLauncher / BrowserControlSession 相关回归测试 22/22 通过。
+- 完整测试 353 passed / 1 skipped，Kernel Lock 通过。
+
+---
+
 # ZBrowser 0.2.0-beta.6
 
 ## 重点修复
