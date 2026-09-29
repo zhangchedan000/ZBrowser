@@ -47,7 +47,7 @@
     "proxy-chain": "^2.6.0",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
-    "undici": "^7.29.0",
+    "undici": "^7.29.1",
     "zod": "^4.4.3"
   },
   "devDependencies": {
@@ -67,7 +67,7 @@
   "overrides": {
     "nanoid": "3.3.18",
     "@xmldom/xmldom": "0.8.15",
-    "fast-uri": "3.1.6",
+    "fast-uri": "3.1.7",
     "js-yaml": "4.3.2"
   },
   "build": {
