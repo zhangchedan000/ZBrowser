@@ -76,6 +76,7 @@ import { profileHasSelfHealingAttention, selfHealingAttentionAction } from './se
 import { profileAttentionItem, profileAttentionQueue } from '../../shared/profile-attention'
 import { selfHealingResultView } from './self-healing-result-view'
 import { selfHealingStateNotices } from './self-healing-notifications'
+import { userFacingErrorText } from './user-facing-error'
 
 const { Sider, Content } = Layout
 
@@ -223,7 +224,7 @@ export default function App() {
         if (!selfHealingNoticeBaseline.current) selfHealingNoticeBaseline.current = selfHealing
         setSelfHealingByProfile(selfHealing)
       })
-      .catch((error) => messageApi.error(humanError(error)))
+      .catch((error) => messageApi.error(userFacingErrorText(error)))
       .finally(() => setLoading(false))
 
     void refreshStorageOverview()
@@ -399,7 +400,7 @@ export default function App() {
     try {
       setStorage(await window.browserApi.profiles.storageOverview())
     } catch (error) {
-      messageApi.error(humanError(error))
+      messageApi.error(userFacingErrorText(error))
     } finally {
       setStorageLoading(false)
     }
@@ -411,7 +412,7 @@ export default function App() {
       const path = await window.browserApi.diagnostics.exportBundle()
       if (path) messageApi.success('诊断包已安全导出')
     } catch (error) {
-      messageApi.error(humanError(error))
+      messageApi.error(userFacingErrorText(error))
     } finally {
       setExportingDiagnostics(false)
     }
@@ -421,7 +422,7 @@ export default function App() {
     try {
       upsert(await window.browserApi.profiles.setFavorite(profile.id, !profile.favorite))
     } catch (error) {
-      messageApi.error(humanError(error))
+      messageApi.error(userFacingErrorText(error))
     }
   }
 
@@ -430,7 +431,7 @@ export default function App() {
     try {
       await action()
     } catch (error) {
-      messageApi.error(humanError(error))
+      messageApi.error(userFacingErrorText(error))
     } finally {
       setBusyIds((current) => {
         const next = new Set(current)
@@ -507,7 +508,7 @@ export default function App() {
       setEditorOpen(false)
       setEditing(undefined)
     } catch (error) {
-      messageApi.error(humanError(error))
+      messageApi.error(userFacingErrorText(error))
       setSaving(false)
       return
     }
@@ -554,7 +555,7 @@ export default function App() {
       upsert(imported)
       messageApi.success('环境配置已导入；出于安全考虑，代理密码需要重新填写')
     } catch (error) {
-      messageApi.error(humanError(error))
+      messageApi.error(userFacingErrorText(error))
     } finally {
       setImporting(false)
     }
@@ -568,7 +569,7 @@ export default function App() {
       upsert(imported.profile)
       messageApi.success(`完整数据已导入为新环境，共 ${imported.result.fileCount} 个文件；请重新填写代理密码`)
     } catch (error) {
-      messageApi.error(humanError(error), 6)
+      messageApi.error(userFacingErrorText(error), 6)
     } finally {
       setImporting(false)
     }
@@ -603,7 +604,7 @@ export default function App() {
       }
       setMigrationMode(null)
     } catch (error) {
-      messageApi.error(humanError(error), 8)
+      messageApi.error(userFacingErrorText(error), 8)
     } finally {
       setMigrationBusy(false)
     }
@@ -617,7 +618,7 @@ export default function App() {
       for (const profile of imported) upsert(profile)
       messageApi.success(`已批量创建 ${imported.length} 个独立环境`)
     } catch (error) {
-      messageApi.error(humanError(error), 6)
+      messageApi.error(userFacingErrorText(error), 6)
     } finally {
       setImporting(false)
     }
@@ -638,7 +639,7 @@ export default function App() {
       const path = await window.browserApi.profiles.exportBatchTemplate()
       if (path) messageApi.success('CSV 批量导入模板已保存')
     } catch (error) {
-      messageApi.error(humanError(error))
+      messageApi.error(userFacingErrorText(error))
     }
   }
 
@@ -689,7 +690,7 @@ export default function App() {
         messageApi.success(`批量升级完成：成功 ${succeeded}，跳过 ${skipped}`)
       }
     } catch (error) {
-      messageApi.error(humanError(error))
+      messageApi.error(userFacingErrorText(error))
     } finally {
       setBusyIds((current) => new Set([...current].filter((id) => !candidateIds.has(id))))
       setBatchBusy(false)
@@ -792,7 +793,7 @@ export default function App() {
     try {
       setSelfHealingByProfile(await window.browserApi.profiles.identitySelfHealingAll())
     } catch (error) {
-      messageApi.error(humanError(error))
+      messageApi.error(userFacingErrorText(error))
     } finally {
       setSelfHealingLoading(false)
     }
@@ -832,7 +833,7 @@ export default function App() {
         messageApi.success(`已完成 ${result.successes.length} 个环境的 Self-Healing 检查`)
       }
     } catch (error) {
-      messageApi.error(humanError(error))
+      messageApi.error(userFacingErrorText(error))
     } finally {
       setSelfHealingBatchLoading(false)
     }
@@ -895,7 +896,7 @@ export default function App() {
       else if (result.status === 'rolled_back') messageApi.warning(result.message)
       else messageApi.info(result.message)
     } catch (error) {
-      messageApi.error(humanError(error))
+      messageApi.error(userFacingErrorText(error))
       throw error
     } finally {
       setSelfHealingExecutingProfileId(undefined)
@@ -933,7 +934,7 @@ export default function App() {
       else if (result.status === 'rolled_back') messageApi.warning(result.message)
       else messageApi.info(result.message)
     } catch (error) {
-      messageApi.error(humanError(error))
+      messageApi.error(userFacingErrorText(error))
     } finally {
       setRepairingDiagnostic(false)
     }
@@ -957,7 +958,7 @@ export default function App() {
         messageApi.warning(result.message)
       }
     } catch (error) {
-      messageApi.error(humanError(error))
+      messageApi.error(userFacingErrorText(error))
     } finally {
       setRepairingDiagnostic(false)
     }
@@ -970,7 +971,7 @@ export default function App() {
     try {
       setCrashRecords(await window.browserApi.profiles.crashHistory(profile.id))
     } catch (error) {
-      messageApi.error(humanError(error))
+      messageApi.error(userFacingErrorText(error))
     } finally {
       setCrashHistoryLoading(false)
     }
@@ -1010,7 +1011,7 @@ export default function App() {
       setSelectedIds([])
       messageApi.success(`已更新 ${changed.length} 个环境`)
     } catch (error) {
-      messageApi.error(humanError(error))
+      messageApi.error(userFacingErrorText(error))
     } finally {
       setBatchBusy(false)
     }
@@ -1033,7 +1034,7 @@ export default function App() {
           setSelectedIds([])
           messageApi.success(`已将 ${ids.length} 个环境移入回收站`)
         } catch (error) {
-          messageApi.error(humanError(error))
+          messageApi.error(userFacingErrorText(error))
           throw error
         } finally {
           setBatchBusy(false)
@@ -1673,7 +1674,7 @@ export default function App() {
         onClose={() => setKernelManagerOpen(false)}
         onEngineChanged={(nextEngine) => {
           setEngine(nextEngine)
-          void window.browserApi.engine.installed().then(setKernels).catch((error) => messageApi.error(humanError(error)))
+          void window.browserApi.engine.installed().then(setKernels).catch((error) => messageApi.error(userFacingErrorText(error)))
         }}
       />
       <ProfileDataModal
