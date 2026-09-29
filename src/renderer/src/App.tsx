@@ -161,6 +161,7 @@ export default function App() {
   const [batchKernelTestFirst, setBatchKernelTestFirst] = useState(true)
   const [dataProfile, setDataProfile] = useState<BrowserProfileView | undefined>()
   const [environmentCheckProfile, setEnvironmentCheckProfile] = useState<BrowserProfileView | undefined>()
+  const [environmentCheckRuntimeReport, setEnvironmentCheckRuntimeReport] = useState<FingerprintRuntimeDiagnosticReport>()
   const [recycleBinOpen, setRecycleBinOpen] = useState(false)
   const [teamManagementOpen, setTeamManagementOpen] = useState(false)
   const [extensions, setExtensions] = useState<BrowserExtension[]>([])
@@ -355,6 +356,11 @@ export default function App() {
     })
   }
 
+  function openEnvironmentReadiness(profile: BrowserProfileView, runtimeReport?: FingerprintRuntimeDiagnosticReport): void {
+    setEnvironmentCheckRuntimeReport(runtimeReport)
+    setEnvironmentCheckProfile(profile)
+  }
+
   function canLaunchProfile(profile: BrowserProfileView): boolean {
     if (!profile.kernelVersion) return Boolean(engine?.executable)
     if (!profile.kernelFamily) {
@@ -481,7 +487,7 @@ export default function App() {
       const next = await launchWithGeoConflictConfirmation(profile, { startUrls: urls })
       if (next) {
         upsert(next)
-        setEnvironmentCheckProfile(next)
+        openEnvironmentReadiness(next)
         messageApi.success('已用当前 Profile 打开环境检测页面')
       }
     })
@@ -525,18 +531,22 @@ export default function App() {
             ? `${wasEditing ? '环境已更新' : '环境已创建'}并通过身份验证 · Baseline v${baselineVersion}`
             : `${wasEditing ? '环境已更新' : '环境已创建'}并通过身份验证`
         )
-        if (!wasEditing) setEnvironmentCheckProfile(saved)
-      } else {
+        if (!wasEditing) openEnvironmentReadiness(saved, report)
+      } else if (wasEditing) {
         setDiagnosticProfile(saved)
         setDiagnosticReport(report)
-        messageApi.warning(
-          `${wasEditing ? '环境已更新' : '环境已创建'}，但 Runtime Identity Verify 未通过，已打开诊断`
-        )
+        messageApi.warning('环境已更新，但实际指纹检查未通过，已打开详细诊断')
+      } else {
+        openEnvironmentReadiness(saved, report)
+        messageApi.warning('环境已创建，但存在阻止项，已打开统一环境检查报告')
       }
     } catch (error) {
-      messageApi.warning(
-        `${wasEditing ? '环境已更新' : '环境已创建'}，但 Runtime Identity Verify 执行失败：${humanError(error)}`
-      )
+      if (!wasEditing) {
+        openEnvironmentReadiness(saved)
+        messageApi.warning(`环境已创建，但实际指纹检查未完成，已打开统一环境检查报告：${humanError(error)}`)
+      } else {
+        messageApi.warning(`环境已更新，但 Runtime Identity Verify 执行失败：${humanError(error)}`)
+      }
     } finally {
       setSaving(false)
     }
@@ -1113,7 +1123,7 @@ export default function App() {
         if (key === 'diagnose') void runDiagnostics(profile)
         if (key === 'crashes') void openCrashHistory(profile)
         if (key === 'proxy-check') void runProxyChecks([profile.id])
-        if (key === 'environment-check') setEnvironmentCheckProfile(profile)
+        if (key === 'environment-check') openEnvironmentReadiness(profile)
         if (key === 'duplicate') {
           void withBusy(profile.id, async () => {
             const copy = await window.browserApi.profiles.duplicate(profile.id)
@@ -1335,7 +1345,7 @@ export default function App() {
               <Button
                 type="text"
                 icon={<SafetyCertificateOutlined />}
-                onClick={() => setEnvironmentCheckProfile(profile)}
+                onClick={() => openEnvironmentReadiness(profile)}
               />
             </Tooltip>
             <Dropdown menu={profileMenu(profile)} trigger={['click']}>
@@ -1687,8 +1697,22 @@ export default function App() {
         profile={environmentCheckProfile}
         engine={engine}
         busy={Boolean(environmentCheckProfile && busyIds.has(environmentCheckProfile.id))}
-        onClose={() => setEnvironmentCheckProfile(undefined)}
+        initialRuntimeReport={environmentCheckRuntimeReport}
+        onClose={() => {
+          setEnvironmentCheckProfile(undefined)
+          setEnvironmentCheckRuntimeReport(undefined)
+        }}
         onLaunchChecks={launchEnvironmentChecks}
+        onOpenDiagnostics={(profile, report) => {
+          setEnvironmentCheckProfile(undefined)
+          setEnvironmentCheckRuntimeReport(undefined)
+          if (report) {
+            setDiagnosticProfile(profile)
+            setDiagnosticReport(report)
+          } else {
+            void runDiagnostics(profile)
+          }
+        }}
       />
       <RecycleBinModal
         open={recycleBinOpen}
