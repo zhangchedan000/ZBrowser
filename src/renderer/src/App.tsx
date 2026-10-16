@@ -16,7 +16,6 @@ import {
   PoweroffOutlined,
   RestOutlined,
   ReloadOutlined,
-  RobotOutlined,
   SafetyCertificateOutlined,
   SearchOutlined,
   SettingOutlined,
@@ -38,7 +37,6 @@ import {
   Layout,
   message,
   Modal,
-  notification,
   Select,
   Space,
   Spin,
@@ -49,14 +47,13 @@ import {
   type MenuProps,
   type TableColumnsType
 } from 'antd'
-import { useEffect, useMemo, useRef, useState } from 'react'
-import type { AppRecoveryStatus, AppUpdateStatus, BrowserCrashRecord, BrowserExtension, BrowserProfileView, EngineStatus, FingerprintRuntimeDiagnosticReport, IdentityConfigSection, IdentityProfileHealthSummary, IdentitySelfHealingSummary, KernelRelease, ProfileDraft, ProfileLaunchOptions, ProfileStoreHealth, StorageOverview } from '../../shared/types'
+import { useEffect, useMemo, useState } from 'react'
+import type { AppRecoveryStatus, AppUpdateStatus, BrowserCrashRecord, BrowserExtension, BrowserProfileView, EngineStatus, KernelRelease, ProfileDraft, ProfileLaunchOptions, ProfileStoreHealth, StorageOverview } from '../../shared/types'
 import { ProfileEditor } from './ProfileEditor'
 import { KernelManagerModal } from './KernelManagerModal'
 import { ProfileDataModal } from './ProfileDataModal'
 import { RecycleBinModal } from './RecycleBinModal'
 import { ExtensionManagerModal } from './ExtensionManagerModal'
-import { LaunchDiagnosticsModal } from './LaunchDiagnosticsModal'
 import { CrashHistoryModal } from './CrashHistoryModal'
 import { BatchResultModal, type BatchOperationResult } from './BatchResultModal'
 import { UpdateModal } from './UpdateModal'
@@ -65,17 +62,11 @@ import { TeamManagementModal } from './TeamManagementModal'
 import { EnvironmentCheckModal } from './EnvironmentCheckModal'
 import { AutomationApiModal } from './AutomationApiModal'
 import { ProxyPoolModal } from './ProxyPoolModal'
-import { SelfHealingControlCenterModal } from './SelfHealingControlCenterModal'
 import { effectiveNetworkIdentity, geoConflictConfirmationMessage } from '../../shared/network-identity'
 import { kernelFamilyForRelease, kernelMajorVersion, kernelReleaseMatchesPin, latestSameMajorCompatibleKernelVersion, newerCompatibleKernelVersion } from '../../shared/kernel-version'
 import { orderBatchLaunchProfiles, waitForBatchLaunchGap } from './batch-launch-order'
 import { profileTableSorters } from './profile-table-sort'
 import { executeBatchKernelUpgrades, planBatchKernelUpgrades } from './batch-kernel-upgrade'
-import { runSelfHealingBatchChecks } from './self-healing-batch'
-import { profileHasSelfHealingAttention, selfHealingAttentionAction } from './self-healing-attention'
-import { profileAttentionItem, profileAttentionQueue } from '../../shared/profile-attention'
-import { selfHealingResultView } from './self-healing-result-view'
-import { selfHealingStateNotices } from './self-healing-notifications'
 import { userFacingErrorText } from './user-facing-error'
 
 const { Sider, Content } = Layout
@@ -122,21 +113,6 @@ function formatBytes(bytes: number): string {
   return `${(bytes / 1024 / 1024 / 1024).toFixed(2)} GB`
 }
 
-const identityHealthView = {
-  healthy: { color: 'success', text: 'Healthy' },
-  attention: { color: 'warning', text: 'Attention' },
-  critical: { color: 'error', text: 'Critical' },
-  unknown: { color: 'default', text: '未检测' }
-} as const
-
-function identityHealthTrendText(summary?: IdentityProfileHealthSummary): string | undefined {
-  const direction = summary?.trend?.direction
-  if (direction === 'improving') return '↗ 改善'
-  if (direction === 'degrading') return '↘ 恶化'
-  if (direction === 'stable') return '→ 稳定'
-  return undefined
-}
-
 export default function App() {
   const [profiles, setProfiles] = useState<BrowserProfileView[]>([])
   const [engine, setEngine] = useState<EngineStatus | null>(null)
@@ -161,7 +137,6 @@ export default function App() {
   const [batchKernelTestFirst, setBatchKernelTestFirst] = useState(true)
   const [dataProfile, setDataProfile] = useState<BrowserProfileView | undefined>()
   const [environmentCheckProfile, setEnvironmentCheckProfile] = useState<BrowserProfileView | undefined>()
-  const [environmentCheckRuntimeReport, setEnvironmentCheckRuntimeReport] = useState<FingerprintRuntimeDiagnosticReport>()
   const [recycleBinOpen, setRecycleBinOpen] = useState(false)
   const [teamManagementOpen, setTeamManagementOpen] = useState(false)
   const [extensions, setExtensions] = useState<BrowserExtension[]>([])
@@ -170,15 +145,6 @@ export default function App() {
   const [proxyPoolOpen, setProxyPoolOpen] = useState(false)
   const [profileStorageHealth, setProfileStorageHealth] = useState<ProfileStoreHealth | null>(null)
   const [appRecoveryStatus, setAppRecoveryStatus] = useState<AppRecoveryStatus | null>(null)
-  const [diagnosticProfile, setDiagnosticProfile] = useState<BrowserProfileView>()
-  const [diagnosticReport, setDiagnosticReport] = useState<FingerprintRuntimeDiagnosticReport>()
-  const [identityHealthByProfile, setIdentityHealthByProfile] = useState<Record<string, IdentityProfileHealthSummary>>({})
-  const [selfHealingByProfile, setSelfHealingByProfile] = useState<Record<string, IdentitySelfHealingSummary>>({})
-  const [selfHealingCenterOpen, setSelfHealingCenterOpen] = useState(false)
-  const [selfHealingLoading, setSelfHealingLoading] = useState(false)
-  const [selfHealingBatchLoading, setSelfHealingBatchLoading] = useState(false)
-  const [selfHealingExecutingProfileId, setSelfHealingExecutingProfileId] = useState<string>()
-  const [repairingDiagnostic, setRepairingDiagnostic] = useState(false)
   const [crashProfile, setCrashProfile] = useState<BrowserProfileView>()
   const [crashRecords, setCrashRecords] = useState<BrowserCrashRecord[]>([])
   const [crashHistoryLoading, setCrashHistoryLoading] = useState(false)
@@ -194,9 +160,6 @@ export default function App() {
   const [migrationBusy, setMigrationBusy] = useState(false)
   const [exportingDiagnostics, setExportingDiagnostics] = useState(false)
   const [messageApi, contextHolder] = message.useMessage()
-  const [notificationApi, notificationContextHolder] = notification.useNotification()
-  const selfHealingNoticeBaseline = useRef<Record<string, IdentitySelfHealingSummary> | null>(null)
-  const profileLabels = useRef<Record<string, string>>({})
 
   useEffect(() => {
     void Promise.all([
@@ -207,13 +170,10 @@ export default function App() {
       window.browserApi.engine.installed(),
       window.browserApi.engine.bundled(),
       window.browserApi.diagnostics.sessionHealth(),
-      window.browserApi.updates.status(),
-      window.browserApi.profiles.identityHealthAll(),
-      window.browserApi.profiles.identitySelfHealingAll()
+      window.browserApi.updates.status()
     ])
-      .then(([items, engineStatus, extensionItems, storageHealth, installedKernels, bundled, recoveryStatus, applicationUpdate, identityHealth, selfHealing]) => {
+      .then(([items, engineStatus, extensionItems, storageHealth, installedKernels, bundled, recoveryStatus, applicationUpdate]) => {
         setProfiles(items)
-        profileLabels.current = Object.fromEntries(items.map((profile) => [profile.id, `#${profile.serialNumber} · ${profile.name}`]))
         setEngine(engineStatus)
         setExtensions(extensionItems)
         setProfileStorageHealth(storageHealth)
@@ -221,9 +181,6 @@ export default function App() {
         setBundledEngine(bundled)
         setAppRecoveryStatus(recoveryStatus)
         setUpdateStatus(applicationUpdate)
-        setIdentityHealthByProfile(identityHealth)
-        if (!selfHealingNoticeBaseline.current) selfHealingNoticeBaseline.current = selfHealing
-        setSelfHealingByProfile(selfHealing)
       })
       .catch((error) => messageApi.error(userFacingErrorText(error)))
       .finally(() => setLoading(false))
@@ -231,25 +188,12 @@ export default function App() {
     void refreshStorageOverview()
 
     const removeProfileListener = window.browserApi.profiles.onChanged((changed) => {
-      profileLabels.current = {
-        ...profileLabels.current,
-        [changed.id]: `#${changed.serialNumber} · ${changed.name}`
-      }
       setProfiles((current) => {
         const exists = current.some((profile) => profile.id === changed.id)
         return exists
           ? current.map((profile) => profile.id === changed.id ? changed : profile)
           : [changed, ...current]
       })
-      void Promise.all([
-        window.browserApi.profiles.identityHealth(changed.id),
-        window.browserApi.profiles.identitySelfHealing(changed.id)
-      ])
-        .then(([health, selfHealing]) => {
-          setIdentityHealthByProfile((current) => ({ ...current, [changed.id]: health }))
-          setSelfHealingByProfile((current) => ({ ...current, [changed.id]: selfHealing }))
-        })
-        .catch(() => undefined)
     })
     const removeUpdateListener = window.browserApi.updates.onChanged(setUpdateStatus)
     return () => {
@@ -258,58 +202,6 @@ export default function App() {
     }
   }, [messageApi])
 
-  useEffect(() => {
-    let active = true
-
-    const refreshAndNotify = async (): Promise<void> => {
-      try {
-        const next = await window.browserApi.profiles.identitySelfHealingAll()
-        if (!active) return
-
-        const previous = selfHealingNoticeBaseline.current
-        if (previous) {
-          for (const notice of selfHealingStateNotices(previous, next)) {
-            const label = profileLabels.current[notice.profileId] ?? notice.profileId.slice(0, 8)
-            notificationApi[notice.level]({
-              message: `${label} · ${notice.title}`,
-              description: notice.detail,
-              duration: notice.level === 'error' ? 8 : 5
-            })
-          }
-        }
-        selfHealingNoticeBaseline.current = next
-        setSelfHealingByProfile(next)
-      } catch {
-        // Background notification polling is best-effort while the app is shutting down.
-      }
-    }
-
-    const timer = window.setInterval(() => void refreshAndNotify(), 15_000)
-    return () => {
-      active = false
-      window.clearInterval(timer)
-    }
-  }, [notificationApi])
-
-  useEffect(() => {
-    if (!selfHealingCenterOpen) return
-    let active = true
-    const refresh = async (): Promise<void> => {
-      try {
-        const states = await window.browserApi.profiles.identitySelfHealingAll()
-        if (active) setSelfHealingByProfile(states)
-      } catch {
-        // The control center keeps its last known state if the main process is shutting down.
-      }
-    }
-    void refresh()
-    const timer = window.setInterval(() => void refresh(), 10_000)
-    return () => {
-      active = false
-      window.clearInterval(timer)
-    }
-  }, [selfHealingCenterOpen])
-
   const visibleProfiles = useMemo(() => {
     const normalized = query.trim().toLowerCase()
     const filtered = profiles.filter((profile) => {
@@ -317,11 +209,7 @@ export default function App() {
       if (favoritesOnly && !profile.favorite) return false
       if (selectedStatus === 'closed' && profile.status !== 'closed') return false
       if (selectedStatus === 'running' && !['starting', 'running', 'stopping'].includes(profile.status)) return false
-      if (selectedStatus === 'attention' && !profileAttentionItem(
-        profile,
-        identityHealthByProfile[profile.id],
-        selfHealingByProfile[profile.id]
-      )) return false
+      if (selectedStatus === 'error' && !['error', 'orphaned'].includes(profile.status)) return false
       if (!normalized) return true
       return [String(profile.serialNumber), profile.name, profile.note, profile.group, ...profile.tags, profile.proxy.host, profile.fingerprint.timezone]
         .some((value) => value.toLowerCase().includes(normalized))
@@ -333,7 +221,7 @@ export default function App() {
       if (sortMode === 'created') return second.createdAt.localeCompare(first.createdAt)
       return second.updatedAt.localeCompare(first.updatedAt)
     })
-  }, [profiles, query, selectedGroup, selectedStatus, sortMode, favoritesOnly, identityHealthByProfile, selfHealingByProfile])
+  }, [profiles, query, selectedGroup, selectedStatus, sortMode, favoritesOnly])
 
   const groupOptions = useMemo(() => {
     const counts = new Map<string, number>()
@@ -356,8 +244,7 @@ export default function App() {
     })
   }
 
-  function openEnvironmentReadiness(profile: BrowserProfileView, runtimeReport?: FingerprintRuntimeDiagnosticReport): void {
-    setEnvironmentCheckRuntimeReport(runtimeReport)
+  function openEnvironmentReadiness(profile: BrowserProfileView): void {
     setEnvironmentCheckProfile(profile)
   }
 
@@ -519,37 +406,8 @@ export default function App() {
       return
     }
 
-    try {
-      const report = await window.browserApi.profiles.diagnoseFingerprintRuntime(saved.id)
-      const health = await window.browserApi.profiles.identityHealth(saved.id)
-      setIdentityHealthByProfile((current) => ({ ...current, [saved!.id]: health }))
-
-      if (report.ready) {
-        const baselineVersion = report.identityBaseline?.version
-        messageApi.success(
-          baselineVersion
-            ? `${wasEditing ? '环境已更新' : '环境已创建'}并通过身份验证 · Baseline v${baselineVersion}`
-            : `${wasEditing ? '环境已更新' : '环境已创建'}并通过身份验证`
-        )
-        if (!wasEditing) openEnvironmentReadiness(saved, report)
-      } else if (wasEditing) {
-        setDiagnosticProfile(saved)
-        setDiagnosticReport(report)
-        messageApi.warning('环境已更新，但实际指纹检查未通过，已打开详细诊断')
-      } else {
-        openEnvironmentReadiness(saved, report)
-        messageApi.warning('环境已创建，但存在阻止项，已打开统一环境检查报告')
-      }
-    } catch (error) {
-      if (!wasEditing) {
-        openEnvironmentReadiness(saved)
-        messageApi.warning(`环境已创建，但实际指纹检查未完成，已打开统一环境检查报告：${humanError(error)}`)
-      } else {
-        messageApi.warning(`环境已更新，但 Runtime Identity Verify 执行失败：${humanError(error)}`)
-      }
-    } finally {
-      setSaving(false)
-    }
+    messageApi.success(wasEditing ? '环境已更新' : '环境已创建')
+    setSaving(false)
   }
 
   function openEditor(profile?: BrowserProfileView): void {
@@ -798,182 +656,6 @@ export default function App() {
     }
   }
 
-  async function refreshSelfHealingStates(): Promise<void> {
-    setSelfHealingLoading(true)
-    try {
-      setSelfHealingByProfile(await window.browserApi.profiles.identitySelfHealingAll())
-    } catch (error) {
-      messageApi.error(userFacingErrorText(error))
-    } finally {
-      setSelfHealingLoading(false)
-    }
-  }
-
-  async function batchCheckSelfHealing(candidates: BrowserProfileView[]): Promise<void> {
-    setSelfHealingBatchLoading(true)
-    try {
-      const result = await runSelfHealingBatchChecks(
-        candidates,
-        (profile) => window.browserApi.profiles.diagnoseFingerprintRuntime(profile.id),
-        (profile) => window.browserApi.profiles.identityHealth(profile.id)
-      )
-      for (const item of result.successes) {
-        if (item.report.identitySelfHealing) {
-          setSelfHealingByProfile((current) => ({
-            ...current,
-            [item.profile.id]: item.report.identitySelfHealing!
-          }))
-        }
-        setIdentityHealthByProfile((current) => ({
-          ...current,
-          [item.profile.id]: item.health
-        }))
-      }
-
-      const [items, selfHealing] = await Promise.all([
-        window.browserApi.profiles.list(),
-        window.browserApi.profiles.identitySelfHealingAll()
-      ])
-      setProfiles(items)
-      setSelfHealingByProfile(selfHealing)
-
-      if (result.failures.length) {
-        messageApi.warning(`批量检查完成：成功 ${result.successes.length} 个，失败 ${result.failures.length} 个`)
-      } else {
-        messageApi.success(`已完成 ${result.successes.length} 个环境的 Self-Healing 检查`)
-      }
-    } catch (error) {
-      messageApi.error(userFacingErrorText(error))
-    } finally {
-      setSelfHealingBatchLoading(false)
-    }
-  }
-
-  function handleSelfHealingAttention(profile: BrowserProfileView): void {
-    const state = selfHealingByProfile[profile.id]
-    const action = selfHealingAttentionAction(profile, state)
-    if (!action) {
-      setSelfHealingCenterOpen(true)
-      return
-    }
-    if (action === 'diagnose') {
-      void runDiagnostics(profile)
-      return
-    }
-    if (action === 'review') {
-      setSelfHealingCenterOpen(true)
-      return
-    }
-
-    const strategy = state?.pendingStrategyKind
-    const strategyLabel = {
-      none: '无需修复',
-      switch_proxy: '切换代理',
-      regenerate_identity: '重生成 Identity',
-      repair_configuration: '修复配置',
-      replace_baseline: '换代 Baseline',
-      manual_review: '人工确认'
-    } as const
-    const dangerous = strategy === 'switch_proxy' || strategy === 'regenerate_identity'
-    Modal.confirm({
-      title: `确认处理“${profile.name}”的 Self-Healing？`,
-      content: (
-        <Space direction="vertical" size={4}>
-          <Typography.Text>策略：{strategy ? strategyLabel[strategy] : 'Self-Healing'}</Typography.Text>
-          <Typography.Text type="secondary">{state?.pendingReason ?? state?.reason}</Typography.Text>
-          <Typography.Text type="secondary">执行后会再次验证 Runtime；可回滚策略验证失败时会自动恢复原状态。</Typography.Text>
-        </Space>
-      ),
-      okText: '确认执行',
-      cancelText: '取消',
-      okButtonProps: { danger: dangerous },
-      onOk: () => executeSelfHealingFromCenter(profile)
-    })
-  }
-
-  async function executeSelfHealingFromCenter(profile: BrowserProfileView): Promise<void> {
-    setSelfHealingExecutingProfileId(profile.id)
-    try {
-      const result = await window.browserApi.profiles.executeIdentityRepairStrategy(profile.id, true)
-      upsert(result.profile)
-      const [health, selfHealing] = await Promise.all([
-        window.browserApi.profiles.identityHealth(profile.id),
-        window.browserApi.profiles.identitySelfHealing(profile.id)
-      ])
-      setIdentityHealthByProfile((current) => ({ ...current, [profile.id]: health }))
-      setSelfHealingByProfile((current) => ({ ...current, [profile.id]: selfHealing }))
-      if (result.status === 'completed') messageApi.success(result.message)
-      else if (result.status === 'rolled_back') messageApi.warning(result.message)
-      else messageApi.info(result.message)
-    } catch (error) {
-      messageApi.error(userFacingErrorText(error))
-      throw error
-    } finally {
-      setSelfHealingExecutingProfileId(undefined)
-    }
-  }
-
-  function updateSelfHealingFromReport(profileId: string, report: FingerprintRuntimeDiagnosticReport): void {
-    if (!report.identitySelfHealing) return
-    setSelfHealingByProfile((current) => ({ ...current, [profileId]: report.identitySelfHealing! }))
-  }
-
-  async function runDiagnostics(profile: BrowserProfileView): Promise<void> {
-    await withBusy(profile.id, async () => {
-      const report = await window.browserApi.profiles.diagnoseFingerprintRuntime(profile.id)
-      setDiagnosticProfile(profile)
-      setDiagnosticReport(report)
-      updateSelfHealingFromReport(profile.id, report)
-      const health = await window.browserApi.profiles.identityHealth(profile.id)
-      setIdentityHealthByProfile((current) => ({ ...current, [profile.id]: health }))
-    })
-  }
-
-  async function executeDiagnosticStrategy(): Promise<void> {
-    if (!diagnosticProfile) return
-    setRepairingDiagnostic(true)
-    try {
-      const result = await window.browserApi.profiles.executeIdentityRepairStrategy(diagnosticProfile.id, true)
-      upsert(result.profile)
-      setDiagnosticProfile(result.profile)
-      setDiagnosticReport(result.report)
-      updateSelfHealingFromReport(result.profile.id, result.report)
-      const health = await window.browserApi.profiles.identityHealth(result.profile.id)
-      setIdentityHealthByProfile((current) => ({ ...current, [result.profile.id]: health }))
-      if (result.status === 'completed') messageApi.success(result.message)
-      else if (result.status === 'rolled_back') messageApi.warning(result.message)
-      else messageApi.info(result.message)
-    } catch (error) {
-      messageApi.error(userFacingErrorText(error))
-    } finally {
-      setRepairingDiagnostic(false)
-    }
-  }
-
-  async function repairDiagnosticIdentity(planId: string, sections: IdentityConfigSection[]): Promise<void> {
-    if (!diagnosticProfile) return
-    setRepairingDiagnostic(true)
-    try {
-      const result = await window.browserApi.profiles.repairFingerprintIdentity(diagnosticProfile.id, true, planId, sections)
-      upsert(result.profile)
-      setDiagnosticProfile(result.profile)
-      const health = await window.browserApi.profiles.identityHealth(result.profile.id)
-      setIdentityHealthByProfile((current) => ({ ...current, [result.profile.id]: health }))
-      updateSelfHealingFromReport(result.profile.id, result.report)
-      if (result.status === 'completed') {
-        setDiagnosticReport(result.report)
-        messageApi.success(result.message)
-      } else {
-        setDiagnosticReport(undefined)
-        messageApi.warning(result.message)
-      }
-    } catch (error) {
-      messageApi.error(userFacingErrorText(error))
-    } finally {
-      setRepairingDiagnostic(false)
-    }
-  }
-
   async function openCrashHistory(profile: BrowserProfileView): Promise<void> {
     setCrashProfile(profile)
     setCrashRecords([])
@@ -1072,16 +754,6 @@ export default function App() {
           disabled: !editable
         }] : []),
         { key: 'data', icon: <DatabaseOutlined />, label: '环境数据' },
-        ...(profileHasSelfHealingAttention(profile, selfHealingByProfile[profile.id]) ? [{
-          key: 'self-healing-attention',
-          icon: <RobotOutlined />,
-          label: selfHealingAttentionAction(profile, selfHealingByProfile[profile.id]) === 'execute'
-            ? '处理 Self-Healing'
-            : selfHealingAttentionAction(profile, selfHealingByProfile[profile.id]) === 'diagnose'
-              ? '检查 Self-Healing'
-              : '查看 Self-Healing 状态'
-        }] : []),
-        { key: 'diagnose', icon: <SafetyCertificateOutlined />, label: '启动诊断' },
         { key: 'crashes', icon: <WarningFilled />, label: '异常与恢复' },
         { key: 'proxy-check', icon: <ApiOutlined />, label: '检测代理' },
         { key: 'environment-check', icon: <GlobalOutlined />, label: '环境检测' },
@@ -1119,8 +791,6 @@ export default function App() {
           })
         }
         if (key === 'data') setDataProfile(profile)
-        if (key === 'self-healing-attention') handleSelfHealingAttention(profile)
-        if (key === 'diagnose') void runDiagnostics(profile)
         if (key === 'crashes') void openCrashHistory(profile)
         if (key === 'proxy-check') void runProxyChecks([profile.id])
         if (key === 'environment-check') openEnvironmentReadiness(profile)
@@ -1205,79 +875,6 @@ export default function App() {
       render: (_value, profile) => statusTag(profile)
     },
     {
-      title: '身份健康',
-      key: 'identityHealth',
-      width: 150,
-      render: (_value, profile) => {
-        const health = identityHealthByProfile[profile.id] ?? { state: 'unknown' as const }
-        const view = identityHealthView[health.state]
-        const trend = identityHealthTrendText(health)
-        const detail = health.checkedAt
-          ? [
-              `Health ${health.score ?? '-'}`,
-              health.risk ? `Risk ${health.risk}` : undefined,
-              health.driftDetected ? `Drift ${health.driftSeverity ?? 'detected'} · ${health.changeCount ?? 0} changes` : 'No drift',
-              trend,
-              new Date(health.checkedAt).toLocaleString()
-            ].filter(Boolean).join(' · ')
-          : '尚未建立身份健康记录；运行环境或执行身份诊断后会生成。'
-        return (
-          <Tooltip title={detail}>
-            <Tag
-              color={view.color}
-              style={{ cursor: 'pointer' }}
-              onClick={() => void runDiagnostics(profile)}
-            >
-              {view.text}{health.score === undefined ? '' : ` · ${health.score}`}{trend ? ` · ${trend}` : ''}
-            </Tag>
-          </Tooltip>
-        )
-      }
-    },
-    {
-      title: 'Self-Healing',
-      key: 'selfHealing',
-      width: 190,
-      render: (_value, profile) => {
-        const state = selfHealingByProfile[profile.id]
-        const mode = state?.mode ?? profile.identityIntent?.selfHealingMode ?? 'assisted'
-        const decision = state?.decision ?? (mode === 'manual' ? 'disabled' : 'suggest')
-        const view = {
-          disabled: { color: 'default', text: '只监控' },
-          suggest: { color: 'blue', text: '待确认' },
-          auto_execute: { color: 'success', text: state?.pending ? '待自动恢复' : 'Auto' },
-          cooldown: { color: 'warning', text: '冷却中' },
-          blocked: { color: 'error', text: '已保护' }
-        }[decision]
-        const detail = state
-          ? [
-              state.reason,
-              state.pendingStrategyKind ? `Pending ${state.pendingStrategyKind}` : undefined,
-              `1h ${state.attemptsInWindow}/3`,
-              state.consecutiveFailures ? `连续失败 ${state.consecutiveFailures}` : undefined,
-              state.cooldownUntil ? `至 ${new Date(state.cooldownUntil).toLocaleString()}` : undefined
-            ].filter(Boolean).join(' · ')
-          : '尚无 Self-Healing 状态记录'
-        const resultView = selfHealingResultView(state)
-        return (
-          <Space direction="vertical" size={2}>
-            <Tooltip title={detail}>
-              <Tag color={view.color} style={{ cursor: 'pointer', marginInlineEnd: 0 }} onClick={() => setSelfHealingCenterOpen(true)}>
-                {mode === 'auto' ? 'Auto' : mode === 'manual' ? 'Manual' : 'Assisted'} · {view.text}
-              </Tag>
-            </Tooltip>
-            {resultView && (
-              <Tooltip title={resultView.detail}>
-                <Tag color={resultView.color} style={{ marginInlineEnd: 0 }}>
-                  最近 · {resultView.text}
-                </Tag>
-              </Tooltip>
-            )}
-          </Space>
-        )
-      }
-    },
-    {
       title: '代理',
       dataIndex: 'proxy',
       width: 220,
@@ -1358,19 +955,9 @@ export default function App() {
   ]
 
   const runningCount = profiles.filter((profile) => profile.status === 'running' || profile.status === 'orphaned').length
-  const attentionCount = profileAttentionQueue(
-    profiles,
-    identityHealthByProfile,
-    selfHealingByProfile
-  ).length
-  const selfHealingAttentionCount = profiles.filter((profile) =>
-    profileHasSelfHealingAttention(profile, selfHealingByProfile[profile.id])
-  ).length
-
   return (
     <Layout className="app-shell">
       {contextHolder}
-      {notificationContextHolder}
       <Sider width={224} className="sidebar">
         <div className="brand">
           <div className="brand-mark">Z</div>
@@ -1396,9 +983,6 @@ export default function App() {
         </button>
         <button className="nav-item sidebar-action" onClick={() => setAutomationApiOpen(true)}>
           <ApiOutlined /><span>自动化 API · MCP</span><b>本机</b>
-        </button>
-        <button className="nav-item sidebar-action" onClick={() => setSelfHealingCenterOpen(true)}>
-          <RobotOutlined /><span>Self-Healing</span><b>{selfHealingAttentionCount || ''}</b>
         </button>
         <button className="nav-item sidebar-action" disabled={exportingDiagnostics} onClick={() => void exportDiagnosticBundle()}>
           <BugOutlined /><span>{exportingDiagnostics ? '正在导出诊断包' : '导出诊断包'}</span>
@@ -1573,7 +1157,7 @@ export default function App() {
                     { value: '__all__', label: '全部状态' },
                     { value: 'closed', label: '已关闭' },
                     { value: 'running', label: '运行中' },
-                    { value: 'attention', label: `需要处理${attentionCount ? ` (${attentionCount})` : ''}` }
+                    { value: 'error', label: '启动异常' }
                   ]}
                 />
                 <Select
@@ -1621,22 +1205,6 @@ export default function App() {
           </section>
         </Content>
       </Layout>
-      <SelfHealingControlCenterModal
-        open={selfHealingCenterOpen}
-        profiles={profiles}
-        states={selfHealingByProfile}
-        loading={selfHealingLoading}
-        batchLoading={selfHealingBatchLoading}
-        executingProfileId={selfHealingExecutingProfileId}
-        onRefresh={refreshSelfHealingStates}
-        onBatchDiagnose={batchCheckSelfHealing}
-        onExecute={executeSelfHealingFromCenter}
-        onDiagnose={async (profile) => {
-          setSelfHealingCenterOpen(false)
-          await runDiagnostics(profile)
-        }}
-        onClose={() => setSelfHealingCenterOpen(false)}
-      />
       <ProxyPoolModal
         open={proxyPoolOpen}
         profiles={profiles}
@@ -1697,22 +1265,10 @@ export default function App() {
         profile={environmentCheckProfile}
         engine={engine}
         busy={Boolean(environmentCheckProfile && busyIds.has(environmentCheckProfile.id))}
-        initialRuntimeReport={environmentCheckRuntimeReport}
         onClose={() => {
           setEnvironmentCheckProfile(undefined)
-          setEnvironmentCheckRuntimeReport(undefined)
         }}
         onLaunchChecks={launchEnvironmentChecks}
-        onOpenDiagnostics={(profile, report) => {
-          setEnvironmentCheckProfile(undefined)
-          setEnvironmentCheckRuntimeReport(undefined)
-          if (report) {
-            setDiagnosticProfile(profile)
-            setDiagnosticReport(report)
-          } else {
-            void runDiagnostics(profile)
-          }
-        }}
       />
       <RecycleBinModal
         open={recycleBinOpen}
@@ -1724,15 +1280,6 @@ export default function App() {
         extensions={extensions}
         onClose={() => setExtensionManagerOpen(false)}
         onChanged={setExtensions}
-      />
-      <LaunchDiagnosticsModal
-        open={Boolean(diagnosticProfile && diagnosticReport)}
-        profile={diagnosticProfile}
-        report={diagnosticReport}
-        repairing={repairingDiagnostic}
-        onExecuteStrategy={() => executeDiagnosticStrategy()}
-        onRepair={(planId, sections) => repairDiagnosticIdentity(planId, sections)}
-        onClose={() => { setDiagnosticProfile(undefined); setDiagnosticReport(undefined) }}
       />
       <CrashHistoryModal
         open={Boolean(crashProfile)}
@@ -1746,7 +1293,7 @@ export default function App() {
           if (!crashProfile) return
           const profile = crashProfile
           setCrashProfile(undefined)
-          void runDiagnostics(profile)
+          openEnvironmentReadiness(profile)
         }}
       />
       <BatchResultModal result={batchResult} onClose={() => setBatchResult(undefined)} />

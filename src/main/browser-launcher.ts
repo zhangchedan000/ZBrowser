@@ -437,9 +437,6 @@ export class BrowserLauncher {
             }
             this.onChanged(next)
             if (localProxyUrl) this.startProxyMonitor(id, profile.proxy)
-            if (!options.runtimeVersionProbe && !options.runtimeFingerprintProbe) {
-              this.startIdentityMonitor(id, engine)
-            }
             markStarted()
           } catch (error) {
             markStartFailed(error)

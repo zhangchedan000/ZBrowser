@@ -1,7 +1,7 @@
 import { Alert, Button, Checkbox, Divider, List, Modal, Space, Spin, Tag, Typography } from 'antd'
 import { DeleteOutlined, GlobalOutlined, HistoryOutlined, SafetyCertificateOutlined } from '@ant-design/icons'
 import { useEffect, useMemo, useState } from 'react'
-import type { BrowserProfileView, EngineStatus, EnvironmentCheckRecord, FingerprintRuntimeDiagnosticReport, LaunchDiagnosticReport } from '../../shared/types'
+import type { BrowserProfileView, EngineStatus, EnvironmentCheckRecord, LaunchDiagnosticReport } from '../../shared/types'
 import { buildEnvironmentChecks, environmentCheckSummary, type EnvironmentCheckLevel } from '../../shared/environment-check'
 import { summarizeEnvironmentReadiness } from './environment-readiness'
 import { userFacingErrorText } from './user-facing-error'
@@ -11,10 +11,8 @@ interface EnvironmentCheckModalProps {
   profile?: BrowserProfileView
   engine: EngineStatus | null
   busy: boolean
-  initialRuntimeReport?: FingerprintRuntimeDiagnosticReport
   onClose: () => void
   onLaunchChecks: (profile: BrowserProfileView, urls: string[]) => Promise<void>
-  onOpenDiagnostics: (profile: BrowserProfileView, report?: FingerprintRuntimeDiagnosticReport) => void
 }
 
 const CHECK_SITES = [
@@ -50,36 +48,30 @@ export function EnvironmentCheckModal({
   profile,
   engine,
   busy,
-  initialRuntimeReport,
   onClose,
-  onLaunchChecks,
-  onOpenDiagnostics
+  onLaunchChecks
 }: EnvironmentCheckModalProps) {
   const [selected, setSelected] = useState<string[]>(CHECK_SITES.map((item) => item.key))
   const [history, setHistory] = useState<EnvironmentCheckRecord[]>([])
   const [historyLoading, setHistoryLoading] = useState(false)
-  const [runtimeReport, setRuntimeReport] = useState<FingerprintRuntimeDiagnosticReport | null>(initialRuntimeReport ?? null)
-  const [runtimeLoading, setRuntimeLoading] = useState(false)
   const [launchReport, setLaunchReport] = useState<LaunchDiagnosticReport>()
   const [launchLoading, setLaunchLoading] = useState(false)
   const [launchError, setLaunchError] = useState<string>()
   const items = useMemo(() => profile ? buildEnvironmentChecks(profile, engine) : [], [profile, engine])
   const summary = useMemo(() => environmentCheckSummary(items), [items])
   const readiness = useMemo(
-    () => summarizeEnvironmentReadiness(summary, launchReport, runtimeReport ?? undefined, launchError),
-    [summary, launchReport, runtimeReport, launchError]
+    () => summarizeEnvironmentReadiness(summary, launchReport, launchError),
+    [summary, launchReport, launchError]
   )
   const canLaunch = Boolean(profile && (profile.status === 'closed' || profile.status === 'error'))
 
   useEffect(() => {
     if (!open || !profile) {
       setHistory([])
-      setRuntimeReport(null)
       setLaunchReport(undefined)
       setLaunchError(undefined)
       return
     }
-    setRuntimeReport(initialRuntimeReport ?? null)
     setLaunchReport(undefined)
     setLaunchError(undefined)
     let active = true
@@ -93,21 +85,7 @@ export function EnvironmentCheckModal({
       .catch((error) => { if (active) setLaunchError(userFacingErrorText(error)) })
       .finally(() => { if (active) setLaunchLoading(false) })
     return () => { active = false }
-  }, [open, profile?.id, initialRuntimeReport?.checkedAt])
-
-  async function runRuntimeDetection(): Promise<void> {
-    if (!profile) return
-    setRuntimeLoading(true)
-    try {
-      setRuntimeReport(await window.browserApi.profiles.diagnoseFingerprintRuntime(profile.id))
-      setLaunchError(undefined)
-      setLaunchReport(await window.browserApi.profiles.diagnose(profile.id))
-    } catch (error) {
-      setLaunchError(userFacingErrorText(error))
-    } finally {
-      setRuntimeLoading(false)
-    }
-  }
+  }, [open, profile?.id])
 
   async function launch(): Promise<void> {
     if (!profile) return
@@ -155,9 +133,6 @@ export function EnvironmentCheckModal({
             <Tag color="success">通过 {readiness.passed}</Tag>
             {readiness.warnings > 0 && <Tag color="warning">提醒 {readiness.warnings}</Tag>}
             {readiness.errors > 0 && <Tag color="error">阻止 {readiness.errors}</Tag>}
-            {runtimeReport
-              ? <Tag color={runtimeReport.ready ? 'success' : 'error'}>实际指纹 {runtimeReport.ready ? '通过' : '异常'}</Tag>
-              : <Tag>实际指纹 待检测</Tag>}
           </Space>
 
           <Divider style={{ margin: '4px 0' }}>启动准备检查</Divider>
@@ -188,12 +163,6 @@ export function EnvironmentCheckModal({
             ) : null}
           </Spin>
 
-          {(readiness.state === 'blocked' || runtimeReport?.ready === false) && (
-            <Button danger onClick={() => onOpenDiagnostics(profile, runtimeReport ?? undefined)}>
-              查看详细启动诊断
-            </Button>
-          )}
-
           <Divider style={{ margin: '4px 0' }}>本地配置一致性</Divider>
           <List
             size="small"
@@ -211,64 +180,6 @@ export function EnvironmentCheckModal({
               )
             }}
           />
-
-          <Divider style={{ margin: '4px 0' }}>浏览器实际指纹检测</Divider>
-
-          <Space wrap>
-            <Button
-              type="primary"
-              loading={runtimeLoading}
-              disabled={!canLaunch || busy}
-              onClick={() => void runRuntimeDetection()}
-            >
-              启动并读取实际指纹
-            </Button>
-            <Typography.Text type="secondary">
-              临时以正常窗口模式启动当前 Profile，通过本地安全控制管道读取真实 navigator、screen、UA-CH、WebGL/WebGPU、字体、语言和时区，完成后自动关闭。
-            </Typography.Text>
-          </Space>
-
-          {runtimeReport && (
-            <>
-              <Alert
-                type={runtimeReport.ready ? 'success' : 'error'}
-                showIcon
-                message={runtimeReport.ready ? '浏览器实际指纹与当前配置一致' : '浏览器实际指纹检测发现冲突'}
-                description={`实际检查 ${runtimeReport.checks.length} 项 · ${new Date(runtimeReport.checkedAt).toLocaleString()}`}
-              />
-              {runtimeReport.snapshot && (
-                <Space wrap size={[12, 4]}>
-                  <Tag>{runtimeReport.snapshot.platform}</Tag>
-                  <Tag>{runtimeReport.snapshot.hardwareConcurrency} 核</Tag>
-                  <Tag>deviceMemory {runtimeReport.snapshot.deviceMemory ?? '-'}GB</Tag>
-                  <Tag>DPR {runtimeReport.snapshot.devicePixelRatio}</Tag>
-                  <Tag>{runtimeReport.snapshot.screen.width}×{runtimeReport.snapshot.screen.height}</Tag>
-                  <Tag>{runtimeReport.snapshot.language}</Tag>
-                  <Tag>{runtimeReport.snapshot.timezone}</Tag>
-                </Space>
-              )}
-              <List
-                size="small"
-                bordered
-                dataSource={runtimeReport.checks}
-                renderItem={(check) => {
-                  const meta = check.status === 'pass'
-                    ? { color: 'success', label: '通过' }
-                    : check.status === 'warning'
-                      ? { color: 'warning', label: '注意' }
-                      : { color: 'error', label: '冲突' }
-                  return (
-                    <List.Item>
-                      <List.Item.Meta
-                        title={<Space><Typography.Text strong>{check.label}</Typography.Text><Tag color={meta.color}>{meta.label}</Tag></Space>}
-                        description={check.message}
-                      />
-                    </List.Item>
-                  )
-                }}
-              />
-            </>
-          )}
 
           <Divider style={{ margin: '4px 0' }}>第三方环境检测</Divider>
 

@@ -21,9 +21,7 @@ import {
 import { useEffect, useMemo, useState } from 'react'
 import { defaultPlatform, defaultProfileDraft, randomSeed } from '../../shared/defaults'
 import { fingerprintVersionWarning } from '../../shared/fingerprint-consistency'
-import { analyzeIdentityEnvironment } from '../../shared/identity-environment-analysis'
 import { normalizeIdentityIntent } from '../../shared/identity-intent'
-import { applyAIIdentityConfigProvenance, applyAIIdentityConfigToFingerprint, generateAIIdentityConfig } from '../../shared/identity-ai-generator'
 import { HARDWARE_IDENTITY_FIELDS, markFingerprintConfigSources, normalizeIdentityConfigProvenance } from '../../shared/identity-config-provenance'
 import {
   applyFingerprintHardwarePersona,
@@ -76,7 +74,7 @@ function editorValues(profile: BrowserProfileView | undefined, index: number): E
     color: draft.color,
     startUrlsText: draft.startUrls.join('\n'),
     targetCountryCode: draft.identityIntent?.targetCountryCode ?? '',
-    selfHealingMode: draft.identityIntent?.selfHealingMode ?? 'assisted',
+    selfHealingMode: 'manual',
     kernelVersion: draft.kernelVersion,
     kernelFamily: draft.kernelFamily,
     environmentType: draft.environmentType ?? 'account',
@@ -119,8 +117,6 @@ export function ProfileEditor({ open, profile, suggestedIndex, saving, extension
   const kernelFamily = Form.useWatch('kernelFamily', form)
   const windowMode = Form.useWatch(['window', 'mode'], form) ?? 'auto'
   const [testingProxy, setTestingProxy] = useState(false)
-  const [applyingAIIdentity, setApplyingAIIdentity] = useState(false)
-  const [aiIdentityFeedback, setAiIdentityFeedback] = useState<{ type: 'success' | 'warning'; message: string; description: string } | null>(null)
   const [identityIntent, setIdentityIntent] = useState<IdentityIntent>(() => normalizeIdentityIntent(profile?.identityIntent))
   const [identityConfigProvenance, setIdentityConfigProvenance] = useState<IdentityConfigProvenance>(() => normalizeIdentityConfigProvenance(profile?.identityConfigProvenance))
   const [proxyResult, setProxyResult] = useState<ProxyTestResult | null>(null)
@@ -204,7 +200,6 @@ export function ProfileEditor({ open, profile, suggestedIndex, saving, extension
     if (open) {
       form.setFieldsValue(editorValues(profile, suggestedIndex))
       setProxyResult(null)
-      setAiIdentityFeedback(null)
       setIdentityIntent(normalizeIdentityIntent((profile ?? defaultProfileDraft(suggestedIndex)).identityIntent))
       setIdentityConfigProvenance(normalizeIdentityConfigProvenance((profile ?? defaultProfileDraft(suggestedIndex)).identityConfigProvenance))
     }
@@ -220,99 +215,6 @@ export function ProfileEditor({ open, profile, suggestedIndex, saving, extension
         ['networkIdentityMode', 'proxyExitPolicy', 'webrtcPolicy', 'language', 'acceptLanguages', 'timezone'],
         'ai'
       ))
-    }
-  }
-
-  async function applyAIIdentityConfiguration(): Promise<void> {
-    try {
-      setApplyingAIIdentity(true)
-      setAiIdentityFeedback(null)
-
-      const effectiveProxyProtocol = proxyProtocol ?? 'direct'
-      let check = activeProxyCheck
-
-      if (effectiveProxyProtocol !== 'direct' && !check) {
-        await form.validateFields([['proxy', 'host'], ['proxy', 'port']])
-        check = await window.browserApi.proxy.test(form.getFieldValue('proxy'), profile?.id)
-        setProxyResult(check)
-      }
-
-      if (effectiveProxyProtocol !== 'direct' && (!check || !check.ok)) {
-        setAiIdentityFeedback({
-          type: 'warning',
-          message: 'AI 身份配置未应用',
-          description: check?.error ? `代理检测失败：${check.error}` : '请先提供可用代理，或切换为直连后使用手动网络配置。'
-        })
-        return
-      }
-
-      const environment = analyzeIdentityEnvironment({
-        targetCountryCode,
-        proxyProtocol: effectiveProxyProtocol,
-        proxyCheck: check
-      })
-      if (!environment.canGenerate) {
-        setAiIdentityFeedback({
-          type: 'warning',
-          message: '环境分析未通过，AI 身份配置未应用',
-          description: environment.warnings.join('；')
-        })
-        return
-      }
-
-      const current = form.getFieldValue('fingerprint')
-      const generated = generateAIIdentityConfig({
-        baseFingerprint: current,
-        platform: profile ? current.platform : hostPlatform,
-        countryCode: environment.effectiveCountryCode,
-        proxyProtocol: effectiveProxyProtocol,
-        proxyCheck: check,
-        networkMode: effectiveProxyProtocol === 'direct' ? 'manual' : 'proxy'
-      })
-      const applied = applyAIIdentityConfigToFingerprint(current, generated, identityConfigProvenance)
-      form.setFieldValue('fingerprint', applied)
-      setIdentityIntent({
-        schemaVersion: 1,
-        targetCountryCode: environment.targetCountryCode,
-        strategy: 'ai_assisted',
-        selfHealingMode: form.getFieldValue('selfHealingMode') ?? identityIntent.selfHealingMode ?? 'assisted',
-        lastGeneratedAt: new Date().toISOString(),
-        lastGenerator: 'identity-ai-v1',
-        lastGeneratedPersonaId: generated.personaId,
-        lastGeneratedCountryCode: environment.effectiveCountryCode
-      })
-      setIdentityConfigProvenance((currentProvenance) => applyAIIdentityConfigProvenance(currentProvenance, generated))
-
-      const details = [
-        environment.targetCountryCode
-          ? `目标国家 ${environment.targetCountryCode}${environment.observedCountryCode ? ` / 代理出口 ${environment.observedCountryCode}` : ''}`
-          : environment.observedCountryCode ? `代理出口国家 ${environment.observedCountryCode}` : undefined,
-        generated.personaId ? `Persona ${generated.personaId}` : '保留当前硬件配置',
-        effectiveProxyProtocol === 'direct'
-          ? '网络保持手动模式，可继续修改'
-          : generated.networkReadiness === 'ready'
-            ? '网络身份已按代理出口匹配'
-            : '网络配置保持现有手动值',
-        ...generated.warnings
-      ].filter(Boolean)
-
-      setAiIdentityFeedback({
-        type: generated.warnings.length ? 'warning' : 'success',
-        message: generated.networkReadiness === 'ready' || effectiveProxyProtocol === 'direct'
-          ? 'AI 身份配置已应用'
-          : 'AI 指纹配置已应用，网络配置未自动覆盖',
-        description: details.join('；')
-      })
-    } catch (error) {
-      if (!(error && typeof error === 'object' && 'errorFields' in error)) {
-        setAiIdentityFeedback({
-          type: 'warning',
-          message: 'AI 身份配置失败',
-          description: error instanceof Error ? error.message : String(error)
-        })
-      }
-    } finally {
-      setApplyingAIIdentity(false)
     }
   }
 
@@ -349,7 +251,7 @@ export function ProfileEditor({ open, profile, suggestedIndex, saving, extension
       ? values.kernelFamily ?? (selectedKernel ? kernelFamilyForRelease(selectedKernel) : undefined)
       : undefined
     const normalizedTarget = values.targetCountryCode?.trim().toUpperCase() || undefined
-    const selfHealingMode = values.selfHealingMode ?? identityIntent.selfHealingMode ?? 'assisted'
+    const selfHealingMode = 'manual' as const
     const intent = normalizedTarget === identityIntent.targetCountryCode
       ? normalizeIdentityIntent({ ...identityIntent, targetCountryCode: normalizedTarget, selfHealingMode })
       : normalizeIdentityIntent({ schemaVersion: 1, targetCountryCode: normalizedTarget, strategy: 'manual', selfHealingMode })
@@ -593,46 +495,14 @@ export function ProfileEditor({ open, profile, suggestedIndex, saving, extension
         </>
       )}
       <Form.Item
-        name="selfHealingMode"
-        label="Self-Healing 模式"
-        extra="Manual 只监控；Assisted 给出策略并等待确认；Auto 仅自动执行低风险修复。账号环境不会自动换代理，重生成完整 Identity 等高风险动作仍需确认。"
-      >
-        <Select
-          options={[
-            { value: 'manual', label: 'Manual · 只监控，不自动执行' },
-            { value: 'assisted', label: 'Assisted · 推荐策略，确认后执行（默认）' },
-            { value: 'auto', label: 'Auto · 低风险自动恢复，高风险仍需确认' }
-          ]}
-        />
-      </Form.Item>
-      <Form.Item
         name="targetCountryCode"
         label="目标国家"
-        extra="输入 ISO 两位国家代码（如 US、GB、DE）。使用代理时会先核对实际出口国家，不匹配则阻止 AI 静默生成错误国家身份。"
+        extra="输入 ISO 两位国家代码（如 US、GB、DE），用于核对代理出口地区。"
         rules={[{ pattern: /^[A-Za-z]{2}$/, message: '请输入 ISO 两位国家代码，例如 US' }]}
         normalize={(value: string) => value?.trim().toUpperCase()}
       >
         <Input maxLength={2} placeholder="US" />
       </Form.Item>
-      <Alert
-        type="info"
-        showIcon
-        message="推荐流程：填代理 + 目标国家 → 环境分析 → AI 一键配置身份 → 手动确认/修改 → 保存 → 环境检测"
-        description="AI 会先核对代理实际出口与目标国家，再根据可信出口和当前平台推荐成套硬件 Persona、语言、Accept-Language、时区、WebRTC 和出口策略；所有配置仍可手动修改。"
-        action={(
-          <Button type="primary" loading={applyingAIIdentity} onClick={() => void applyAIIdentityConfiguration()}>
-            {profile ? 'AI 重新分析配置' : 'AI 一键配置身份'}
-          </Button>
-        )}
-      />
-      {aiIdentityFeedback && (
-        <Alert
-          type={aiIdentityFeedback.type}
-          showIcon
-          message={aiIdentityFeedback.message}
-          description={aiIdentityFeedback.description}
-        />
-      )}
       <Space className="proxy-test-row" wrap>
         <Button loading={testingProxy} onClick={() => void testCurrentProxy(false)}>仅检测连接</Button>
         {proxyProtocol !== 'direct' && (
@@ -773,7 +643,7 @@ export function ProfileEditor({ open, profile, suggestedIndex, saving, extension
       <Form.Item
         name={['fingerprint', 'hardwareProfileId']}
         label="硬件模板"
-        extra="AI 可推荐完整硬件 Persona；系统、CPU 和屏幕参数也可直接修改，修改任意一项会自动切换为手动自定义并保留当前值。"
+        extra="可选择完整硬件模板；系统、CPU 和屏幕参数也可直接修改，修改任意一项会自动切换为手动自定义并保留当前值。"
       >
         <Select
           options={[

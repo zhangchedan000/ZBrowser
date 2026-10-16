@@ -1,14 +1,6 @@
-import { Alert, Button, Divider, Modal, Select, Space, Spin, Switch, Tag, Typography } from 'antd'
+import { Alert, Button, Divider, Modal, Space, Spin, Tag, Typography } from 'antd'
 import { useCallback, useEffect, useState } from 'react'
-import type {
-  AttentionPatrolIntervalMinutes,
-  AutomationApiStatus,
-  AutomationAttentionAuditResult,
-  AutomationAttentionConfirmationResult,
-  AutomationAttentionDashboard,
-  AutomationAttentionPatrolStatus,
-  McpConnectionCheckResult
-} from '../../shared/types'
+import type { AutomationApiStatus, McpConnectionCheckResult } from '../../shared/types'
 
 interface AutomationApiModalProps {
   open: boolean
@@ -21,16 +13,6 @@ export function AutomationApiModal({ open, onClose }: AutomationApiModalProps) {
   const [error, setError] = useState('')
   const [mcpChecking, setMcpChecking] = useState(false)
   const [mcpCheck, setMcpCheck] = useState<McpConnectionCheckResult>()
-  const [attentionLoading, setAttentionLoading] = useState(false)
-  const [attentionRunning, setAttentionRunning] = useState(false)
-  const [attentionConfirmingProfileId, setAttentionConfirmingProfileId] = useState<string>()
-  const [attentionError, setAttentionError] = useState('')
-  const [attentionDashboard, setAttentionDashboard] = useState<AutomationAttentionDashboard>()
-  const [attentionAudit, setAttentionAudit] = useState<AutomationAttentionAuditResult>()
-  const [attentionConfirmation, setAttentionConfirmation] = useState<AutomationAttentionConfirmationResult>()
-  const [attentionPatrol, setAttentionPatrol] = useState<AutomationAttentionPatrolStatus>()
-  const [attentionPatrolSaving, setAttentionPatrolSaving] = useState(false)
-
   const refresh = useCallback(async () => {
     setLoading(true)
     setError('')
@@ -43,37 +25,12 @@ export function AutomationApiModal({ open, onClose }: AutomationApiModalProps) {
     }
   }, [])
 
-  const refreshAttention = useCallback(async () => {
-    setAttentionLoading(true)
-    setAttentionError('')
-    try {
-      const [dashboard, patrol] = await Promise.all([
-        window.browserApi.automation.attentionDashboard(),
-        window.browserApi.automation.attentionPatrolStatus()
-      ])
-      setAttentionDashboard(dashboard)
-      setAttentionPatrol(patrol)
-    } catch (reason) {
-      setAttentionError(reason instanceof Error ? reason.message : String(reason))
-    } finally {
-      setAttentionLoading(false)
-    }
-  }, [])
-
   useEffect(() => {
     if (open) {
       setMcpCheck(undefined)
-      setAttentionAudit(undefined)
-      setAttentionConfirmation(undefined)
       void refresh()
-      void refreshAttention()
     }
-  }, [open, refresh, refreshAttention])
-
-  useEffect(() => window.browserApi.automation.onAttentionPatrolChanged((next) => {
-    setAttentionPatrol(next)
-    if (!next.running && next.lastCompletedAt) void refreshAttention()
-  }), [refreshAttention])
+  }, [open, refresh])
 
   const runMcpCheck = useCallback(async () => {
     setMcpChecking(true)
@@ -93,89 +50,6 @@ export function AutomationApiModal({ open, onClose }: AutomationApiModalProps) {
       setMcpChecking(false)
     }
   }, [status?.mcp?.protocolVersion])
-
-  const runAttentionAudit = useCallback(async () => {
-    setAttentionRunning(true)
-    setAttentionError('')
-    try {
-      const audit = await window.browserApi.automation.runAttentionAudit()
-      setAttentionAudit(audit)
-      setAttentionDashboard(await window.browserApi.automation.attentionDashboard())
-    } catch (reason) {
-      setAttentionError(reason instanceof Error ? reason.message : String(reason))
-    } finally {
-      setAttentionRunning(false)
-    }
-  }, [])
-
-  const configureAttentionPatrol = useCallback(async (
-    enabled: boolean,
-    intervalMinutes: AttentionPatrolIntervalMinutes
-  ) => {
-    setAttentionPatrolSaving(true)
-    setAttentionError('')
-    try {
-      setAttentionPatrol(await window.browserApi.automation.configureAttentionPatrol(enabled, intervalMinutes))
-    } catch (reason) {
-      setAttentionError(reason instanceof Error ? reason.message : String(reason))
-    } finally {
-      setAttentionPatrolSaving(false)
-    }
-  }, [])
-
-  const confirmAttentionStep = useCallback((profileId: string, profileName: string, strategyKind: string | undefined, reason: string) => {
-    const labels: Record<string, string> = {
-      switch_proxy: '切换代理',
-      regenerate_identity: '重生成 Identity',
-      repair_configuration: '修复配置',
-      replace_baseline: '换代 Baseline',
-      manual_review: '人工复核'
-    }
-    const label = strategyKind ? labels[strategyKind] ?? strategyKind : 'Self-Healing'
-
-    if (strategyKind === 'manual_review') {
-      Modal.info({
-        title: `“${profileName}”需要人工复核`,
-        content: (
-          <Space direction="vertical" size={6}>
-            <Typography.Text>策略：{label}</Typography.Text>
-            <Typography.Text type="secondary">{reason}</Typography.Text>
-            <Typography.Text type="secondary">该策略没有自动执行动作。请先根据原因检查环境配置或运行时状态，再重新运行安全巡检。</Typography.Text>
-          </Space>
-        ),
-        okText: '知道了'
-      })
-      return
-    }
-
-    Modal.confirm({
-      title: `确认处理“${profileName}”？`,
-      content: (
-        <Space direction="vertical" size={6}>
-          <Typography.Text>策略：{label}</Typography.Text>
-          <Typography.Text type="secondary">{reason}</Typography.Text>
-          <Typography.Text type="secondary">确认后会调用现有 Self-Healing 用户确认链路，执行 Runtime 验证；可回滚策略验证失败时会自动恢复原状态，然后重新计算巡检结果。</Typography.Text>
-        </Space>
-      ),
-      okText: '确认执行并复查',
-      cancelText: '取消',
-      okButtonProps: { danger: strategyKind === 'switch_proxy' || strategyKind === 'regenerate_identity' },
-      onOk: async () => {
-        setAttentionConfirmingProfileId(profileId)
-        setAttentionError('')
-        try {
-          const result = await window.browserApi.automation.confirmAttentionStep(profileId, true)
-          setAttentionConfirmation(result)
-          setAttentionDashboard(await window.browserApi.automation.attentionDashboard())
-        } catch (reason) {
-          setAttentionError(reason instanceof Error ? reason.message : String(reason))
-          throw reason
-        } finally {
-          setAttentionConfirmingProfileId(undefined)
-        }
-      }
-    })
-  }, [])
 
   return (
     <Modal
@@ -234,197 +108,7 @@ export function AutomationApiModal({ open, onClose }: AutomationApiModalProps) {
 
             <Divider style={{ marginBlock: 4 }} />
 
-            <Typography.Title level={5} style={{ margin: 0 }}>AI 多环境巡检</Typography.Title>
-            {attentionError && (
-              <Alert
-                type="error"
-                showIcon
-                message="无法读取巡检状态"
-                description={attentionError}
-              />
-            )}
-            <Spin spinning={attentionLoading && !attentionDashboard}>
-              {attentionDashboard && (
-                <Space direction="vertical" size={10} style={{ width: '100%' }}>
-                  <Alert
-                    type={attentionDashboard.plan.count === 0 ? 'success' : attentionDashboard.insights.criticalCount > 0 ? 'error' : 'warning'}
-                    showIcon
-                    message={attentionDashboard.plan.count === 0
-                      ? '当前没有需要处理的环境'
-                      : `当前有 ${attentionDashboard.plan.count} 个环境需要处理`}
-                    description={attentionDashboard.plan.count === 0
-                      ? '巡检队列为空；后续出现进程异常、Identity Health 风险或 Self-Healing 待处理项时会自动进入队列。'
-                      : `长期异常 ${attentionDashboard.insights.count} 个 · 待人工确认 ${attentionDashboard.plan.confirmationRequiredCount} 个 · 历史优先 ${attentionDashboard.plan.recurringPriorityCount} 个`}
-                  />
-                  <Space wrap>
-                    <Button
-                      type="primary"
-                      loading={attentionRunning}
-                      onClick={() => void runAttentionAudit()}
-                    >
-                      运行安全巡检
-                    </Button>
-                    <Button
-                      loading={attentionLoading}
-                      onClick={() => void refreshAttention()}
-                    >
-                      刷新巡检视图
-                    </Button>
-                    <Tag>计划 {attentionDashboard.plan.count}</Tag>
-                    <Tag color={attentionDashboard.plan.confirmationRequiredCount ? 'warning' : undefined}>
-                      待确认 {attentionDashboard.plan.confirmationRequiredCount}
-                    </Tag>
-                    <Tag color={attentionDashboard.insights.criticalCount ? 'error' : undefined}>
-                      长期异常 {attentionDashboard.insights.count}
-                    </Tag>
-                  </Space>
-
-                  {attentionPatrol && (
-                    <div style={{ border: '1px solid rgba(5, 5, 5, 0.12)', borderRadius: 8, padding: '10px 12px' }}>
-                      <Space direction="vertical" size={8} style={{ width: '100%' }}>
-                        <Space wrap>
-                          <Typography.Text strong>周期自动巡检</Typography.Text>
-                          <Switch
-                            checked={attentionPatrol.enabled}
-                            loading={attentionPatrolSaving}
-                            onChange={(enabled) => void configureAttentionPatrol(enabled, attentionPatrol.intervalMinutes)}
-                          />
-                          <Select<AttentionPatrolIntervalMinutes>
-                            value={attentionPatrol.intervalMinutes}
-                            disabled={attentionPatrolSaving}
-                            style={{ width: 130 }}
-                            options={[
-                              { value: 15, label: '每 15 分钟' },
-                              { value: 30, label: '每 30 分钟' },
-                              { value: 60, label: '每 1 小时' },
-                              { value: 180, label: '每 3 小时' }
-                            ]}
-                            onChange={(minutes) => void configureAttentionPatrol(attentionPatrol.enabled, minutes)}
-                          />
-                          {attentionPatrol.running && <Tag color="processing">巡检中</Tag>}
-                          {!attentionPatrol.enabled && <Tag>已关闭</Tag>}
-                        </Space>
-                        <Typography.Text type="secondary">
-                          仅自动执行现有安全巡检与低风险 Policy；高风险项仍只进入待确认，不会由定时任务自动执行。
-                        </Typography.Text>
-                        {attentionPatrol.enabled && attentionPatrol.nextRunAt && (
-                          <Typography.Text type="secondary">
-                            下次巡检：{new Date(attentionPatrol.nextRunAt).toLocaleString()}
-                          </Typography.Text>
-                        )}
-                        {attentionPatrol.lastResult && (
-                          <Typography.Text type="secondary">
-                            最近自动巡检：完成 {attentionPatrol.lastResult.completed} · 待确认 {attentionPatrol.lastResult.confirmationRequired} ·
-                            失败 {attentionPatrol.lastResult.failed} · 已解决 {attentionPatrol.lastResult.resolved} ·
-                            仍存在 {attentionPatrol.lastResult.remaining} · 新出现 {attentionPatrol.lastResult.newlyDetected}
-                          </Typography.Text>
-                        )}
-                        {attentionPatrol.lastError && (
-                          <Typography.Text type="danger">最近自动巡检失败：{attentionPatrol.lastError}</Typography.Text>
-                        )}
-                      </Space>
-                    </div>
-                  )}
-
-                  {attentionAudit && (
-                    <Alert
-                      type={attentionAudit.review.remainingCount === 0 && attentionAudit.review.newCount === 0 ? 'success' : 'info'}
-                      showIcon
-                      message="本轮巡检已完成并自动复查"
-                      description={`已解决 ${attentionAudit.review.resolvedCount} · 仍存在 ${attentionAudit.review.remainingCount} · 新出现 ${attentionAudit.review.newCount} · 待人工确认 ${attentionAudit.confirmationRequired} · 失败 ${attentionAudit.failed}`}
-                    />
-                  )}
-                  {attentionConfirmation && (
-                    <Alert
-                      type={attentionConfirmation.status === 'completed' && attentionConfirmation.review.remainingCount === 0 ? 'success' : 'info'}
-                      showIcon
-                      message={attentionConfirmation.status === 'completed' ? '确认处理已执行并复查' : '确认处理已结束并复查'}
-                      description={`${attentionConfirmation.message} · 已解决 ${attentionConfirmation.review.resolvedCount} · 仍存在 ${attentionConfirmation.review.remainingCount} · 新出现 ${attentionConfirmation.review.newCount}`}
-                    />
-                  )}
-
-                  {attentionDashboard.plan.steps.length > 0 && (
-                    <div>
-                      <Typography.Text strong>当前处理顺序</Typography.Text>
-                      <Space direction="vertical" size={6} style={{ width: '100%', marginTop: 8 }}>
-                        {attentionDashboard.plan.steps.slice(0, 5).map((step) => (
-                          <div
-                            key={step.profileId}
-                            style={{ border: '1px solid rgba(5, 5, 5, 0.12)', borderRadius: 8, padding: '8px 10px' }}
-                          >
-                            <Space wrap size={6}>
-                              <Tag>#{step.priority}</Tag>
-                              <Typography.Text strong>{step.serialNumber} · {step.name}</Typography.Text>
-                              <Tag color={step.level === 'critical' ? 'error' : 'warning'}>
-                                {step.level === 'critical' ? 'Critical' : 'Warning'}
-                              </Tag>
-                              {step.requiresUserConfirmation && <Tag color="warning">需要确认</Tag>}
-                              {step.historyContext && <Tag color={step.historyContext.level === 'critical' ? 'error' : 'processing'}>长期异常</Tag>}
-                            </Space>
-                            <Typography.Paragraph type="secondary" style={{ margin: '6px 0 0' }}>
-                              {step.reason}
-                            </Typography.Paragraph>
-                            {step.historyContext && (
-                              <Typography.Text type="secondary">
-                                最近出现 {step.historyContext.appearances} 次 · 失败 {step.historyContext.failures} 次 · 需确认 {step.historyContext.confirmationRequired} 次
-                              </Typography.Text>
-                            )}
-                            {step.requiresUserConfirmation && (
-                              <div style={{ marginTop: 8 }}>
-                                <Button
-                                  size="small"
-                                  danger={step.strategyKind === 'switch_proxy' || step.strategyKind === 'regenerate_identity'}
-                                  loading={attentionConfirmingProfileId === step.profileId}
-                                  disabled={Boolean(attentionConfirmingProfileId && attentionConfirmingProfileId !== step.profileId)}
-                                  onClick={() => confirmAttentionStep(step.profileId, step.name, step.strategyKind, step.reason)}
-                                >
-                                  {step.strategyKind === 'manual_review' ? '查看人工处理说明' : '确认处理'}
-                                </Button>
-                              </div>
-                            )}
-                          </div>
-                        ))}
-                      </Space>
-                    </div>
-                  )}
-
-                  {attentionDashboard.insights.items.length > 0 && (
-                    <div>
-                      <Typography.Text strong>长期异常信号</Typography.Text>
-                      <Space direction="vertical" size={6} style={{ width: '100%', marginTop: 8 }}>
-                        {attentionDashboard.insights.items.slice(0, 5).map((item) => (
-                          <div key={item.profileId}>
-                            <Space wrap size={6}>
-                              <Typography.Text>{item.serialNumber} · {item.name}</Typography.Text>
-                              <Tag color={item.level === 'critical' ? 'error' : 'warning'}>
-                                {item.level === 'critical' ? 'Critical' : 'Warning'}
-                              </Tag>
-                              {item.identityScore !== undefined && <Tag>Identity {item.identityScore}</Tag>}
-                            </Space>
-                            <Typography.Paragraph type="secondary" style={{ margin: '2px 0 0' }}>
-                              {item.reason}
-                            </Typography.Paragraph>
-                          </div>
-                        ))}
-                      </Space>
-                    </div>
-                  )}
-
-                  {attentionDashboard.history[0] && (
-                    <Typography.Text type="secondary">
-                      最近巡检：{new Date(attentionDashboard.history[0].completedAt).toLocaleString()} ·
-                      完成 {attentionDashboard.history[0].completed} ·
-                      待确认 {attentionDashboard.history[0].confirmationRequired} ·
-                      失败 {attentionDashboard.history[0].failed}
-                    </Typography.Text>
-                  )}
-                </Space>
-              )}
-            </Spin>
-
-            <Divider style={{ marginBlock: 4 }} />
-
-            <Typography.Title level={5} style={{ margin: 0 }}>本地 AI · MCP</Typography.Title>
+            <Typography.Title level={5} style={{ margin: 0 }}>MCP 自动化接口</Typography.Title>
             {status.mcp ? (
               <>
                 <Alert

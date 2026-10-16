@@ -186,9 +186,7 @@ app.whenReady().then(async () => {
     logger
   )
   launcher.setIdentitySelfHealingHooks({
-    onRuntimeReport: (profileId, report) => identitySelfHealing.observeRuntimeReport(profileId, report),
     onProfileClosed: async (profileId) => {
-      await identitySelfHealing.runPending(profileId)
       await teamSyncCoordinator?.publishProfile(profileId).catch((error) => logger?.error('关闭环境后发布团队同步失败', error))
     }
   })
@@ -232,20 +230,11 @@ app.whenReady().then(async () => {
       logger.error('Local API 启动失败；桌面功能继续可用', error)
       localApi = null
     }
-    patrol.start()
   } else {
     logger.info('子账号设备已禁用 Local API 与自动巡检')
   }
   mainWindow = createWindow()
   teamSyncCoordinator.start()
-  const selfHealingResumeTimer = setTimeout(() => {
-    void identitySelfHealing.resumePersistedPending()
-      .then((count) => {
-        if (count) logger?.info('已恢复持久化 Auto Self-Healing 任务', { count })
-      })
-      .catch((error) => logger?.error('恢复持久化 Auto Self-Healing 任务失败', error))
-  }, 1_500)
-  selfHealingResumeTimer.unref()
   if (app.isPackaged && process.env.ZBROWSER_E2E !== '1' && process.env.PRISM_E2E !== '1') setTimeout(() => void updater.check().catch(() => undefined), 10_000)
 }).catch(async (error) => {
   if (mcpStdioMode) {

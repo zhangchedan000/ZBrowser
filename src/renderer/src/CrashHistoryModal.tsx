@@ -31,7 +31,7 @@ export function CrashHistoryModal({
       destroyOnHidden
       footer={(
         <Space>
-          <Button onClick={onDiagnose} disabled={!profile}>启动诊断</Button>
+          <Button onClick={onDiagnose} disabled={!profile}>环境检查</Button>
           {recoverable && (
             <Button type="primary" danger={profile?.status === 'orphaned'} loading={recovering} onClick={onRecover}>
               {profile?.status === 'orphaned' ? '结束遗留进程' : '重新启动环境'}
